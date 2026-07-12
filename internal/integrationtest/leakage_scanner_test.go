@@ -609,31 +609,53 @@ func TestLeakageScanner_Falsifiability_DetectsPlantedSecretInRawFile(t *testing.
 	}
 }
 
-// TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered documents
-// and independently re-verifies, at this integration layer, a real scope
-// boundary internal/repocheckpoint/untracked_test.go's own
-// TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent already
-// names explicitly: internal/redact's secret scan applies ONLY to the
-// untracked-file archive, never to the staged/unstaged patch content
-// (checkpoint-b04/b05's tracked-diff capture). A secret-shaped string
-// already staged/committed in a TRACKED file is captured verbatim in
-// staged.patch.gz with no filtering at all.
+// TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered re-verifies, at
+// this integration layer, that the gap formerly named and documented here
+// as TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered is now
+// closed.
 //
-// This is not a new bug this test introduces — checkpoint-b06's own test
-// suite already documents this boundary as deliberate, out-of-scope
-// behavior for that node. This test exists so qa-05's own leakage-scanner
-// evidence independently confirms the gap is real (not just claimed) at
-// the integration layer, and so it is captured in qa's own severity report
-// per agents/qa.md's mandate to record "any findings, even non-blocking
-// ones." See this node's progress-artifact entry and the final report for
-// the P1/P2 classification and routing.
-func TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered(t *testing.T) {
+// History: internal/redact's secret scan originally applied ONLY to the
+// untracked-file archive, never to the staged/unstaged patch content
+// (checkpoint-b04/b05's tracked-diff capture) — a secret-shaped string
+// already staged/committed in a TRACKED file was captured verbatim into
+// staged.patch.gz with no filtering at all. This was qa-05's P1 finding.
+//
+// Fix: day1/checkpoint commit f981bde ("checkpoint: extend secret scanning
+// to tracked-file diff content (fixes qa-05 P1 finding)") added
+// internal/repocheckpoint/patchredact.go, wired into Capture (capture.go)
+// immediately after DiffPatch and before archiving. It scans each "+"/"-"
+// line body of the staged/unstaged patch (never context or header lines,
+// so the patch stays git-apply-able) with internal/redact's detectors and,
+// on a match, replaces the ENTIRE line body with a fixed, non-echoing
+// placeholder constant (patchredact.go's redactedLinePlaceholder):
+//
+//	"[REDACTED: secret-shaped content removed by preflight checkpoint capture]"
+//
+// This test asserts the new, correct behavior: the raw secret must NOT
+// appear verbatim in the resulting patch artifact (mirroring this file's
+// own happy-path technique, e.g.
+// TestLeakageScanner_RepositoryCheckpoint_SecretShapedUntrackedNeverArchived),
+// AND the redaction placeholder text must be present in its place — a
+// precise positive assertion, not just an absence check, since redact-in-
+// place (vs. drop-the-whole-patch) was checkpoint's explicit design choice
+// to keep patches usable for checkpoint-b08's restore dry-run.
+//
+// NOTE: this test was updated based on a code review of
+// day1/checkpoint@f981bde's patchredact.go/capture.go (read via `git show`,
+// per this wave's instructions — checkpoint's branch was not merged into
+// day1/qa). It cannot pass on this branch alone yet, since
+// internal/repocheckpoint/patchredact.go does not exist here until the
+// lead integrates day1/checkpoint into this branch. It is expected to pass
+// once that integration lands; do not treat a failure here, before that
+// integration, as a regression.
+func TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered(t *testing.T) {
 	rb := newCheckpointRepoBuilder(t)
 	rb.write("tracked-config.txt", "placeholder\n")
 	rb.git("add", "tracked-config.txt")
 	rb.git("commit", "-q", "-m", "initial")
 
-	secretLine := "github_token: ghp_QA05KNOWNGAP0123456789abcdefghijklmnop\n"
+	const secretValue = "ghp_QA05KNOWNGAP0123456789abcdefghijklmnop"
+	secretLine := "github_token: " + secretValue + "\n"
 	rb.write("tracked-config.txt", secretLine)
 	rb.git("add", "tracked-config.txt")
 
@@ -654,11 +676,78 @@ func TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered(t *testing
 	patchPath := filepath.Join(artifactsRoot, "qa05-cp-gap", "staged.patch.gz")
 	patch := readGzipFile(t, patchPath)
 
+	// Positive assertion #1: the raw secret must be gone.
 	report := &scanReport{}
 	scanBytesForSecrets(report, patchPath, patch)
-
-	if len(report.hits) == 0 {
-		t.Fatal("expected staged.patch.gz to contain the secret-shaped tracked-file content unfiltered (this is the documented gap this test records) — if this now fails, either the gap has been fixed upstream (update this test and this node's progress artifact) or something else changed; do not silently adjust the assertion without re-checking checkpoint's own untracked_test.go boundary note")
+	if len(report.hits) > 0 {
+		t.Fatalf("secret-shaped tracked-file diff content leaked into staged.patch.gz unredacted (%v) — checkpoint's patchredact.go fix is either missing, not wired into Capture, or regressed; see day1/checkpoint@f981bde", report.hits)
 	}
-	t.Logf("confirmed known gap: staged.patch.gz contains unfiltered secret-shaped content from a TRACKED file diff (%v) — see this node's progress artifact / final report for P1 routing to checkpoint role", report.hits)
+	if strings.Contains(string(patch), secretValue) {
+		t.Fatalf("raw secret value %q found verbatim in staged.patch.gz even though internal/redact's detectors did not flag it — scanner and raw-substring checks disagree", secretValue)
+	}
+
+	// Positive assertion #2: the specific redaction placeholder replaces
+	// it, per patchredact.go's redactedLinePlaceholder constant. A precise
+	// positive assertion is stronger than "the secret is gone" alone —
+	// it confirms redact-in-place happened as designed, not e.g. the
+	// whole line or file being silently dropped some other way.
+	const redactedLinePlaceholder = "[REDACTED: secret-shaped content removed by preflight checkpoint capture]"
+	if !strings.Contains(string(patch), redactedLinePlaceholder) {
+		t.Fatalf("expected staged.patch.gz to contain checkpoint's redaction placeholder %q in place of the redacted secret line; got:\n%s", redactedLinePlaceholder, patch)
+	}
+
+	// Sanity check: redaction must not corrupt the patch format. Per
+	// patchredact.go's design doc, only "+"/"-" line bodies are rewritten —
+	// file headers, hunk headers (@@ ... @@), and context lines are left
+	// byte-for-byte intact — specifically so checkpoint-b08's restore
+	// dry-run (`git apply --check`) keeps working against the redacted
+	// patch. This is a quick structural-validity check from this test's
+	// vantage point, not a re-test of checkpoint's own restore-dry-run
+	// logic (out of scope here).
+	assertPatchApplies(t, rb.dir, patch)
+
+	t.Logf("confirmed fix: staged.patch.gz no longer contains unfiltered secret-shaped content from a TRACKED file diff; redaction placeholder present and patch remains git-apply-able")
+}
+
+// assertPatchApplies verifies patch is still valid, git-apply-able unified
+// diff content by running `git apply --check` against a fresh clone of
+// repoDir reset to the commit the patch was generated against (HEAD, since
+// the staged patch in this test's scenario is relative to HEAD). This is a
+// lightweight structural sanity check only — not a re-implementation of
+// checkpoint-b08's own restore-dry-run node, which owns real coverage of
+// that behavior.
+func assertPatchApplies(t *testing.T, repoDir string, patch []byte) {
+	t.Helper()
+	if len(patch) == 0 {
+		t.Fatal("assertPatchApplies: empty patch, nothing to validate")
+	}
+
+	checkDir := t.TempDir()
+	runner := gitx.ExecRunner{}
+	run := func(args ...string) {
+		t.Helper()
+		res, err := runner.Run(context.Background(), checkDir, "git", args...)
+		if err != nil {
+			t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+		}
+		if res.ExitCode != 0 {
+			t.Fatalf("git %s: exit %d: %s", strings.Join(args, " "), res.ExitCode, res.Stderr)
+		}
+	}
+	run("clone", "-q", repoDir, ".")
+	run("config", "user.name", "Preflight QA")
+	run("config", "user.email", "qa@preflight.invalid")
+
+	patchPath := filepath.Join(checkDir, "check.patch")
+	if err := os.WriteFile(patchPath, patch, 0o644); err != nil {
+		t.Fatalf("writing patch for apply-check: %v", err)
+	}
+
+	res, err := runner.Run(context.Background(), checkDir, "git", "apply", "--check", patchPath)
+	if err != nil {
+		t.Fatalf("git apply --check: %v", err)
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("redacted patch is no longer git-apply-able (git apply --check exit %d): %s\npatch:\n%s", res.ExitCode, res.Stderr, patch)
+	}
 }

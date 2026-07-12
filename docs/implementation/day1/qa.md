@@ -448,3 +448,84 @@ blockers:
     re-flag of the same gap foundation-09 already surfaced in its own
     progress artifact, not a new discovery."
 ```
+
+```yaml
+node: qa-05-followup
+status: completed (test updated; not yet passable on this branch — see note)
+artifacts:
+  - internal/integrationtest/leakage_scanner_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -v   # 9/10 PASS, 1 EXPECTED FAIL (see below)"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: <recorded below>
+next_action: none — this is a corrective task, not a new DAG node; STOP once committed. Re-validation of the updated test to an actual PASS happens once the lead merges day1/checkpoint into day1/qa; not this node's job to force that merge.
+assumptions:
+  - "checkpoint independently fixed this wave's qa-05 P1 finding
+    ('Secret-shaped content in a TRACKED file's staged/unstaged diff is
+    never filtered by internal/redact') via day1/checkpoint commit
+    f981bde ('checkpoint: extend secret scanning to tracked-file diff
+    content (fixes qa-05 P1 finding)'), adding
+    internal/repocheckpoint/patchredact.go and wiring it into Capture
+    (capture.go) right after the staged/unstaged DiffPatch calls, before
+    archiving. Verified this independently by reading both files via
+    `git show day1/checkpoint:internal/repocheckpoint/patchredact.go` and
+    `git show day1/checkpoint:internal/repocheckpoint/capture.go`
+    read-only (day1/checkpoint was never merged or checked out into this
+    worktree; internal/repocheckpoint/** remains checkpoint's exclusive
+    path, untouched here) — did not just trust the lead's claim."
+  - "patchredact.go's redactPatchSecrets scans only '+'/'-'-prefixed line
+    bodies of the staged/unstaged patch (explicitly excluding '+++'/'---'
+    file-header lines, '@@ ... @@' hunk headers, and all context lines)
+    using internal/redact.ScanContent, and on a match replaces the ENTIRE
+    line body with a fixed, non-echoing placeholder constant:
+    `redactedLinePlaceholder = \"[REDACTED: secret-shaped content removed
+    by preflight checkpoint capture]\"`. Line prefix byte and trailing
+    terminator are preserved. This was a deliberate redact-in-place
+    design choice (over skip-with-manifest-annotation) specifically so
+    checkpoint-b08's restore-dry-run (`git apply --check`) keeps working
+    against the rest of the patch."
+  - "Renamed TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered
+    to TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered, since the
+    documented gap is no longer an accepted/known gap — it's now a
+    confirmed-fixed invariant this test guards going forward. Flipped the
+    assertion: the test now asserts (a) scanBytesForSecrets finds nothing
+    in staged.patch.gz, (b) the raw secret string is not a verbatim
+    substring of the patch either (belt-and-suspenders vs. the scanner
+    itself), and (c) patchredact.go's exact redaction placeholder string
+    IS present in the patch in the secret's place — a precise positive
+    assertion, not just an absence check, confirming redact-in-place
+    happened as designed rather than e.g. the whole patch/line being
+    dropped some other way. Also added a lightweight assertPatchApplies
+    helper that clones the scratch repo, writes the (decompressed)
+    redacted patch to a file, and runs `git apply --check` against it,
+    confirming redaction did not corrupt the patch's applicability — a
+    sanity check only, not a re-test of checkpoint-b08's own
+    restore-dry-run logic, which remains out of this node's scope."
+  - "This test CANNOT pass on day1/qa alone right now, and that is
+    expected, not a regression: internal/repocheckpoint/patchredact.go
+    does not exist on this branch until the lead integrates
+    day1/checkpoint into day1/qa (or both into main). Ran the full
+    updated test locally to confirm: it fails with exactly 'secret-shaped
+    content leaked into staged.patch.gz unredacted' (the github_token
+    detector still fires, since this branch's Capture has no redaction
+    step yet) — i.e., the new test correctly still detects the
+    old/pre-fix behavior on this branch, and will flip to PASS once
+    checkpoint's fix is actually present. All 9 other tests in
+    internal/integrationtest (the 5 qa-04 duplicate/out-of-order tests
+    plus the other 4 qa-05 leakage-scanner tests) pass unaffected."
+  - "Did not touch internal/repocheckpoint/** or merge day1/checkpoint
+    into day1/qa, per this task's explicit constraint — checkpoint's
+    branch was inspected read-only via `git show
+    day1/checkpoint:<path>` only."
+blockers: []
+findings:
+  - severity: informational
+    title: "qa-05 P1 finding ('secret-shaped content in a TRACKED file's staged/unstaged diff is never filtered') is now fixed upstream by checkpoint (day1/checkpoint@f981bde, internal/repocheckpoint/patchredact.go) — this node's test updated to assert the corrected behavior; re-validated for real once the lead's integration merges day1/checkpoint and day1/qa together."
+    file: "internal/integrationtest/leakage_scanner_test.go (this node); internal/repocheckpoint/patchredact.go, internal/repocheckpoint/capture.go (checkpoint, read-only reference only)"
+    reproduction: "go test ./internal/integrationtest/... -run TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered -v — on day1/qa alone (checkpoint's fix absent) this currently fails as expected with 'secret-shaped content leaked into staged.patch.gz unredacted'; once day1/checkpoint@f981bde is integrated, the same command is expected to PASS, asserting no raw secret survives in staged.patch.gz, checkpoint's exact redaction placeholder string is present instead, and the redacted patch remains git-apply-able."
+    expected_invariant: "Once integrated, no secret-shaped content staged/unstaged into a tracked file survives unredacted into a Repository Checkpoint's patch artifacts, and the redacted patch remains structurally valid (git-apply-able) — closing this wave's qa-05 P1 finding."
+    owning_role: "qa (this node) for the test; checkpoint (already delivered, per f981bde) for the fix; lead for final integration and re-validation."
+```

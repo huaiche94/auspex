@@ -138,7 +138,7 @@ validation:
   - "manual: structural assertion script confirms UserPromptSubmit/Stop/StopFailure hook entries and the statusLine entry all invoke `preflight hook claude <subcommand>` with type=command, and plugin.json matches ADD Appendix E.2 verbatim"
   - "go build ./...  -> ok (no .go files added by this node; confirms no accidental breakage)"
 next_action: none — Wave 2 scope (claude-provider-04, claude-provider-06) complete; claude-provider-05/-07 explicitly out of scope for this wave per task brief
-commit: PENDING_FILL_AFTER_COMMIT
+commit: 0dbe22b9b15506eb61daf5d97cb4363fbb8c2ec0
 assumptions:
   - "This is an explicitly forward-looking stub per the DAG's own note on claude-provider-06 ('stub acceptable before [runtime-b01]'): the `preflight` CLI binary and its `hook claude ...` subcommands do not exist on this branch (runtime-b01, a different role's later node, not built yet). The example configuration is syntactically valid and internally consistent with this role's Wave-1/Wave-2 primitives but is not exercisable end-to-end (`preflight hook claude user-prompt-submit < fixture` per the DAG's literal validation command cannot run — there is no `preflight` binary yet)."
   - "plugin.json is copied verbatim from Preflight_ADD.md Appendix E.2, which is explicitly this role's documented ownership ('Appendix E.2/E.3' in agents/claude-provider.md)."

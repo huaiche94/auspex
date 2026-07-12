@@ -59,6 +59,16 @@ type Services struct {
 	// hook telemetry actually persisted, or UserPromptSubmit actually
 	// evaluated, sets Hooks explicitly.
 	Hooks HookSupport
+
+	// Diagnostics configures `preflight doctor`'s optional checks
+	// (runtime-b08, internal/orchestrator.DoctorDeps). Also not required:
+	// omitting it renders every doctor check CheckSkipped rather than
+	// failing container construction — doctor is meant to run even in a
+	// minimal environment (e.g. before `preflight init` has created a
+	// database at all), and reporting "skipped, not configured" for each
+	// missing piece IS doctor's correct behavior in that case, not a
+	// construction-time error.
+	Diagnostics DiagnosticsSupport
 }
 
 // HookSupport bundles the optional collaborators
@@ -70,6 +80,15 @@ type HookSupport struct {
 	IDs       domain.IDGenerator
 	Persister orchestrator.EventPersister
 	TxRunner  app.TxRunner
+}
+
+// DiagnosticsSupport bundles the optional collaborators
+// internal/orchestrator.DoctorDeps needs. See Services.Diagnostics' doc
+// comment for the zero-value (all-skipped) fallback behavior.
+type DiagnosticsSupport struct {
+	DB           orchestrator.DBPinger
+	Config       orchestrator.ConfigLoader
+	RequiredDirs []string
 }
 
 // App is the validated, immutable-after-construction service container.
@@ -175,6 +194,20 @@ func (a *App) RootCmd() *cobra.Command {
 	}
 	replaceSubcommand(root, "checkpoint", func(_ string) *cobra.Command {
 		return cli.NewCheckpointCmd(checkpointDeps)
+	})
+
+	statusDeps := orchestrator.StatusDeps{ProgressTree: a.services.ProgressTree}
+	replaceSubcommand(root, "status", func(_ string) *cobra.Command {
+		return cli.NewStatusCmd(statusDeps)
+	})
+
+	doctorDeps := orchestrator.DoctorDeps{
+		DB:           a.services.Diagnostics.DB,
+		Config:       a.services.Diagnostics.Config,
+		RequiredDirs: a.services.Diagnostics.RequiredDirs,
+	}
+	replaceSubcommand(root, "doctor", func(_ string) *cobra.Command {
+		return cli.NewDoctorCmd(doctorDeps)
 	})
 
 	return root

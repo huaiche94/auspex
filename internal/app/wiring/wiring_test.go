@@ -359,3 +359,64 @@ func TestApp_RootCmd_CheckpointCreateIsRealNotStub(t *testing.T) {
 		t.Errorf("repository_checkpoint_id = %v, want rc-1", decoded["repository_checkpoint_id"])
 	}
 }
+
+// TestApp_RootCmd_StatusIsRealNotStub proves runtime-b08's wiring:
+// `preflight status` on the App-built tree calls through to the injected
+// ProgressTree fake and renders real JSON, not the standalone stub.
+func TestApp_RootCmd_StatusIsRealNotStub(t *testing.T) {
+	services := fullFakeServices()
+	services.ProgressTree = &fakes.FakeProgressTreeService{
+		SnapshotFunc: func(_ context.Context, taskID domain.TaskID) (app.ProgressTreeSnapshot, error) {
+			return app.ProgressTreeSnapshot{TaskID: taskID, Nodes: []app.ProgressNode{{ID: "n1"}}}, nil
+		},
+	}
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	root.SetArgs([]string{"status", "--session-id", "sess-1", "--task-id", "task-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("status: %v (want the real handler to succeed, not the stub's ErrCodeUnavailable)", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["has_progress_tree"] != true {
+		t.Errorf("has_progress_tree = %v, want true", decoded["has_progress_tree"])
+	}
+}
+
+// TestApp_RootCmd_DoctorIsRealNotStub proves runtime-b08's wiring:
+// `preflight doctor` on the App-built tree runs real checks (here, all
+// skipped since Diagnostics was left at its zero value) and renders real
+// JSON, not the standalone stub's ErrCodeUnavailable.
+func TestApp_RootCmd_DoctorIsRealNotStub(t *testing.T) {
+	a, err := wiring.New(fullFakeServices())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	root.SetArgs([]string{"doctor"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("doctor: %v (want the real handler to succeed, not the stub's ErrCodeUnavailable)", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["healthy"] != true {
+		t.Errorf("healthy = %v, want true (zero-value Diagnostics means all-skipped, which is healthy)", decoded["healthy"])
+	}
+}

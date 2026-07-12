@@ -327,3 +327,67 @@ self-contained `internal/predictor/quota` package requiring no FeatureSource abs
 on `predictor-05c` completing and being reviewed) and was not started, stubbed, or scaffolded. No other
 role's paths were touched. `golangci-lint run ./...` reports 0 issues repository-wide as of this wave's
 final commit.
+
+---
+
+## Wave 5 (predictor-07)
+
+Branch: `day1/predictor`, continuing from `1fa92cf` (Wave 4, `predictor-01`/`predictor-05c`). Per explicit
+instruction, `origin/main` was merged first (`git fetch origin && git merge origin/main`) — a clean
+fast-forward from `1fa92cf` to `5470e4d`, bringing in Wave 4's integrated state (foundation-07,
+claude-provider-05, checkpoint-a01/b01, `predictor-01`/`predictor-05c` already-merged copies,
+runtime-a01/b02, `internal/app/wiring`, `internal/telemetry/claude`, new SQLite migrations 0010-0052,
+`internal/testutil/fakes`). Whole-repo `go build ./...` and `go test ./...` both passed cleanly
+immediately after the merge, before any new code was written. Re-read CONSTITUTION.md,
+`agents/predictor.md`, `docs/implementation/day1/EXECUTION_DAG.md` (`predictor-07`'s corrected entry),
+`docs/implementation/day1/CONTRACT_FREEZE.md`'s "Predictor pipeline ports (ADR-041)" section,
+`docs/adr/0041-predictor-forecast-layer.md` (including its "Terminology note" on `execution_risk` vs.
+`completion_risk`), `internal/app/ports.go`'s `RiskCombiner`/`CombineRiskRequest`/`CombineRiskResult`
+section, `internal/domain/forecast.go`, and `Preflight_ADD.md` §16.1-16.2/§16.3/§16.4 before starting, per
+instruction. Assigned exactly `predictor-07` (Risk Combiner) this wave.
+
+```yaml
+node: predictor-07
+status: completed
+artifacts:
+  - internal/predictor/risk/doc.go
+  - internal/predictor/risk/coldstart.go
+  - internal/predictor/risk/combiner.go
+  - internal/predictor/risk/combiner_test.go
+validation:
+  - "gofmt -l internal/predictor  # clean"
+  - "go build ./internal/predictor/...  # ok"
+  - "go vet ./internal/predictor/...  # ok"
+  - "go test ./internal/predictor/... -run RiskComponents -v  # PASS (9 top-level tests, 16 subtests: quota/context sigmoid formula incl. midpoint=0.5 exact case, nil-projection-is-unknown-not-zero for both quota/context, completion risk formula incl. base/maxed-out-clamped-to-1.0/reason-code-derived-term-delta/cold-start-propagation, blast-radius risk formula incl. base/security+migration/public-API-change-delta/monotonicity-in-files-changed, overall=max() with calibrated-only-if-all-inputs-calibrated and reason-code union, 500-trial NaN/Inf/out-of-range property sweep across extreme+nil inputs, 20-trial determinism check, cold-start-never-fabricates-calibration across all 5 components, reason-code golden test, frozen-interface satisfaction check)"
+  - "go test ./internal/predictor/... -race  # PASS, all packages"
+  - "go build ./...  # ok, whole module"
+  - "go test ./...  # PASS, whole module, no regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide"
+commit: <see final report>
+next_action: none — predictor-07 is the sole assigned Wave 5 node; predictor-08 (Policy) explicitly out of scope, not started, stubbed, or scaffolded
+assumptions:
+  - "Package path internal/predictor/risk (sibling to internal/predictor/{scope,token,quota,runway}), matching this role's own established one-package-per-pipeline-stage convention and Preflight_Predictor_Design_Supplement.md's naming pattern ('RuleXForecaster — Version N'). Neither internal/app/ports.go nor CONTRACT_FREEZE.md names an implementation package path for RiskCombiner (CONTRACT_FREEZE.md's 'What Bootstrap did NOT freeze' section explicitly defers 'predictor internals' to the owning role), so this follows the same judgment call already made for scope/token/quota."
+  - "RuleRiskCombiner implements ADD §16.2's 'Initial explainable formula' verbatim, including its exact coefficients (e.g. completion_risk's 0.10 base + 0.04*files_changed_p90 + ... ; blast_radius_risk's 0.05 base + 0.03*files_changed_p90 + ...) — unlike predictor-05c/predictor-05b, this formula's constants ARE fully named in the ADD, so no bootstrap-constant derivation was needed here (coldstart.go just names the ADD's own coefficients for line-by-line auditability against the ADD text, it does not invent new defaults)."
+  - "Terminology: uses completion_risk / CompletionRisk throughout, never execution_risk, per ADR-041's explicit 'Terminology note' (Preflight_Predictor_Design_Supplement.md's execution_risk = P(task_requires_multiple_turns) and ADD §16.1's completion_risk name the same concept; ADR-041 keeps the ADD's name as frozen, 'renaming it would fork one concept under two names, which Constitution §1 exists to prevent') and CombineRiskResult.CompletionRisk's own frozen field name in internal/app/ports.go. Documented explicitly in risk/doc.go's package comment so this is auditable without re-reading the ADR."
+  - "DISCOVERED GAP (real, not hypothetical — flagging for contract-integrator/predictor-08): ADD §16.2's completion_risk/blast_radius_risk formulas name four terms (open_ended_scope, recent_retry_rate, recent_test_failure_rate, unresolved_progress_blockers, public_api_change) that have NO direct field on the frozen domain.ScopeEstimate struct (internal/domain/forecast.go) — unlike files_changed_p90/lines_changed_p90/integration_tests/migration/cross_layer/security_sensitive/cross_project, which map onto ScopeEstimate fields one-to-one. The underlying signals exist one layer down in internal/features (PromptFeatures.OpenEndedIndicator, SessionFeatures.RetryRate/TestFailureRate, ProgressFeatures.UnresolvedBlockers), but the frozen app.CombineRiskRequest (ADR-041) carries only Scope/TokenForecast/QuotaForecast, not those feature DTOs. Rather than widening CombineRiskRequest (not this node's path to edit — internal/app/ports.go is contract-integrator-owned) or silently treating these terms as always-0, this implementation reads them from scope.ReasonCodes as boolean presence indicators (domain.ReasonOpenEndedScope, domain.ReasonHighRecentRetryRate, domain.ReasonHighRecentTestFailureRate, domain.ReasonProgressBlocked, domain.ReasonPublicAPIChange) — the one channel through which internal/predictor/scope.RuleScopeEstimator already surfaces some of these signals today. This is a documented, boolean (not continuous-rate) approximation: a present reason code contributes its full formula coefficient, never a partial one scaled by the actual rate, since CombineRiskRequest carries no continuous value for these terms. Fully documented in combiner.go's completionRiskTermsFromReasonCodes doc comment. Recommend predictor-08 (Policy) and any future ADR revisiting this pipeline check whether CombineRiskRequest should gain these fields directly, rather than each downstream consumer re-deriving the same reason-code bridge independently."
+  - "quota_risk/context_risk's nil-projection ('unknown, not zero' per ADD §16.3) fallback score is sigmoid(0)=0.5 — the sigmoid's own midpoint — chosen as the most defensible score-shaped placeholder for a genuinely missing input (paired with an explicit QUOTA_UNKNOWN/CONTEXT_UNKNOWN reason code and the component's own Confidence/Calibrated, honestly propagated from the unknown upstream QuotaForecast, never manufactured as high-confidence). ADD §16.2 does not define sigmoid's behavior for a missing input, so this is a documented implementation choice, not a spec-derived value."
+  - "QuotaForecast.ReasonCodes is a single shared field covering both the quota and context sub-signals (no per-field reason-code split exists in the frozen struct — matches how predictor-05c's RuleQuotaForecaster itself appends quotaReasons/contextReasons into one combined slice). Consequently quotaRiskComponent and contextRiskComponent both echo the full qf.ReasonCodes, not a filtered subset — verified explicitly by TestRiskComponentsReasonCodeGolden, which pins this exact cross-echo behavior as the expected (not accidental) shape."
+  - "overall_risk (ADD §16.2: overall = max(quota, context, completion, blast_radius)) additionally computes Calibrated as the logical AND of all four components' own Calibrated (an overall claim can never be more certain than its least-certain input) and Confidence as the lowest (most conservative) of the four via a documented confidenceRank ordering (unavailable < low < medium < high < exact) — ADD §16.2 names only the Score formula, not how Calibrated/Confidence/ReasonCodes should combine, so this is this package's own documented, conservative extension consistent with Constitution §7 rule 7."
+  - "clamp01's NaN handling: a NaN score is clamped to 1.0 (the most conservative/highest-risk value), not 0.0 or left as NaN, on the reasoning that a score computation producing NaN reflects an upstream data problem and this package's overall discipline (matching quota_risk's own 'unknown is not zero' bias) is to favor disclosing elevated risk over silently understating it. Exercised by TestRiskComponentsNeverNaNOrInf's 500-trial property sweep, which includes math.MaxFloat64/-MaxFloat64/math.MaxInt64/math.MinInt64 and nil-pointer inputs in random combination."
+blockers: []
+```
+
+## Wave 5 summary
+
+The single assigned node (`predictor-07`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `origin/main` was merged first per instruction (clean fast-forward,
+`1fa92cf` -> `5470e4d`), confirmed building/testing cleanly before any new code was written.
+`internal/predictor/risk` is a new, self-contained, stateless package (no FeatureSource abstraction
+needed, matching `predictor-05c`'s precedent rather than `predictor-05`/`predictor-05b`'s) implementing
+ADD §16.2's risk-combination formula verbatim against the ADR-041-frozen `app.RiskCombiner` interface. A
+real gap was discovered and documented (five ADD §16.2 formula terms with no direct `ScopeEstimate`
+field) and bridged via `scope.ReasonCodes`, not silently ignored or worked around by editing a frozen
+contract file. Terminology is `completion_risk` throughout, matching ADR-041's explicit resolution of the
+`execution_risk`/`completion_risk` naming fork. No other role's paths were touched; `internal/policy/**`
+and `internal/evaluation/**` remain untouched. `golangci-lint run ./...` reports 0 issues repository-wide
+as of this wave's final commit.

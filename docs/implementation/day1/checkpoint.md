@@ -91,3 +91,63 @@ Validation re-run and green: `gofmt -l internal/gitx` (empty),
 `go test ./internal/gitx/... -race`. golangci-lint is not installed in this
 environment, so that specific check was skipped; the underlying pattern was
 fixed per errorlint's rule. No other files touched; no DAG node started.
+
+---
+
+## Wave 4
+
+Assigned nodes this wave: `checkpoint-a01` (Part A: Progress Tree core
+migrations, 0020-0022) and `checkpoint-b01` (Part B: Repository Checkpoint
+core migration, 0030). First Part A work for this role. Pre-step: merged
+main (`ca7062f`, Wave 3 integration) into `day1/checkpoint` — clean
+fast-forward, whole repo built and tested green before any new work.
+
+### CROSS-ROLE CHANGE REQUEST (Constitution §4.4) — foundation, please fix
+
+Adding ANY migration file outside foundation's 0001-0009 range breaks three
+foundation-owned tests in `internal/storage/sqlite/migrate_test.go`, because
+they assert the exact embedded migration set rather than foundation's own
+subset:
+
+- `TestAllMigrations_LoadsCoreSchemaFiles` — asserts `len(migrations) == 4`
+  and the exact list `{1,2,3,4}`;
+- `TestCoreMigrations_FromEmptyDatabase` — asserts `CurrentVersion == 4`;
+- `TestCoreMigrations_ReopenFromFile_AppliesOnce` — asserts
+  `CurrentVersion == 4`.
+
+These now fail on this branch (and will fail for predictor-01's 0040 range
+and every later range too). This contradicts migrate.go's own documented
+design ("later roles' migrations ... are picked up automatically once
+present, with no change needed here"). Requested fix (foundation-owned, one
+mechanical edit): filter assertions to foundation's range, e.g. assert the
+0001-0009 subset of `AllMigrations()` equals the expected four, and assert
+`CurrentVersion >= 4` (or compute the expected max from `AllMigrations()`).
+Per Constitution §4 and this wave's explicit instruction ("do NOT touch any
+other role's paths"), checkpoint did NOT edit `migrate_test.go`; the three
+failures are left in place and flagged here for foundation /
+contract-integrator at integration time. checkpoint's own validation
+commands (below) pass independently of them.
+
+### checkpoint-a01: Progress Tree core migrations (0020-0022)
+
+```yaml
+node: checkpoint-a01
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0020_progress_nodes.sql   # §12.2 verbatim + §12.3 idx_progress_nodes_task_status
+  - internal/storage/sqlite/migrations/0021_progress_edges.sql   # §12.2 verbatim
+  - internal/storage/sqlite/migrations/0022_artifacts.sql        # §12.2 verbatim
+  - internal/storage/sqlite/migrations_checkpoint_a_test.go      # checkpoint-owned test file (see assumption below)
+validation:
+  - "gofmt -l internal/storage/sqlite -> empty"
+  - "go test ./internal/storage/sqlite/... -run Migration0020 -v -> PASS (11 tests: range presence in AllMigrations, table+index creation from empty DB, task-cascade, parent-subtree-cascade, sibling-ordinal uniqueness, unknown-task FK rejection, duplicate-edge PK rejection, edge node-cascade + unknown-endpoint rejection, artifact detach-on-node-delete + cascade-on-task-delete, duplicate-evidence rejection with different-digest-distinct, artifact unknown-task rejection)"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+next_action: checkpoint-a02/a03 (Progress Tree service + artifact validators) — now unblocked, NOT started this wave per explicit assignment
+assumptions:
+  - "Only progress_nodes/progress_edges/artifacts land in this node, per the wave instruction. state_checkpoints (also §12.2, also range 0020-0029) is deferred to the wave that implements the State Checkpoint manifest (checkpoint-a05); it will take 0023+. The §12.3 index idx_state_checkpoints_task_created defers with it."
+  - "Test file location: migrations_checkpoint_a_test.go lives in foundation's internal/storage/sqlite directory (package sqlite_test) because the DAG's frozen validation command targets ./internal/storage/sqlite/... — the tests cannot live anywhere else and still be selected. It is a NEW, clearly checkpoint-named file; no foundation file was edited. It reuses foundation's openTemp helper (same external test package). If contract-integrator prefers a different convention for per-role migration tests, this file moves wholesale."
+  - "All test names carry the Migration0020 selector (the range lower bound stands for the whole a01 migration set) so the DAG's `-run Migration0020` command selects exactly these tests, including the 0021/0022 coverage."
+  - "Enum-bearing TEXT columns (progress_nodes.status/kind, progress_edges.edge_kind, artifacts.validation_status) intentionally carry no CHECK constraints: released migrations are immutable (ADD §12.5), so enum vocabulary enforcement belongs to the service layer (checkpoint-a02/a03), not DDL."
+  - "UNIQUE(task_id, parent_id, ordinal) does not deduplicate root-level ordinals (SQLite NULL-distinct semantics); §12.2 transcribed verbatim, root-ordinal uniqueness is checkpoint-a02's plan-upsert responsibility. Same NULL-distinct note applies to artifacts' UNIQUE(progress_node_id, uri, sha256) for detached rows."
+blockers:
+  - "Foundation's three exact-count migration tests fail with this node's files present — see the §4.4 change request above. Not a blocker for this node's own validation command."

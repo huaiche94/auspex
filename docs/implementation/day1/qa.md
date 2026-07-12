@@ -45,6 +45,95 @@
 ## Node log
 
 ```yaml
+node: qa-05
+status: completed
+artifacts:
+  - internal/integrationtest/leakage_scanner_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run LeakageScanner -v   # 6/6 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./... -race   # whole repo, all 33 packages PASS, zero regressions from merging origin/main (Waves 4/5/6)"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: <recorded below>
+next_action: none — qa-05 was this wave's full qa assignment; STOP per task instruction; report findings to lead for routing
+assumptions:
+  - "Built internal/integrationtest as a brand-new package (did not exist
+    before this node) since qa's exclusive paths include it and no other
+    qa node had touched it yet. All test doubles (fixedClock, seqIDs,
+    checkpointRepoBuilder) are small duplicates of the same pattern
+    already established by internal/telemetry/claude/normalizer_test.go
+    and internal/repocheckpoint/helpers_test.go — those are unexported to
+    their own test packages, so re-declaring the same minimal shape here
+    (rather than trying to import an internal test helper across package
+    boundaries, which Go does not allow) follows the precedent those
+    packages' own doc comments already established for this kind of
+    cross-file duplication."
+  - "Scenario 1 (SQLite export): drove the REAL internal/telemetry/claude
+    Normalizer + EventStore against a REAL on-disk temp-file SQLite
+    database (sqlite.Open with a real path, not ':memory:'), reusing the
+    exact needle strings from claude-provider-07's own
+    allRawTextFixtures table (fixture_suite_test.go) so this node checks
+    the same known-sensitive strings that node already proved absent at
+    unit-test scope — qa-05's job is proving the claim also holds for the
+    real on-disk file bytes, not re-deriving new needles. After
+    PersistAll, forced `PRAGMA wal_checkpoint(FULL)` then Close(), then
+    read the raw .db file (and, defensively, -wal/-shm sidecar paths in
+    case a future caller's checkpoint discipline differs) via os.ReadFile
+    directly — not through StoredEvent or any typed query — satisfying
+    the task brief's 'read the file directly ... not just via typed
+    queries' instruction."
+  - "Scenario 2 (repository checkpoint): drove the REAL
+    internal/repocheckpoint.Capture (the same entry point
+    internal/repocheckpoint/untracked_test.go itself calls, not a mock)
+    against a scratch Git repo with one untracked secret-shaped file
+    (GitHub-token pattern) and one untracked prompt-adjacent free-text
+    file, producing a real on-disk manifest.json/summary.md/patch.gz
+    pair/untracked.zip under a temp ArtifactsRoot. Scanned every artifact
+    type: decompressed gzip patches, zip entries (decompressed), and
+    plain files (manifest.json/summary.md/skipped-files.json)."
+  - "Reused internal/redact's exported Scan API (ScanContent for
+    in-memory buffers already decompressed/extracted from an archive,
+    ScanPath for the falsifiability check's standalone file) rather than
+    reimplementing any pattern matching, per this node's explicit
+    instruction to treat internal/redact as a read-only dependency."
+  - "Falsifiability/negative-control test
+    (TestLeakageScanner_Falsifiability_DetectsPlantedSecretInRawFile):
+    planted a known sk-ant-... secret and a known prompt needle into a
+    raw file written directly (bypassing the real pipeline, per the task
+    brief's explicit instruction), then asserted both scanBytesForSecrets
+    and scanBytesForNeedles (the exact functions every other test in this
+    file relies on) detect it, plus independently asserted
+    redact.ScanPath also matches. This is the proof the 'zero findings'
+    result from the happy-path tests is meaningful rather than the
+    scanner vacuously passing because it never actually checks anything."
+  - "Sanity-checked (via a throwaway debug test, removed before the final
+    commit) that the real DB export file is a substantive ~236 KiB
+    SQLite file (not empty/near-empty) and that the checkpoint scenario
+    produces all six expected artifact files including a non-trivial
+    untracked.zip (253 bytes, containing scratch-notes.txt but excluding
+    the secret-shaped file) and skipped-files.json (75 bytes, recording
+    the skip) - confirming the scan targets are real, populated artifacts
+    and not accidentally-empty stand-ins."
+blockers: []
+findings:
+  - severity: P1
+    title: "Secret-shaped content in a TRACKED file's staged/unstaged diff is never filtered by internal/redact — only the UNTRACKED-file archive is scanned"
+    file: "internal/repocheckpoint/capture.go (Capture calls gitClient.DiffPatch for staged/unstaged content with no redact.Scan* call anywhere in that path); internal/repocheckpoint/untracked.go's buildUntrackedArchive is the ONLY call site that invokes internal/redact"
+    reproduction: "go test ./internal/integrationtest/... -run TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered -v — stages a tracked file whose new content is a GitHub-token-shaped string (`ghp_...` 38-char suffix), runs a real repocheckpoint.Capture, then scans the resulting staged.patch.gz directly; the secret-shaped string is found verbatim, unfiltered, confirmed by the github_token detector firing on the decompressed patch bytes."
+    expected_invariant: "Preflight_ADD.md §19.5/§27.8's secret-scan default policy and Constitution §7 rule 2 (raw prompts and sensitive content are not persisted/exposed by default) read most naturally as applying to everything a Repository Checkpoint captures, not only the untracked-file archive. A secret pasted into a tracked config file and staged (a completely ordinary accidental-commit scenario) currently survives, unredacted, in every checkpoint artifact from that point forward."
+    owning_role: "checkpoint (Part B / repocheckpoint) — note this is NOT a new discovery: internal/repocheckpoint/untracked_test.go's own TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent already documents this exact boundary as a deliberate, acknowledged scope decision by checkpoint-b06, explicitly naming 'a future qa-05-style scan of patch content' as the follow-up. This qa-05 finding is that follow-up: independently re-confirming the gap is real at the integration layer (not just asserted in a unit test's comment) and formally routing it for a scope decision — either an ADR-backed accepted risk (patches are diff-of-tracked-content, a different problem from untracked-file capture) or a follow-up node extending internal/redact's scan to patch content before it is written to staged.patch.gz/unstaged.patch.gz. Not treated as P0 here because it is a pre-existing, already-documented, already-shipped scope boundary, not a new regression, and because ADD §19.5's secret-scan bullet appears under the untracked-file-archive section specifically, not the patch-capture section — so it is plausibly in-scope-as-designed rather than a broken invariant. contract-integrator should confirm which reading is correct; until then this is P1 (must resolve before demo, since 'checkpoint before a high-risk turn' is exactly the scenario where a user's tracked-file secret could realistically be present)."
+  - severity: P2
+    title: "claude-provider-07's own privacy gate correctly scoped itself to package-level unit-test access; qa-05 is the first node to validate the real on-disk SQLite file/WAL and a real Repository Checkpoint artifact directory end-to-end for raw-prompt/secret leakage — no gap found, but this closes a previously-open scope item, recorded here for traceability rather than as a defect."
+    file: "internal/telemetry/claude/fixture_suite_test.go (claude-provider-07); internal/redact/doc.go (checkpoint-b06)"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run LeakageScanner -v (this node's own suite) is the closure evidence."
+    expected_invariant: "Both upstream nodes' own documentation named this exact gap and named qa-05 as the closing node; recorded per agents/qa.md's instruction to record 'any findings, even non-blocking ones.'"
+    owning_role: "qa (this node) — informational, no action needed from another role."
+```
+
+```yaml
 node: qa-01
 status: completed
 artifacts:

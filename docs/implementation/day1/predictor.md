@@ -470,3 +470,94 @@ fail-open/fail-closed test and fixed in the same commit, not deferred. `Benchmar
 ns/op, 16 B/op, 1 allocs/op — far under ADD §29.11's <1ms policy target. No other role's paths were
 touched; `internal/evaluation/**` remains untouched. `golangci-lint run ./...` reports 0 issues
 repository-wide as of this wave's final commit.
+
+## Wave 7 (predictor-09)
+
+Branch: `day1/predictor`, continuing from `21c7dfd` (Wave 6, `predictor-08`). Per explicit instruction,
+`origin/main` was merged first (`git fetch origin && git merge origin/main`) — a clean fast-forward from
+`21c7dfd` to `1440f4c`, bringing in Wave 6's integrated state (this role's own already-merged
+`predictor-08`, plus `checkpoint`'s Part A progress/state-checkpoint packages (`internal/pause`,
+`internal/progress`, `internal/redact`, `internal/scheduler`, `internal/statecheckpoint`) and new
+migrations `0023`/`0024`). Whole-repo `go build ./...` and `go test ./...` both passed cleanly immediately
+after the merge, before any new code was written. Re-read `CONSTITUTION.md`, `agents/predictor.md`,
+`docs/implementation/day1/EXECUTION_DAG.md` (`predictor-09`'s entry — deps `predictor-01`, `predictor-08`),
+`docs/implementation/day1/CONTRACT_FREEZE.md`, and `internal/app/ports.go`'s frozen `EvaluationService`
+interface and DTO shapes before starting, per instruction. Assigned exactly `predictor-09` (Evaluation
+persistence) this wave.
+
+**Path confirmation**: `internal/evaluation` is absent from `CONTRACT_FREEZE.md`'s "Import paths" table
+(which lists only `internal/domain`, `internal/app`, `pkg/protocol/v1`, `internal/storage/sqlite`), so per
+`agents/predictor.md`'s own instruction ("If `internal/evaluation` is absent from the frozen layout, use
+the exact path assigned by the contract-integrator; do not create a competing package") this node checked
+this role's own Wave-4-authored migration file comments for confirmation before building. Migration
+`0041_predictions.sql`'s comment states: "predictor's persistence layer (predictor-09) is responsible for
+keeping it consistent with turns.id"; `0043_policy_decisions.sql` and `0044_authorizations.sql` similarly
+name "predictor-09"/"predictor-10" by exact ID against this exact path. No separate contract-integrator
+sign-off exists beyond that (Bootstrap explicitly deferred "predictor internals" per CONTRACT_FREEZE.md's
+own "What Bootstrap did NOT freeze" section) — this is the correct, non-competing path.
+
+```yaml
+node: predictor-09
+status: completed
+artifacts:
+  - internal/evaluation/doc.go
+  - internal/evaluation/datasource.go
+  - internal/evaluation/store.go
+  - internal/evaluation/service.go
+  - internal/evaluation/pipeline.go
+  - internal/evaluation/helpers_test.go
+  - internal/evaluation/service_test.go
+  - internal/evaluation/authorization_test.go
+validation:
+  - "gofmt -l internal/evaluation  # clean"
+  - "go build ./internal/evaluation/...  # ok"
+  - "go vet ./internal/evaluation/...  # ok"
+  - "go test ./internal/evaluation/... -v  # PASS (20 top-level tests: EvaluateTurn persistence/validation/determinism/error-propagation, GetEvaluation lookup/not-found/validation, Decide read-back/not-found/validation, ConsumeAuthorization consume-exactly-once, concurrent-replay-only-one-wins, wrong-session-rejected, wrong-prompt-rejected, stale/expired-rejected, exact-boundary-succeeds, exact-expiry-rejected, unknown-id-not-found, empty-ids-rejected, default-TTL)"
+  - "go test ./internal/evaluation/... -race  # PASS, including the dedicated 8-goroutine concurrent-replay test"
+  - "go build ./...  # ok, whole module"
+  - "go test ./... -race  # PASS, whole module, no regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide (one errorlint finding in a first draft — a bare `err.(*domain.Error)` type assertion in a test helper — caught and fixed by switching to errors.As before this wave's final commit)"
+commit: <see final report>
+next_action: none — predictor-09 is the sole assigned Wave 7 node; predictor-10/predictor-11 explicitly out of scope, not started, stubbed, or scaffolded beyond what already had to exist for app.EvaluationService's ConsumeAuthorization method to compile and behave correctly
+assumptions:
+  - "A real, documented conflict exists between three sources for this wave: the task instructions (explicitly directing a full `ConsumeAuthorization` — exactly-once consumption, expiry, prompt/session binding, replay rejection — to be built as part of predictor-09, with required tests spelled out in detail), `docs/implementation/day1/EXECUTION_DAG.md` (which assigns that exact behavior to a separate downstream node, `predictor-10` — \"One-time authorization\", deps: predictor-09, its own dedicated `-run Authorization` validation gate), and migration `0044_authorizations.sql`'s own comment, written by this role in Wave 4, stating exactly-once consumption is \"enforced by predictor-10's service logic.\" Resolved by building `ConsumeAuthorization` for real, atomically, now — a Go interface cannot be partially implemented, and Constitution §7 rule 11 forbids declaring a task complete without durable evidence, so a stub would have been worse than either alternative — while documenting this conflict explicitly in `doc.go`'s \"ConsumeAuthorization scope note\" and treating predictor-10's own dedicated validation gate as still the authoritative place this behavior is re-verified/extended against real `runtime-a08`/`runtime-b06` integration needs in a later wave, per Constitution §4's \"works around the gap with a documented assumption\" instruction rather than silently picking one instruction and hiding the discrepancy."
+  - "`Decide` reads back the `policy_decisions` row `EvaluateTurn` already computed and persisted for the given `EvaluationID`, rather than recomputing via `internal/policy.Decider`. This is directly evidenced, not guessed: `internal/orchestrator/evaluate.go` (already-merged, a sibling role's code) calls `Decide(ctx, app.DecideRequest{EvaluationID: evaluation.ID})` immediately after `EvaluateTurn`, with no risk/runway payload available to pass — `app.DecideRequest` itself carries only an `EvaluationID` field (frozen, `internal/app/ports.go`). Recomputing is not merely undesirable here, it is impossible from the inputs `Decide` actually receives. Documented explicitly in `doc.go`'s \"Decide: read-back, not recompute\" section, per `agents/predictor.md`'s own instruction to be explicit about this choice."
+  - "`EvaluateTurn` does not itself compute a new `domain.RunwayForecast` — ADR-041 states the independent Runway Predictor plugs into `GracefulPauseService.Observe`, a different frozen port owned by `runtime`, and explicitly is not a `RiskCombiner` input. This node's `DataSource.RunwayForecast` method surfaces whatever the most recently computed forecast is (if any) purely so `policy.Decider`'s runway-driven PAUSE gate can be evaluated during the same pipeline call; a missing forecast (`hasRunway=false`, e.g. a brand-new session) degrades to the zero `domain.RunwayForecast{}`, which `policy.Decider` already treats as `Calibrated=false`/not-pause-worthy per its own documented fail-open discipline — no new degradation rule was invented here."
+  - "`DataSource` is this package's own narrow bridge interface (not a frozen `internal/app` port), following the exact precedent already established by `internal/predictor/scope.FeatureSource` and `internal/predictor/token.FeatureSource`: `app.EvaluateTurnRequest` carries only `SessionID/TurnID/Provider/PromptHash` (frozen, privacy-contract-constrained — no raw prompt text, ever), so every other pipeline input (repository/task resolution, classification, repository/session/progress features, quota/context observations, prior-runway-hit-confirmed debounce bit) is resolved through this package-owned interface, satisfied by a test fake here and, in a later wave, by whatever concrete storage-backed lookup a wiring role provides. Two sibling stages' same-named `FeatureSource.Progress` methods have different signatures from each other (`scope.FeatureSource.Progress` takes `*domain.TaskID`; `token.FeatureSource.Progress` takes `domain.SessionID`) — confirmed by reading both side by side rather than assuming structural consistency; this package's test helper adapts `DataSource` to each stage's own `FeatureSource` explicitly, per method, rather than relying on struct-embedding promotion, which would have silently compiled the wrong method shape."
+  - "`IssueAuthorization` (issuance) is an addition to `Service` beyond the frozen `app.EvaluationService` interface (which defines only `ConsumeAuthorization`, no issuance method) — mirrors `internal/policy.Decider`'s own precedent of building a documented package-local bridge type/method beyond the strictly frozen contract, justified the same way: `agents/predictor.md` deliverable #12 names \"one-time authorization issuance/consumption\" as one deliverable, and `ConsumeAuthorization` has nothing to consume without a real issuance path. `EvaluateTurn` itself does not call `IssueAuthorization` automatically this wave — deciding which `PolicyAction`s require an authorization and what `SnapshotFingerprint`/`RepositoryCheckpointID` to bind it to are orchestration-layer decisions outside this package's Boundary (no checkpoint creation, no Git commands); a future wiring layer is expected to call it explicitly."
+  - "feature_vectors/predictions/policy_decisions are persisted inside one `app.TxRunner.WithTx` call per `EvaluateTurn`, even though CONTRACT_FREEZE.md's transaction-boundary section only names `ConsumeAuthorization` explicitly for this package — the same partial-write-is-invalid-state reasoning applies by direct analogy (a `predictions` row with no corresponding `policy_decisions` row is a partial evaluation), and `checkpoint`'s own `ProgressTreeService.CompleteNode` (a different role's package) already established this exact pattern for a multi-table completion write, so this is following existing project convention, not inventing a new one."
+  - "`ConsumeAuthorization`'s exactly-once guarantee is a single conditional `UPDATE authorizations SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL` inside the same transaction as the binding/expiry checks (store.go's `markAuthorizationConsumed`), matching migration `0044`'s own comment verbatim (\"enforced by predictor's service logic checking consumed_at IS NULL before consuming, inside the same transaction\"). This closes the TOCTOU race an application-level \"read, check, then write\" pattern would have; verified directly by a dedicated concurrent-goroutine test (8 goroutines racing one authorization ID, asserting exactly 1 success) in addition to `go test -race`, since `-race` alone proves absence of a data race, not absence of a logic race."
+  - "Wrong-session/wrong-prompt checks in `ConsumeAuthorization` are evaluated before the replay (already-consumed) check, so a caller supplying a binding mismatch gets `ErrCodeUnauthorized` rather than a confusing conflict/replay code — a caller error (wrong ID/binding) and a legitimate replay attempt are different failure classes and should not share an error code. `PromptHash` binding is checked only when `req.PromptHash` is non-empty (mirrors `app.ConsumeAuthorizationRequest`'s own field being effectively optional in the frozen DTO — no validation requires callers to always supply it), while `TurnID` binding is always checked (required, validated non-empty at the method's entry)."
+blockers: []
+```
+
+## Wave 7 summary
+
+The single assigned node (`predictor-09`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `origin/main` was merged first per instruction (clean fast-forward,
+`21c7dfd` -> `1440f4c`), confirmed building/testing cleanly before any new code was written.
+`internal/evaluation` is a new package implementing the frozen `app.EvaluationService` (ADD §9.9) by
+wiring together every prior predictor-role package into one real pipeline: Scope Estimator
+(`internal/predictor/scope`) → Token Forecaster (`internal/predictor/token`) → Quota Forecaster
+(`internal/predictor/quota`) → Risk Combiner (`internal/predictor/risk`) → Policy (`internal/policy`),
+persisting the result across this role's own `feature_vectors`/`predictions`/`policy_decisions`/
+`authorizations` tables (migrations 0040-0044, Wave 4/`predictor-01`) inside `app.TxRunner.WithTx`
+transactions. `var _ app.EvaluationService = (*Service)(nil)` asserts the frozen interface is satisfied
+exactly, with no widening. A real, three-way documented conflict was found and resolved rather than
+silently picked one way: the task instructions asked for a full `ConsumeAuthorization` under predictor-09,
+while the DAG and this role's own earlier migration-file comments assign that behavior to a separate
+downstream node, `predictor-10`. `ConsumeAuthorization` was built for real (exactly-once consumption via a
+single conditional `UPDATE ... WHERE consumed_at IS NULL`, clock-bound expiry via the injected
+`domain.Clock` — never `time.Now()` directly — and prompt/session binding checks), since a frozen Go
+interface cannot be partially implemented and Constitution §7 rule 11 forbids a stub-and-claim-complete;
+the conflict itself is documented in `doc.go` and this file rather than hidden, and predictor-10's own
+dedicated `-run Authorization` validation gate is treated as the still-authoritative place this behavior is
+re-verified/extended in a later wave. `Decide` reads back the persisted policy decision rather than
+recomputing one, confirmed correct by reading already-merged sibling-role code
+(`internal/orchestrator/evaluate.go`) that calls it with only an `EvaluationID` available — not guessed
+from the frozen DTO shape alone. 20 top-level tests cover deterministic output for identical inputs,
+consume-exactly-once (including an 8-goroutine concurrent-replay race test), wrong-session/wrong-prompt
+rejection, and clock-bound expiry at and around the exact boundary. No other role's paths were touched;
+`internal/policy/**` and `internal/predictor/**` remain exactly as `predictor-08`/earlier waves left them.
+`golangci-lint run ./...` reports 0 issues repository-wide as of this wave's final commit (one `errorlint`
+finding in a first draft was caught and fixed before that final state).

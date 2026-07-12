@@ -186,3 +186,58 @@ validation:
   - "golangci-lint not installed in this environment; underlying gocritic/staticcheck patterns fixed per their documented rules"
 
 Only the two named files were touched; no other role's paths were touched.
+
+---
+
+## Wave 3 (predictor-05b)
+
+Branch: `day1/predictor`, continuing from `4285e12` (Wave 2 + lint correction), already fully merged
+into `main`. Re-read CONSTITUTION.md, CONTRACT_FREEZE.md's "Predictor pipeline ports (ADR-041)"
+section, `docs/adr/0041-predictor-forecast-layer.md`, `internal/domain/forecast.go`,
+`internal/app/ports.go`'s ADR-041 section, `agents/predictor.md`, `Preflight_ADD.md` §15.1-15.2, and
+`Preflight_Predictor_Design_Supplement.md`'s "Stage 2 — Token Prediction"/"MVP Heuristic Formula"
+sections before starting, per instruction. No merge/rebase onto `main` was performed or needed —
+predictor-05, predictor-04's quantile utilities, and ADR-041's frozen types were all already on this
+branch. Assigned exactly `predictor-05b` (Token Forecaster) this wave; `predictor-05c` (Quota
+Forecaster) and `predictor-07` (Risk Combiner) were explicitly out of scope and were not started,
+stubbed, or scaffolded.
+
+```yaml
+node: predictor-05b
+status: completed
+artifacts:
+  - internal/predictor/token/doc.go
+  - internal/predictor/token/coldstart.go
+  - internal/predictor/token/forecaster.go
+  - internal/predictor/token/forecaster_test.go
+validation:
+  - "gofmt -l internal/predictor/token  # clean"
+  - "go build ./...  # ok, whole module"
+  - "go vet ./internal/predictor/...  # ok"
+  - "go test ./internal/predictor/... -run TokenForecast -v  # PASS (7 top-level tests: monotonicity table across 9 cases, never-calibrated-this-wave gate check across 3 sample-count cases, cold-start reason code, determinism, source-error propagation across 4 sources, multiplier-cap explosion guard, degenerate/negative-sample no-panic sweep)"
+  - "go test ./internal/predictor/... ./internal/features/... -race  # PASS, full packages, no regressions"
+  - "golangci-lint run ./...  # zero issues in files owned by this role; 3 pre-existing issues remain in internal/hooks/claude, internal/clock, internal/idgen (not owned by predictor — noted, not fixed)"
+commit: <see final report>
+next_action: none — predictor-05b is the sole assigned Wave 3 node; predictor-05c/predictor-07 explicitly deferred per instruction; stopping here
+assumptions:
+  - "app.ForecastTokensRequest (frozen) carries only SessionID and the Stage-1 domain.ScopeEstimate — no task-classification or session-token-history lookup port exists yet in internal/app/ports.go (same Bootstrap gap already documented for predictor-05's FeatureSource). RuleTokenForecaster depends on its own package-local internal/predictor/token.FeatureSource interface (Classification, Session, Progress, RecentSimilarTurnTokens) rather than editing internal/app/ports.go (not this role's path) or guessing a DTO shape into it. A later wave's storage-backed implementation can satisfy this interface; a fake satisfies it in tests."
+  - "Cold-start-only scope: no durable historical telemetry store exists yet this wave (the same gap already established for predictor-05/predictor-06's cold-start-only implementations — ADR-041's own cold-start note for predictor-05c applies by the same reasoning to predictor-05b, since both depend on claude-provider-05/foundation-06 landing in a later wave). The >=8-similar-samples empirical branch (ADD §15.2's exact gate) is implemented and exercised by tests, so a future FeatureSource backed by real storage activates it for free, but every result this wave is Calibrated=false with Confidence never exceeding ConfidenceMedium (reached only via the empirical-base branch; ConfidenceLow otherwise) — never a fabricated calibrated claim."
+  - "P80 assumption (explicitly flagged by this node's scope): ADD §15.2's base-quantile description names only base_p50/base_p90 ('weighted_quantile(tokens, 0.50)' / '0.90'), no base_p80. Rather than inventing an unrelated third empirical quantile, TokensP80 is interpolated between the (multiplier-adjusted) P50 and P90 in log-space at a 60%-of-the-way-to-P90 weight (internal/predictor/token/forecaster.go's interpolateP80), matching the right-skewed shape of Preflight_Predictor_Design_Supplement.md's own P50/P80/P95 worked example (38000/61000/94000). This is a documented assumption, not a spec-derived value."
+  - "ADD §14.6's cold-start table gives a *relative token multiplier* per task class, not an absolute token count. internal/predictor/token/coldstart.go anchors that relative scale to a bootstrap absolute baseTurnTokens=6000 constant (documented as a bootstrap starting point, explicitly not a measured universal benchmark, mirroring the ADD's own disclaimer for the sibling files/lines table). The 8 task classes ADD §14.6 does not name use a documented nearest-neighbor fallback table, independent from (not imported from) scope/coldstart.go's own fallback table, since the two tables measure different quantities and must not silently couple."
+  - "verification_multiplier's build_required term has no direct ScopeEstimate/PromptFeatures signal wired up this wave; it is treated as implied by RequiresIntegration (an integration-test-requiring turn is assumed to also require a build) rather than left uncounted — documented assumption."
+  - "complexity_multiplier's repository_wide term has no direct ScopeEstimate boolean; approximated by FilesChangedP90 >= 15, mirroring scope.RuleScopeEstimator's own ReasonLargeFileScope threshold, rather than left uncounted."
+  - "retry_multiplier and progress_multiplier read SessionFeatures.RetryRate and ProgressFeatures.CompletedRatio respectively (nil or !ok both mean 'unknown' -> neutral multiplier 1.0 with a cold-start reason code, never a fabricated zero). progress_multiplier's 'remaining_critical_path_cost / original_task_cost' ratio (ADD §15.2) is approximated as 1 - CompletedRatio, since no separate cost model exists yet — documented assumption, ADD §15.2 does not specify how critical-path cost is measured."
+  - "ambiguity_multiplier's mapping from the ADD's four named bands (1.0/1.2/1.5/2.0) to PromptFeatures signals (explicit paths + acceptance criteria named -> 1.0; explicit paths only -> 1.2; no explicit paths, not open-ended -> 1.5; OpenEndedIndicator -> 2.0) is this package's own documented interpretation, since the ADD names the bands and multipliers but not the exact feature-to-band rule."
+  - "Per-multiplier cap (3.0) and combined geometric-mean cap (6.0) are this package's own conservative defaults implementing ADD §15.2's explicit 'avoid multiplier explosion, do caps' instruction — no exact cap values are specified in the ADD. Verified by TestTokenForecastMultiplierCapsPreventExplosion with intentionally extreme/absurd inputs (10^9 lines changed, retry rate of 100, negative completed ratio) asserting the result stays within a cap-derived bound and remains non-negative/monotonic."
+  - "No Missing_Telemetry_Report.md file was found anywhere in this repository (searched exhaustively); the cold-start-only scope for this node is instead corroborated directly by ADR-041's own text (predictor-05c's cold-start note, same reasoning applies to predictor-05b) and by the absence of any durable telemetry store in this branch's dependencies (claude-provider-05/foundation-06 not yet landed) — noted here as a discrepancy between the assigning instruction and repository contents, not acted on further since the conclusion (cold-start-only) is unaffected."
+blockers: []
+```
+
+## Wave 3 summary
+
+The single assigned node (`predictor-05b`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `predictor-05c` (Quota Forecaster) and `predictor-07` (Risk
+Combiner) were deliberately not started, per explicit instruction, despite `predictor-05c` nominally
+depending on `predictor-05b` which is now done. No `RuleQuotaForecaster`, `RiskCombiner` implementation,
+or anything beyond `RuleTokenForecaster` was written. No other role's paths were touched. No merge/rebase
+onto `main` was performed or needed this wave.

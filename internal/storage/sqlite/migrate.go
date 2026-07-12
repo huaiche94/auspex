@@ -1,13 +1,14 @@
-// migrate.go: the forward-only migration engine (ADD §12.5). This node
-// (foundation-05) ships the engine only — no migration .sql files exist
-// yet under internal/storage/sqlite/migrations/ (that is foundation-06,
-// explicitly out of scope for this node). Migrate() against an empty
-// migrations source is a legal, tested no-op: it creates the tracking
-// table and applies zero migrations.
+// migrate.go: the forward-only migration engine (ADD §12.5), plus
+// (foundation-06) the embedded loader for foundation's own migration range
+// (0000-0009 per CONTRACT_FREEZE.md's migration-range table). foundation-05
+// shipped the engine with no .sql files present, which exercised
+// LoadMigrationsFS/Migrate's empty-set no-op path only; AllMigrations below
+// is the first real caller that loads and applies actual .sql files.
 package sqlite
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,6 +17,30 @@ import (
 	"strconv"
 	"strings"
 )
+
+// migrationsFS embeds every "*.sql" file under migrations/ into the binary,
+// so a deployed preflight binary carries its own schema history without
+// depending on the source tree being present at runtime. Only files
+// directly under this directory are embedded (no subdirectories), matching
+// LoadMigrationsFS's own non-recursive contract.
+//
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+
+// AllMigrations returns every migration Preflight ships, sorted ascending
+// by version, by loading migrationsFS through LoadMigrationsFS. This is the
+// single source every caller (the CLI's db-open path, this package's own
+// tests, and any later role's integration tests) should use to get "the
+// real migration set" rather than hand-rolling an fs.FS each time.
+//
+// Only foundation's own range (0000-0009) exists as files today; later
+// roles' migrations (claude-provider 0010-0019, checkpoint 0020-0039,
+// predictor 0040-0049, runtime 0050-0059 — see CONTRACT_FREEZE.md) land as
+// additional files under migrations/ in their own commits and are picked
+// up automatically once present, with no change needed here.
+func AllMigrations() ([]Migration, error) {
+	return LoadMigrationsFS(migrationsFS, "migrations")
+}
 
 // schemaMigrationsTable tracks which migrations have been applied. Created
 // automatically by Migrate on first run.

@@ -462,3 +462,190 @@ assumptions:
     a file outside this role's ownership."
 blockers: []
 ```
+
+## Wave 3
+
+### foundation-06: SQLite core-schema migrations (0001-0004)
+
+Scope per `agents/foundation.md` deliverable 6 and `EXECUTION_DAG.md`'s
+foundation-06 row: the four core tables every later role's migration range
+FKs into — `repositories`, `worktrees`, `provider_sessions`, `tasks` — from
+`Preflight_ADD.md` §12.2's canonical logical schema, transcribed verbatim
+(column-for-column) into forward-only `.sql` files under
+`internal/storage/sqlite/migrations/`, plus wiring `migrate.go`'s existing
+`LoadMigrationsFS`/`Migrate` engine (foundation-05) to actually load and
+apply them via a new `embed.FS` + `AllMigrations()` function.
+
+Tables explicitly NOT created here (out of range, per
+`CONTRACT_FREEZE.md`'s migration-range table): `turns`/`turn_usage`/
+`quota_observations`/`context_observations` (claude-provider 0010-0019),
+`progress_nodes`/`progress_edges`/`artifacts`/`state_checkpoints`
+(checkpoint Part A, 0020-0029), `repository_snapshots`/`file_changes`/
+`repository_checkpoints` (checkpoint Part B, 0030-0039),
+`feature_vectors`/`predictions`/`runway_forecasts`/`policy_decisions`/
+`authorizations` (predictor, 0040-0049), `pause_records`/`wake_jobs`/
+`resume_attempts`/`events` (runtime Part A, 0050-0059).
+
+```yaml
+node: foundation-06
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0001_repositories.sql
+  - internal/storage/sqlite/migrations/0002_worktrees.sql
+  - internal/storage/sqlite/migrations/0003_provider_sessions.sql
+  - internal/storage/sqlite/migrations/0004_tasks.sql
+  - internal/storage/sqlite/migrate.go (added migrationsFS embed.FS +
+    AllMigrations() — the real loader every later role's DB-open path and
+    integration tests should call instead of hand-rolling an fs.FS)
+  - internal/storage/sqlite/migrate_test.go (added TestAllMigrations_* and
+    TestCoreMigrations_* covering load, apply-from-empty, idempotent
+    reopen, FK cascade/set-null behavior, and unique constraints against
+    the real embedded files, not just synthetic in-memory Migration
+    values)
+validation:
+  - "go test ./internal/storage/sqlite/... -run Migration -> PASS (18 tests
+    matched, all passing, including new TestAllMigrations_* /
+    TestCoreMigrations_* tests)"
+  - "go test ./internal/storage/sqlite/... -race -> PASS, all packages"
+  - "go build ./... -> clean"
+  - "go vet ./... -> clean"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+commit: b79df6b
+next_action: foundation-08 (path/config precedence tests) — foundation-07
+  explicitly out of scope this wave per task instruction
+assumptions:
+  - "Migration numbering starts at 0001, not 0000, matching ADD §12.5's
+    literal documented example (\"Migration file: 0001_name.sql\") and
+    this file's own pre-existing Handoff note above. This was not an
+    arbitrary style choice — see the real bug this surfaced, next."
+  - "REAL BUG FOUND AND WORKED AROUND (not fixed in migrate.go): the
+    foundation-05 migration engine's `Migrate()` treats
+    `currentVersion() == 0` as its \"nothing applied yet\" sentinel, and
+    compares `m.Version <= current` to decide whether a migration is
+    already applied. A migration with `Version: 0` therefore satisfies
+    `0 <= 0` on a completely fresh database and is silently treated as
+    already-applied — SKIPPED, not executed — with no error. I initially
+    numbered the four migrations 0000-0003 (matching the range's own
+    display convention, \"0000-0009\"), which hit this exactly: the
+    `repositories` table (version 0) silently never got created while
+    `CurrentVersion()` still reported 4 migrations applied and no error
+    was ever returned. Caught only because
+    TestCoreMigrations_FromEmptyDatabase asserted the table actually
+    exists via sqlite_master, not just that CurrentVersion advanced.
+    Fixed by renumbering to 0001-0004, which is also what ADD §12.5
+    already mandates, so this is the spec-compliant fix, not a workaround
+    of convenience. Deliberately did NOT change migrate.go's sentinel
+    semantics (e.g. using -1 or a bool for \"none applied\") even though
+    that would also fix it, because (a) migrate.go is a shared,
+    already-tested foundation-05 file other roles may already be relying
+    on the documented behavior of, (b) ADD's own convention means version
+    0 should simply never occur in a real migration file, so the latent
+    bug is now unreachable via the documented naming rule rather than
+    patched around, and (c) changing frozen-adjacent engine semantics
+    without a signal that some other role actually needs version 0 felt
+    like scope creep beyond this node. Flagging here in case a future
+    role's migration range is ever tempted to start at its range's
+    zero-boundary (e.g. some future range interpreting \"0020-0029\" as
+    starting the within-range count at 0) — don't; always start the
+    first file in a range at its documented lower bound as written
+    (0001, 0020, 0030, 0040, 0050 per CONTRACT_FREEZE.md), never at a
+    bare 0."
+  - "active_node_id on tasks (0004_tasks.sql) has no FK constraint, by
+    design: it would reference progress_nodes, which does not exist until
+    checkpoint's 0020-0029 range, and SQLite cannot add a forward
+    reference to a not-yet-existing table. Documented in the migration
+    file's own header comment so checkpoint-a01 doesn't need to
+    rediscover this by reading migrate history."
+  - "provider_sessions.metadata_json and tasks' other DEFAULT-bearing
+    columns were transcribed exactly as ADD §12.2 specifies (including
+    DEFAULT '{}' and DEFAULT 0) rather than simplified, since other
+    roles' migrations (claude-provider inserting provider_sessions rows,
+    checkpoint reading tasks.active_node_id) depend on the exact frozen
+    shape, not a foundation-simplified approximation."
+  - "Indexes from ADD §12.3 that reference foundation-owned tables only
+    indirectly (none of §12.3's listed indexes are purely on
+    repositories/worktrees/provider_sessions/tasks alone — they all
+    reference turns, progress_nodes, quota_observations, etc., which are
+    later roles' tables) were NOT added in this node; index creation
+    stays with whichever role's migration range owns the table(s) being
+    indexed."
+blockers: []
+```
+
+### foundation-08: cross-package path/config precedence tests
+
+Scope per `EXECUTION_DAG.md`'s foundation-08 row and the task instruction:
+strengthen precedence test coverage across `internal/paths` and
+`internal/config` TOGETHER, not just each package's own existing
+in-isolation precedence tests (`paths_test.go`'s XDG/env-var-override
+table already covers `paths`' own precedence; `config_test.go`'s
+`TestLoad_Precedence_*` and `TestLoad_EndToEnd_FileBackedPrecedenceChain`
+already cover `config`'s own six-layer precedence chain given
+already-resolved bytes). Neither existing suite exercised the realistic
+pipeline a future `runtime` config command actually runs: use
+`paths.Resolve` (env-var-driven) to find WHERE the global config file
+lives, then feed whatever is actually at that resolved location into
+`config.Load`'s own precedence chain alongside other layers — i.e. paths'
+"which env var wins for WHERE" axis and config's "which layer wins for
+WHICH BYTES" axis composed together, not just proven correct in isolation.
+
+```yaml
+node: foundation-08
+status: completed
+artifacts:
+  - internal/config/precedence_paths_test.go (new — 3 tests: an
+    XDG_CONFIG_HOME override changing which file is actually loaded
+    end-to-end through paths.Resolve -> config.LoadFile -> config.Load;
+    a paths-resolved global layer still losing to higher-precedence
+    config layers (repo_config, environment) exactly as config's own
+    precedence rules require, now proven against a real resolved file
+    path rather than a hand-built []byte; an unrelated paths env var
+    (XDG_RUNTIME_DIR) proven NOT to perturb config's precedence result,
+    i.e. the two packages' env-driven axes are independent, not
+    accidentally coupled through shared process environment state)
+validation:
+  - "go test ./internal/paths/... ./internal/config/... -run Precedence ->
+    PASS (internal/paths reports \"no tests to run\" under this filter,
+    which is correct and expected — paths' own precedence-flavored tests
+    are named TestResolve_*_XDGOverrides, not *Precedence*; the filter's
+    purpose per the DAG is to select the NEW cross-package tests, which
+    live in internal/config and do match)"
+  - "go test ./internal/paths/... ./internal/config/... -race -> PASS, all
+    tests including pre-existing ones"
+  - "go build ./... -> clean"
+  - "go vet ./... -> clean"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+commit: 13e05ae
+next_action: none — this was the last node assigned this wave (per task
+  instruction: STOP immediately once both nodes are Validated; foundation-07
+  is explicitly out of scope, a Wave 4 decision)
+assumptions:
+  - "internal/paths' own fakeEnv (fake_env_test.go) is unexported to
+    package paths_test and cannot be reused from internal/config's test
+    package across the package boundary; a small local pathsFakeEnv
+    satisfying the exported paths.Env interface was defined instead
+    inside precedence_paths_test.go rather than exporting paths' fake or
+    promoting it to a shared testutil package — the latter would be a
+    new abstraction/package this wave's scope does not call for
+    (Constitution §7 rule 10), and duplicating ~10 lines of trivial fake
+    is cheaper than either alternative."
+  - "The new test file lives under internal/config/ (one of foundation's
+    exclusive paths) rather than internal/paths/, since a cross-package
+    integration test conceptually belongs with the consumer (a future
+    config-loading caller uses paths' output, not the reverse) — both
+    directories are foundation-owned either way, so this is a
+    non-binding placement choice, not a contract decision."
+  - "config.Load requires schema_version to be present in the MERGED
+    result from any layer (config.go: `merged[\"schema_version\"]`
+    checked after all layers are combined, not per-layer) — this is
+    pre-existing config.go behavior from foundation-03, not something
+    foundation-08 changed. One new test initially wrote only an
+    override-value global-config fixture (no schema_version key, matching
+    how a real global config file plausibly would look if defaults
+    supplies the envelope) without including a defaults layer at all,
+    which correctly failed with ErrInvalidSchemaVersion — fixed by adding
+    an explicit defaults layer carrying just schema_version, matching how
+    config_test.go's own existing tests already establish the envelope
+    normally arrives (defaults layer), not a config.go bug."
+blockers: []
+```

@@ -241,3 +241,89 @@ Combiner) were deliberately not started, per explicit instruction, despite `pred
 depending on `predictor-05b` which is now done. No `RuleQuotaForecaster`, `RiskCombiner` implementation,
 or anything beyond `RuleTokenForecaster` was written. No other role's paths were touched. No merge/rebase
 onto `main` was performed or needed this wave.
+
+---
+
+## Wave 4 (predictor-01, predictor-05c)
+
+Branch: `day1/predictor`, continuing from `22fde28` (Wave 3, `predictor-05b`). Per explicit instruction,
+`main` was merged first (`git merge main -m "Sync main (Wave 3) before predictor-01/05c"`) — a clean
+fast-forward from `22fde28` to `ca7062f`, bringing in foundation-06/08, `predictor-05b`'s own already-merged
+copy, `runtime-b01`, `qa-01/08`, plus a large batch of previously-unmerged foundation infrastructure
+(`internal/cli`, `internal/config`, `internal/lock`, `internal/paths`, `internal/gitx`, `internal/storage/sqlite`
+db/migrate engine, `internal/telemetry/claude`, CI/governance docs). Whole-repo `go build ./...` and
+`go test ./...` both passed cleanly immediately after the merge, before any new code was written.
+Re-read CONSTITUTION.md, CONTRACT_FREEZE.md's "Predictor pipeline ports (ADR-041)" section,
+`docs/adr/0041-predictor-forecast-layer.md`, `agents/predictor.md`, `internal/predictor/token/forecaster.go`,
+`internal/predictor/scope/estimator.go`, `internal/app/ports.go`'s ADR-041 section, `internal/domain/forecast.go`,
+and `Preflight_ADD.md` §15.3/§15.9 before starting, per instruction.
+
+```yaml
+node: predictor-01
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0040_feature_vectors.sql
+  - internal/storage/sqlite/migrations/0041_predictions.sql
+  - internal/storage/sqlite/migrations/0042_runway_forecasts.sql
+  - internal/storage/sqlite/migrations/0043_policy_decisions.sql
+  - internal/storage/sqlite/migrations/0044_authorizations.sql
+  - internal/storage/sqlite/migrate_predictor_test.go
+validation:
+  - "gofmt -l internal/storage/sqlite  # clean"
+  - "go vet ./internal/storage/sqlite/...  # ok"
+  - "go test ./internal/storage/sqlite/... -run Migration0040 -v  # PASS (4 top-level tests: predictor range loads/applies via AllMigrations, per-table column-shape spot-check via PRAGMA table_info across all 5 tables, policy_decisions FK relationships both within predictor's own range and into foundation's provider_sessions, authorizations UNIQUE(turn_id))"
+  - "go build ./...  # ok, whole module"
+  - "golangci-lint run ./...  # 0 issues repo-wide"
+commit: <see final report>
+next_action: predictor-05c (same wave, sequential)
+assumptions:
+  - "Table set per Preflight_ADD.md §12.2's canonical schema, scoped to predictor's migration range (0040-0049 per CONTRACT_FREEZE.md): feature_vectors, predictions, runway_forecasts, policy_decisions, authorizations. No literal `evaluations` table exists in the ADD's §12.2 schema (domain.EvaluationID/app.Evaluation are backed by the `predictions` table plus policy_decisions, not a separate table) — the task instruction's 'evaluations/predictions/authorizations' phrasing is read as referring to this whole persistence surface (agents/predictor.md deliverable #11 'Evaluation persistence' + #12 'authorization issuance/consumption'), not a literal fifth table name."
+  - "internal/storage/sqlite/migrate_test.go is owned by foundation (not one of predictor's exclusive paths). Per Constitution §4.4 ('a role never edits a file it doesn't own; it works around the gap with a documented assumption'), predictor-01's own migration-range validation lives in a new file, migrate_predictor_test.go, in the same shared sqlite_test package — additive only, no existing file touched. This exactly mirrors foundation-06's own established pattern of putting per-range migration tests directly in that package (TestAllMigrations_LoadsCoreSchemaFiles / TestCoreMigrations_*), with test names containing 'Migration0040' so the DAG's literal validation command selects them."
+  - "DISCOVERED INTEGRATION HAZARD (real, not hypothetical — flagging for contract-integrator/foundation): feature_vectors/predictions/runway_forecasts/authorizations conceptually FK into `turns` (claude-provider's 0010-0019 range) and authorizations also into `repository_checkpoints` (checkpoint Part B's 0030-0039 range), per the ADD's §12.2 schema. Neither table exists as a migration anywhere yet (checked day1/claude-provider and day1/checkpoint branches directly — no migration files present on either). SQLite's `PRAGMA foreign_keys = ON` (already set by db.go) does NOT merely skip-enforce a REFERENCES clause pointing at a nonexistent table until it's populated — it makes ANY cascading DELETE reachable through that table fail outright with 'no such table: main.turns', even for completely unrelated rows, because SQLite resolves every FK-referenced table in the schema's cascade graph at DML prepare time. This was caught empirically: adding these tables with real REFERENCES clauses broke 3 of foundation-06's own already-passing, already-merged tests (TestCoreMigrations_ForeignKeys_RepositoryToWorktree, TestCoreMigrations_ForeignKeys_TaskSessionSetNull, and indirectly the reopen tests) on a plain `DELETE FROM repositories` that has nothing to do with predictor's tables. Fix applied: turn_id (on feature_vectors/predictions/runway_forecasts/authorizations) and repository_checkpoint_id (on authorizations) are plain unconstrained TEXT columns with NO SQL-level FK — exactly the precedent 0004_tasks.sql already established for its own forward reference to progress_nodes ('SQLite has no deferred cross-table FK addition without recreating the table'). Documented in each migration file's own header. Real FKs are kept wherever the target table already exists on this branch: runway_forecasts.session_id -> provider_sessions (0003), runway_forecasts.task_id -> tasks (0004), and the two same-range FKs in policy_decisions -> predictions/runway_forecasts (0041/0042, this range)."
+  - "Consequence for whole-repo `go test ./...`: after this fix, TestCoreMigrations_ForeignKeys_RepositoryToWorktree and TestCoreMigrations_ForeignKeys_TaskSessionSetNull (both in foundation's migrate_test.go) now PASS again. Two foundation tests still fail on this branch — TestAllMigrations_LoadsCoreSchemaFiles and TestCoreMigrations_FromEmptyDatabase/TestCoreMigrations_ReopenFromFile_AppliesOnce — but only because they hardcode `len(migrations) != 4` / `CurrentVersion != 4` as strict-equality assertions that assume foundation's 4 migrations are the *only* ones that will ever exist in the embedded directory. This is a pre-existing test-design limitation in a file predictor does not own and cannot fix without violating its path boundary; it will break the same way regardless of merge order the moment ANY other role's migration range lands (claude-provider, checkpoint, or predictor — whichever merges first). Flagged here for contract-integrator/foundation to relax those two assertions (e.g. `>=` instead of `==`) at the next integration point, not fixed unilaterally by this role."
+  - "authorizations' UNIQUE(turn_id) constraint and predictor-10's future 'consumed_at IS NULL' service-layer check together implement CONTRACT_FREEZE.md's 'Authorization — one-time; consumption is exactly-once' contract; UNIQUE(turn_id) alone only guarantees exactly-once *issuance* per turn, not exactly-once *consumption* (that half is a service-layer transaction concern, deliberately out of scope for a migration-only node)."
+blockers: []
+```
+
+```yaml
+node: predictor-05c
+status: completed
+artifacts:
+  - internal/predictor/quota/doc.go
+  - internal/predictor/quota/coldstart.go
+  - internal/predictor/quota/forecaster.go
+  - internal/predictor/quota/forecaster_test.go
+validation:
+  - "gofmt -l internal/predictor/quota  # clean"
+  - "go vet ./internal/predictor/quota/...  # ok"
+  - "go test ./internal/predictor/... -run QuotaForecast -v  # PASS (19 tests: never-calibrated-this-wave across 4 input shapes, unknown-when-no-observation for both quota and context, nil-UsedPercent treated as unknown not zero, forward projection from current usage for both quota and context, context UsedTokens/WindowTokens fallback + zero-WindowTokens guard, near-limit reason codes for quota/context/Reached-flag, multi-window max-combination, reset-soon delta suppression vs reset-far-away delta application, TokenForecast-scaled delta (small vs large forecast, zero-value-behaves-as-absent), determinism, degenerate-input no-panic sweep incl. negative/huge/MaxInt64 values)"
+  - "go build ./...  # ok, whole module"
+  - "go test ./internal/predictor/... ./internal/features/... -race  # PASS, full packages, no regressions"
+  - "golangci-lint run ./...  # 0 issues repo-wide"
+commit: <see final report>
+next_action: none — predictor-01/predictor-05c are the two assigned Wave 4 nodes; predictor-07 (Risk Combiner) is explicitly out of scope this wave (blocked on predictor-05c completing review, per instruction), not started
+assumptions:
+  - "New sibling package internal/predictor/quota (alongside internal/predictor/scope, internal/predictor/token, internal/predictor/runway), matching Preflight_Predictor_Design_Supplement.md's own naming: 'RuleQuotaForecaster — Version 1 — deterministic delta model, §15.3'. Unlike scope/token, this stage needs no package-local FeatureSource abstraction: app.ForecastQuotaRequest already carries everything Stage 3 needs directly (Quota []domain.QuotaObservation, Context domain.ContextObservation, TokenForecast domain.TokenForecast) — no session/repository/progress feature-lookup gap to bridge, so RuleQuotaForecaster is stateless (mirrors internal/predictor/runway.Scorer's own stateless design more than scope/token's FeatureSource-backed one)."
+  - "Cold-start-only scope, exactly as CONTRACT_FREEZE.md's ADR-041 section explicitly anticipates and licenses for this node: 'QuotaForecaster implementations MAY produce a deterministic current-observation-plus-default-delta estimate ... before durable historical telemetry exists. This is not a stub to be later thrown away.' No durable telemetry store exists on this branch (claude-provider-05's persistence layer is a sibling Wave 4 node on a different, not-yet-merged branch), so ADD §15.3 step 5's empirical-P50/P90-from-samples branch is unreachable by construction — every result is Calibrated=false, Confidence=ConfidenceLow, ReasonPredictionColdStart always present."
+  - "ADD §15.3/§15.9 do not name exact default-delta values (unlike §14.6's token-multiplier table). coldstart.go documents this package's own conservative bootstrap constants: defaultQuotaDeltaP50/P90 = 2.0/6.0 percentage points per turn; defaultContextGrowthP50/P90Fraction = 0.03/0.10 (3%/10% of context window capacity) — explicitly flagged as bootstrap starting points, not measured values, expected to be replaced by StatisticalQuotaForecaster's empirical quantiles (Version 2) once durable per-window delta samples exist."
+  - "TokenForecast fallback (per app.ForecastQuotaRequest's own doc comment: 'MAY use TokenForecast as a fallback input when the provider does not expose quota percentage directly; MUST NOT require it'): tokenAdjustedDelta scales the default P90 delta/growth by TokensP90 relative to a nominal 6000-token 'typical turn' baseline (nominalTurnTokens, deliberately matching internal/predictor/token.baseTurnTokens's value but declared independently rather than imported across packages, mirroring internal/predictor/token/coldstart.go's own established rationale for keeping cold-start tables independent between packages that measure different quantities). Bounded to [0.5x, 3.0x] (tokenScaledDeltaFloor/Ceiling) so one extreme TokenForecast cannot blow up or erase the conservative default — same capping discipline as internal/predictor/token's per-multiplier caps, reused here since §15.3 gives no equivalent explicit cap. A zero-value TokenForecast (TokensP90<=0, i.e. no forecast supplied) leaves the default delta unscaled, verified by TestQuotaForecastZeroTokenForecastUsesUnscaledDefault."
+  - "Multi-window combination (ForecastQuotaRequest.Quota is a slice, domain.QuotaForecast.ProjectedQuotaUsedP90 is a single scalar): reuses the same conservative max-across-windows rule already established by internal/predictor/runway.CombineWindows for the identical ADD §15.5 'v1 預設取 max，避免錯誤獨立假設' reasoning, rather than an independence-assuming combination formula — the worst (highest-projected) window drives the single returned value."
+  - "Reset-awareness (ADD §15.8: 'resets_at 是 schedule hint'): projectOneQuotaWindow suppresses the delta (projection stays at current usage, not compounded forward) when ResetsAt falls within a fixed turnHorizon look-ahead (10 minutes, matching internal/predictor/runway.DefaultHorizon — no turn-duration forecast is wired up this wave to know precisely how long the upcoming turn will take, so a fixed conservative horizon is used as a documented assumption, same pattern runway already established for its own default horizon)."
+  - "near-limit threshold (ReasonQuotaNearLimit/ReasonContextNearLimit): no exact percentage is named in ADD §15.3/§15.9 (unlike §15.7's explicit runway thresholds). 90% is used, chosen to mirror the P90 framing already used throughout this pipeline stage — a documented, conservative default, not a spec-derived value. QuotaObservation.Reached=true always triggers ReasonQuotaNearLimit regardless of UsedPercent, since Reached is the provider's own authoritative signal and must not be overridden by a percentage heuristic."
+  - "ContextObservation fallback: when UsedPercent is nil but UsedTokens/WindowTokens are both present and WindowTokens>0, current usage is derived as UsedTokens/WindowTokens*100 (an equally valid measurement per usage.go's own field set) rather than treated as unknown; WindowTokens<=0 is explicitly guarded (TestContextForecastZeroWindowTokensIsUnknown) to avoid division by zero, falling back to unknown (nil), never a fabricated value."
+blockers: []
+```
+
+## Wave 4 summary
+
+Both assigned nodes (`predictor-01`, `predictor-05c`) are `completed` with durable artifacts and passing
+validation commands, on branch `day1/predictor`. `main` was merged first per instruction (clean
+fast-forward, `22fde28` -> `ca7062f`), confirmed building/testing cleanly before any new code was
+written. `predictor-01` surfaced and fixed a real cross-role SQLite foreign-key hazard (documented above
+in its own `assumptions` block) that would otherwise have silently broken foundation-06's already-merged
+cascade-delete tests at the next integration point, regardless of merge order. `predictor-05c` is a new,
+self-contained `internal/predictor/quota` package requiring no FeatureSource abstraction, unlike its
+`scope`/`token` siblings. `predictor-07` (Risk Combiner) was explicitly out of scope this wave (blocked
+on `predictor-05c` completing and being reviewed) and was not started, stubbed, or scaffolded. No other
+role's paths were touched. `golangci-lint run ./...` reports 0 issues repository-wide as of this wave's
+final commit.

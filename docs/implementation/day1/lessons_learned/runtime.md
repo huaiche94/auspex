@@ -88,3 +88,37 @@
   (state-name reconciliation, no-new-resolver-port, Claim's widened predicate, the replaceSubcommand
   refactor) was resolvable from already-frozen documents (Constitution §2 priority order,
   CONTRACT_FREEZE.md, ADD sections) without needing to raise a new question to contract-integrator.
+
+# Lessons Learned — runtime (Wave 6: runtime-a03, runtime-a04, runtime-a07)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| runtime-a03 | M (DAG: 300 points, ~3h) | S/M — the debounce/hysteresis LOGIC was mechanical once ADD §17.6's exact numeric parameters (0.80 threshold, 5s spacing, 30s quota freshness, 0.70 reset band) were transcribed as named constants rather than inlined magic numbers | 2 (implied) | 2 (observe.go, observe_test.go) | 300 points | one continuous pass, no rework | None — internal/domain.RunwayForecast's existing pointer-typed fields (HitProbability, QuotaObservedAt, CurrentUsedPercent, EstimatedTimeToLimitP50Seconds) were exactly sufficient; no new domain field was needed | None beyond the 2-file estimate | None | None — writing the hysteresis-reset test (an in-between sample that stays >= 0.70 must NOT clear the arm) before finalizing resetsArm's boundary condition (< vs <=) avoided a one-line off-by-boundary bug that a less literal test would have missed | The task brief's explicit instruction to read agents/runtime.md's "Day-one realism" section (calibrated + emergency, distinct reason codes) BEFORE writing any code made the two-trigger-path design a lookup rather than a judgment call — recommend flagging this pattern (name the exact ADD subsection a debounce/threshold node must transcribe numeric parameters from) for any future node with hardcoded thresholds, since a numeric transcription error here would be a silent, hard-to-test-for bug rather than a compile-time one |
+| runtime-a04 | M (DAG: 300 points, ~4h) | M — estimate held; RequestPause's idempotency logic itself was simple, but designing PauseStore's scope (internal seam vs. a new internal/app/ports.go interface) required deliberately checking Constitution §7 rule 10 before writing any code, to avoid speculative widening of the frozen ports file this role does not own | 3 (implied: requestpause + safepoint + one test) | 4 (requestpause.go, requestpause_test.go, safepoint.go, safepoint_test.go) — safepoint split into its own file/test pair rather than folding into requestpause.go, since the two deliverables (idempotency vs. ordering) have independent required tests and no shared state | 300 points | one continuous pass, no rework | None — runtime-b05's existing internal/orchestrator/checkpoint.go ordering pattern (state before repository, early-return on first error) transplanted directly onto the safe-point boundary with no new technique needed | None beyond the 4-file split explained above | None | None — reading internal/orchestrator/checkpoint_test.go's call-order-recording fake pattern once, before writing safepoint_test.go's own recordingPersister/recordingInterrupter, avoided reinventing (or under-specifying) the "assert order, not just presence" technique lessons_learned already flagged as a general recommendation from runtime-b05 | Confirms runtime-b05's own recommendation (Wave 5 lessons_learned) was correctly load-bearing a wave later: "require BOTH a call-order-recording test AND aB's-mock-records-whether-it-was-called-at-all test" transplanted cleanly to a new orchestration boundary (safe-point persist-then-interrupt) with zero rediscovery cost, because it was written down instead of left in one node's memory |
+| runtime-a07 | M (DAG: 300 points, ~3h) | S — lighter than the M estimate; runtime-a06's existing ReclaimExpired gave Restart almost all the SQL shape it needed, so the only real design work was deciding the unconditional-vs-expiry-gated release semantics, not writing new query logic | 2 (implied) | 2 (restart.go, restart_test.go) | 300 points | one continuous pass, no rework | None — internal/scheduler's existing DB/Clock/IDGenerator seams and wake_jobs schema were exactly sufficient; no new migration or domain field needed | None beyond the 2-file estimate | None | None — re-reading ADD §28.3's startup-reconciliation list and the crash-consistency-matrix row for "wake job leased then daemon dies" BEFORE writing Restart's predicate avoided initially copying ReclaimExpired's expiry-gated WHERE clause verbatim, which would have technically compiled and passed a lease-already-expired test but silently failed the actual required test ("restart recovers wake job" with a NOT-yet-expired lease) | Recommend stating explicitly, in any future node that extends an existing lease/lock primitive with a "process restart" variant, whether the new behavior should be time-gated (like the primitive's normal-operation sweep) or unconditional (like this node) — the two are easy to conflate since they touch the same rows and same status values, but have different correctness justifications (elapsed time vs. categorical process death), and only one of them satisfies a required test literally named after "restart" |
+
+## Wave 6 cross-node observations
+
+- This was the fastest, lowest-friction wave this role has had: all three nodes are pure,
+  self-contained additions on top of already-frozen, already-tested Part A prior work
+  (`runtime-a02`'s state machine, `runtime-a06`'s lease store), with zero cross-role fakes needed
+  and zero new files beyond each node's direct implementation + test pair (`runtime-a04`'s 4-file
+  split was a deliberate two-concern separation, not scope creep).
+- The single most consequential technique reused from a prior wave was `runtime-b05`'s
+  call-order-recording fake pattern (Wave 5 lessons_learned's explicit recommendation), applied
+  directly to `runtime-a04`'s safe-point ordering test with no rediscovery cost — direct evidence
+  that writing a technique down as a named recommendation (rather than leaving it in one node's
+  memory) pays off across waves, not just within one.
+- `runtime-a07` is this wave's one real "would have shipped a silent bug without the literal
+  required-test reading" case: an initial instinct to reuse `ReclaimExpired`'s expiry-gated
+  predicate for `Restart` would have compiled, passed an expired-lease test, and STILL failed the
+  actual required test ("restart recovers wake job") for the more realistic case of a lease that
+  has not yet expired at restart time. Re-deriving the predicate from what "restart" categorically
+  implies (every existing lease owner is dead, full stop) rather than from the nearest existing
+  code avoided this. Consistent with Wave 5's own lesson about treating a DAG's literal required-
+  test phrase as the actual acceptance criterion and writing that test first.
+- No new ADRs, no change-request escalations, and no frozen-contract questions this wave — every
+  design judgment call (PauseStore's scope, TriggerReason/Boundary as package-local vocabulary,
+  Restart's unconditional-release semantics) was resolvable directly from Constitution §6/§7,
+  CONTRACT_FREEZE.md, and the relevant ADD sections (§17.6, §20.2, §20.4, §28.3, §29.6) without
+  escalation.

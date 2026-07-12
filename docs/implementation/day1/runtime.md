@@ -825,3 +825,267 @@ in this artifact's node logs:
   storage-layer nodes with nothing to fake.
 - `runtime-b08`'s `DBPinger`/`ConfigLoader` — narrow interfaces this
   node owns outright; nothing to fake.
+
+# Wave 6
+
+Branch: `day1/runtime`, synced from `main` via `git fetch origin && git
+merge origin/main` (fast-forward, clean — no conflicts, this role only
+owns its own paths) before any Wave 6 work. Brings in Wave 5's integrated
+state, including `checkpoint`'s real `checkpoint-b04` (repository
+checkpoint) landing on `main` and `predictor`'s risk combiner
+(`internal/predictor/risk`). Per the task brief, `runtime-b05`'s existing
+internal fake for `checkpoint-b04` was deliberately left as-is this wave
+(not this wave's assignment to swap) — noted here, not silently changed.
+
+Assigned nodes, all Part A, executed sequentially with independent
+validate+commit after each: `runtime-a03` (Observe debounce/hysteresis) ->
+`runtime-a04` (RequestPause idempotency + safe-point coordinator) ->
+`runtime-a07` (restart recovery of overdue/leased jobs). `runtime-a03`/
+`runtime-a04` both build directly on `runtime-a02`'s state machine;
+`runtime-a07` builds on `runtime-a06`'s scheduler lease store. No Part B
+work this wave.
+
+## runtime-a03 — Observe debounce/hysteresis
+
+### What shipped
+
+- `internal/pause/observe.go` — `Observer` (per-`domain.SessionID`
+  debounce/hysteresis state) and `Observe(sessionID, forecast,
+  observedAt) ObserveDecision`, implementing ADD §17.6/§20.2's exact
+  parameters as an `ObserveConfig` (threshold 0.80, min interval 5s,
+  quota freshness 30s, reset band 0.70) plus the independent ADD §17.6
+  emergency trigger (used>=98% or P50 time-to-limit<=60s), each with its
+  own `TriggerReason` (`TriggerReasonCalibrated` /
+  `TriggerReasonEmergency`) so the two paths are distinguishable per the
+  "day-one realism" requirement. Emergency is checked first,
+  unconditionally, and does not consume/clear an in-progress calibrated
+  arm. Hysteresis reset requires RiskScore to actually fall below 0.70 —
+  an in-between non-qualifying sample does not clear the arm, so two
+  qualifying samples separated by noise still correctly trigger.
+- `internal/pause/observe_test.go` — 13 tests: the two required tests
+  verbatim (two qualifying observations trigger; one spike does not)
+  plus too-soon-stays-armed, hysteresis-band, stale-quota-sample,
+  missing-`QuotaObservedAt`-fails-closed, uncalibrated-never-qualifies-
+  calibrated-path, both emergency branches, emergency-does-not-consume-
+  arm, per-session isolation, and `Reset`.
+
+### Node log
+
+```yaml
+node: runtime-a03
+status: completed
+artifacts:
+  - internal/pause/observe.go
+  - internal/pause/observe_test.go
+validation:
+  - "gofmt -l internal/pause internal/scheduler   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/...   # OK"
+  - "go test ./internal/pause/... -run Observe -v   # 13/13 PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... -race -v   # all PASS"
+commit: 8ff0190
+next_action: runtime-a04
+assumptions:
+  - "TriggerReason is this package's own closed vocabulary (mirrors
+    Event), not part of any frozen contract or predictor's
+    domain.ReasonCode list (which explains a risk score's composition,
+    not a pause trigger's decision) — no frozen enum was extended or
+    reused out of scope."
+  - "Emergency's 'limit reached' branch (ADD §17.6) is modeled via
+    CurrentUsedPercent/EstimatedTimeToLimitP50Seconds only, since
+    domain.RunwayForecast has no separate boolean field for a
+    provider-reported hard limit; a future node wiring the real
+    predictor-06 output can set CurrentUsedPercent to 100 (or a
+    provider-supplied percent) to represent that case without an
+    Observer signature change."
+  - "Observer is per-process, keyed by domain.SessionID, with no
+    persistence of its own — restart behavior for in-flight (armed but
+    not yet fired) debounce state is out of scope for this node (a
+    single missed arm after a crash just requires one more qualifying
+    sample post-restart, which is a safe, conservative default, not a
+    correctness gap)."
+blockers: []
+```
+
+## runtime-a04 — RequestPause idempotency + safe-point coordinator
+
+### What shipped
+
+- `internal/pause/requestpause.go` — `PauseKey` (the natural
+  `(TaskID, SessionID)` idempotency key — `pause_records` has no
+  separate caller-supplied idempotency-key column, so the natural key
+  serves the same role CONTRACT_FREEZE.md describes for
+  `CompleteNodeRequest.IdempotencyKey`), a narrow internal `PauseStore`
+  port (`FindActiveByKey`/`Insert`) deliberately declared in this
+  package rather than `internal/app/ports.go` (an internal seam behind
+  the already-frozen `GracefulPauseService` boundary, not a new
+  cross-component contract), `RequestPause(ctx, store, ids, req)
+  (RequestPauseResult, error)`, and `MemStore` (an in-memory reference/
+  test `PauseStore` — the DAG's own note says no concrete store is
+  required to begin this node; `runtime-a05` is expected to add a
+  SQLite-backed `PauseStore` against the same interface).
+- `internal/pause/safepoint.go` — `Boundary` vocabulary mapping ADD
+  §20.4's exact safe/unsafe boundary lists, `SafePointCoordinator`
+  interface plus `TurnBoundaryCoordinator` (the concrete turn/section-
+  boundary implementation), and `PersistThenInterrupt` sequencing
+  persist-then-interrupt against narrow `CheckpointPersister`/
+  `Interrupter` seams — mirrors `runtime-b05`'s
+  `internal/orchestrator.CheckpointCreate` ordering pattern (state
+  before repository, early-return on the first error) one layer up, at
+  the safe-point boundary instead of the checkpoint-role boundary. Only
+  fakes are used for the checkpoint side this wave, per the DAG's
+  explicit note and consistent with `runtime-b05`'s precedent.
+- `internal/pause/requestpause_test.go` — 7 tests: first-call-creates,
+  idempotent-replay-no-duplicate (many repeated calls converge on one
+  record), replay-with-differing-reason-still-idempotent (emergency
+  arriving mid-calibrated-pause does not fork a second record),
+  fresh-cycle-allowed-once-prior-pause-terminal, per-key isolation,
+  request validation, and store-error propagation.
+- `internal/pause/safepoint_test.go` — 6 tests: the required test
+  verbatim ("safe point persists checkpoints before interrupt",
+  proven via call-order-recording fakes — not just "both were called"),
+  persist-failure-never-reaches-interrupt, unsafe-boundary-rejected-
+  before-either-collaborator-runs (every ADD §20.4 unsafe boundary plus
+  an unrecognized one), every ADD safe boundary accepted, and
+  input/nil-collaborator validation.
+
+### Node log
+
+```yaml
+node: runtime-a04
+status: completed
+artifacts:
+  - internal/pause/requestpause.go
+  - internal/pause/requestpause_test.go
+  - internal/pause/safepoint.go
+  - internal/pause/safepoint_test.go
+validation:
+  - "gofmt -l internal/pause internal/scheduler   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/...   # OK"
+  - "go test ./internal/pause/... -run 'RequestPause|SafePoint' -v   # 13/13 PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... -race -v   # all PASS"
+commit: d849d01
+next_action: runtime-a07
+assumptions:
+  - "PauseStore is declared in internal/pause, not internal/app/ports.go
+    — it is an implementation seam behind the already-frozen
+    GracefulPauseService boundary (RequestPause/ReachSafePoint/etc.),
+    not a new cross-component contract; adding it to ports.go would be
+    the kind of speculative widening Constitution §7 rule 10 warns
+    against before a real store actually needs a wider surface."
+  - "A differing Reason on a RequestPause replay (e.g. emergency arriving
+    while a calibrated pause is already in flight for the same key) is
+    NOT treated as a conflict — unlike CONTRACT_FREEZE.md's
+    CompleteNodeRequest.IdempotencyKey rule for a differing payload.
+    Escalating an in-flight pause's urgency is a real, ADD-anticipated
+    signal (ADD §17.6's emergency path exists precisely to skip ahead
+    faster), not a caller error; any actual escalation policy (e.g.
+    shortening the quiesce timeout) is left to a later node."
+  - "CheckpointPersister/Interrupter (safepoint.go) are deliberately
+    narrower than the frozen app.StateCheckpointService/
+    app.TurnInterrupter — this node only needs to prove ordering, not
+    wire the full real contracts; runtime-a05 (the full persist-phase
+    orchestrator) is where the real adapters get built, per the DAG's
+    scope split between this node and that one."
+blockers: []
+```
+
+## runtime-a07 — Restart recovery of overdue/leased jobs
+
+### What shipped
+
+- `internal/scheduler/restart.go` — `Store.Restart(ctx)
+  (RestartReport, error)`, intended to be called once at process
+  startup before any worker calls `Claim`. Unlike `ReclaimExpired`
+  (runtime-a06, which only releases a lease once `lease_expires_at` has
+  actually passed — the correct behavior at any other time), `Restart`
+  releases every `leased` row unconditionally: by definition every
+  lease owner recorded in the DB before this call belongs to a
+  now-dead previous process instance, so waiting out a stale lease's
+  remaining TTL would only delay recovery for no benefit (ADD §28.3
+  steps 2/8, §20.7's "on next daemon start process overdue jobs", crash
+  matrix "wake job leased then daemon dies -> lease expiry reclaims",
+  §29.6 scenario 11 "daemon restart rebuilds job"). `done`/`dead` rows
+  are untouched (no resurrection of already-finished or
+  already-exhausted work); `Restart` never claims or executes anything
+  itself, relying on `Claim`'s existing `BEGIN IMMEDIATE` serialization
+  to prevent duplicate execution once a row is claimable again.
+  `RestartReport` (`RecoveredLeased`, `OverdueClaimable`) is returned
+  for a future startup-report step (ADD §28.3 step 10) to consume.
+- `internal/scheduler/restart_test.go` — 6 tests: the required test
+  verbatim ("restart recovers wake job" — a leased-but-never-completed
+  job whose lease has NOT yet expired, recovered and re-claimable by a
+  fresh `Store` instance against the same underlying DB, with no
+  duplicate execution proven via the Attempts count and a rejected
+  stale `Complete` call), plus already-expired-lease coverage (proving
+  `Restart` is a superset of `ReclaimExpired`, not a narrower
+  replacement), done/dead-jobs-untouched, multi-job sweep, the
+  `OverdueClaimable` count, and no-op-when-quiescent.
+
+### Node log
+
+```yaml
+node: runtime-a07
+status: completed
+artifacts:
+  - internal/scheduler/restart.go
+  - internal/scheduler/restart_test.go
+validation:
+  - "gofmt -l internal/pause internal/scheduler   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/...   # OK"
+  - "go test ./internal/scheduler/... -run Restart -v   # 6/6 PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... -race -v   # all PASS"
+commit: 6cce24a
+next_action: runtime-a05 (persist phase orchestration) or runtime-a08 — NOT this wave, per explicit scope (three nodes only)
+assumptions:
+  - "Restart's unconditional-release semantics (ignoring
+    lease_expires_at entirely) are correct ONLY at process-startup time,
+    precisely because every existing lease owner is categorically dead
+    by then — this is NOT a general replacement for ReclaimExpired's
+    narrower, expiry-gated behavior, which remains correct and necessary
+    for a lease expiring while the SAME daemon process keeps running.
+    Both methods coexist on Store; Restart is documented as
+    startup-only in its own doc comment so a future caller does not
+    accidentally invoke it mid-run."
+  - "RestartReport.OverdueClaimable is informational only (feeds a
+    future startup-report step) — Restart does not itself claim or
+    execute overdue jobs; that remains Claim's responsibility, called
+    separately by whatever startup sequence wires this node in."
+blockers: []
+```
+
+## Wave 6 cross-node observations
+
+- All three nodes landed at or under their DAG estimates (each M/300
+  points/~3-4h) with no rework and no blockers — the lowest-friction
+  wave this role has had, consistent with all three nodes building
+  directly on top of already-frozen, already-tested prior work
+  (`runtime-a02`'s state machine, `runtime-a06`'s lease store) rather
+  than integrating a new cross-role dependency.
+- `runtime-a03` and `runtime-a04` both needed a small, explicitly-scoped
+  package-local vocabulary (`TriggerReason`, `Boundary`) rather than
+  reusing or extending a frozen enum — each was checked against
+  CONTRACT_FREEZE.md and Constitution §6 rule 4 first to confirm it was
+  this package's own bookkeeping, not a state value, before adding it.
+- `runtime-a07`'s only real design decision — reclaiming every leased
+  row unconditionally at restart, rather than reusing `ReclaimExpired`'s
+  expiry-gated predicate — followed directly from reasoning about what
+  "restart" categorically implies (every previous lease owner is dead)
+  rather than from any new external dependency; documented explicitly in
+  the node's own doc comment so a future reader does not mistake it for
+  a redundant duplicate of `ReclaimExpired`.
+- No new ADRs were required and no frozen contract needed a
+  change-request escalation this wave. `checkpoint-b04` landing for real
+  on `main` this wave did not require any change on this branch, per
+  the task brief's explicit instruction to leave `runtime-b05`'s
+  existing fake as-is until a future wave's integration step.
+- Confirmed explicitly: this wave touched only `internal/pause/**` and
+  `internal/scheduler/**` (Part A's exclusive paths) — no file under
+  `internal/progress/**` (a sibling teammate's concurrent Wave 6 work on
+  the distinctly-different `checkpoint-a04` node) or any Part B runtime
+  path (`internal/orchestrator/**`, `internal/cli/**`,
+  `internal/httpapi/**`, `internal/daemon/**`, `internal/app/wiring/**`,
+  `internal/testutil/fakes/**`) was read for editing purposes or
+  modified.

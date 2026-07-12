@@ -151,3 +151,34 @@ assumptions:
   - "UNIQUE(task_id, parent_id, ordinal) does not deduplicate root-level ordinals (SQLite NULL-distinct semantics); §12.2 transcribed verbatim, root-ordinal uniqueness is checkpoint-a02's plan-upsert responsibility. Same NULL-distinct note applies to artifacts' UNIQUE(progress_node_id, uri, sha256) for detached rows."
 blockers:
   - "Foundation's three exact-count migration tests fail with this node's files present — see the §4.4 change request above. Not a blocker for this node's own validation command."
+```
+
+### checkpoint-b01: Repository Checkpoint core migration (0030)
+
+```yaml
+node: checkpoint-b01
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0030_repository_checkpoints.sql  # §12.2 verbatim except turn_id (see assumption)
+  - internal/storage/sqlite/migrations_checkpoint_b_test.go             # checkpoint-owned, separate from Part A per agents/checkpoint.md
+validation:
+  - "gofmt -l internal/storage/sqlite -> empty"
+  - "go test ./internal/storage/sqlite/... -run Migration0030 -v -> PASS (6 tests: range presence in AllMigrations, table creation from empty DB, unknown-worktree FK rejection, worktree-cascade + task-detach, turn_id plain-pointer writability without turns table, total_bytes NULL-means-unknown)"
+  - "go build ./... && go vet ./... -> clean"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+  - "go test ./... -> green everywhere EXCEPT the 3 pre-documented foundation exact-count tests (see the §4.4 change request at the top of this Wave 4 section; failure message is now 'len(migrations) = 8, want 4')"
+next_action: checkpoint-b04 (Repository Checkpoint create/verify) — now unblocked on the b01 side (b03 already done), NOT started this wave per explicit assignment
+assumptions:
+  - "DOCUMENTED SCHEMA DEVIATION: §12.2 declares turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL, but turns belongs to claude-provider's 0010-0019 range and does not exist yet; an FK to a missing table makes every write to repository_checkpoints fail under PRAGMA foreign_keys=ON until another role ships its schema. turn_id is therefore a plain nullable TEXT pointer, following foundation's identical precedent for tasks.active_node_id (0004_tasks.sql header). Converting it to a real FK later requires a new migration in this range once turns exists (released migrations are immutable, ADD §12.5) — recorded so checkpoint-b04 and contract-integrator's final review both see it."
+  - "Only repository_checkpoints lands in this node, per the wave instruction. repository_snapshots and file_changes (which foundation's notes place in the 0030-0039 range) defer to whichever Part B node first needs them (file_changes also FKs turns, so it is doubly blocked); they will take 0031+."
+  - "Same no-CHECK-constraint stance as 0020-0022 for status/recoverability enum columns; vocabulary belongs to checkpoint-b04's service layer."
+blockers:
+  - "Same three foundation exact-count test failures as checkpoint-a01 — single root cause, single requested fix, filed once at the top of this Wave 4 section."
+```
+
+Wave 4 pre-step note: the main merge (`git merge main`) resolved as a clean
+fast-forward to `ca7062f` (this branch's prior work was already fully
+integrated), and the whole repo built and tested green at that point —
+the only test regressions on this branch afterward are the three
+pre-documented foundation exact-count tests triggered by this wave's own
+migration files, exactly as analyzed above.

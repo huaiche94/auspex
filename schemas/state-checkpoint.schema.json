@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://preflight.dev/schemas/state-checkpoint.schema.json",
+  "title": "Preflight State Checkpoint Manifest",
+  "description": "Wire shape of a State Checkpoint manifest (Preflight_ADD.md §18.8, Appendix B). Mirrors internal/statecheckpoint.Manifest and the state_checkpoints table (migrations/0023). schema_version pins this document to preflight.state-checkpoint.v1 (CONTRACT_FREEZE.md). integrity_sha256 is a SHA-256 over the canonical JSON encoding of every other field (internal/statecheckpoint/serialize.go's Digest) and MUST be independently recomputed and compared before trusting a stored manifest (never trust the stored string alone).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "checkpoint_id",
+    "task_id",
+    "created_at",
+    "progress_tree",
+    "artifacts",
+    "repository",
+    "provider",
+    "context",
+    "next_action",
+    "resume",
+    "integrity_sha256"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "preflight.state-checkpoint.v1" },
+    "checkpoint_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "progress_tree": { "$ref": "#/$defs/progressTree" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactSummary" }
+    },
+    "repository": { "$ref": "#/$defs/repository" },
+    "provider": { "$ref": "#/$defs/provider" },
+    "quota": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/quotaObservation" }
+    },
+    "context": { "$ref": "#/$defs/context" },
+    "next_action": { "$ref": "#/$defs/nextAction" },
+    "resume": { "$ref": "#/$defs/resume" },
+    "integrity_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 digest, per internal/statecheckpoint/serialize.go's Digest function."
+    }
+  },
+  "$defs": {
+    "progressTree": {
+      "type": "object",
+      "required": ["version", "completed_node_ids", "paused_node_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "integer", "minimum": 0 },
+        "active_node_id": { "type": ["string", "null"] },
+        "completed_node_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "paused_node_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "artifactSummary": {
+      "type": "object",
+      "required": ["id", "uri", "bytes", "sha256", "validation_status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "uri": { "type": "string" },
+        "media_type": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string" },
+        "validation_status": {
+          "type": "string",
+          "enum": ["pending", "passed", "failed"]
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository_id": { "type": "string" },
+        "worktree_id": { "type": "string" },
+        "git_head": { "type": "string" },
+        "branch": { "type": "string" },
+        "index_diff_hash": { "type": "string" },
+        "worktree_diff_hash": { "type": "string" }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "session_id": { "type": "string" },
+        "turn_id": { "type": "string" },
+        "invocation_mode": { "type": "string" }
+      }
+    },
+    "quotaObservation": {
+      "type": "object",
+      "required": ["limit_id", "used_percent"],
+      "additionalProperties": false,
+      "properties": {
+        "limit_id": { "type": "string" },
+        "used_percent": { "type": "number" },
+        "window_seconds": { "type": "integer" },
+        "resets_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "used_percent": { "type": ["number", "null"] }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "node_id": { "type": ["string", "null"] },
+        "description": { "type": "string" }
+      }
+    },
+    "resume": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy_order": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "permission_mode": { "type": "string" }
+      }
+    }
+  }
+}

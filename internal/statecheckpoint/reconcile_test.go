@@ -162,7 +162,6 @@ func TestReconcile_AllThreePhases_NeverLeavesADanglingRow(t *testing.T) {
 	}
 
 	for _, phase := range phases {
-		phase := phase
 		t.Run(string(phase), func(t *testing.T) {
 			db := openTestDB(t)
 			taskID := seedTask(t, db)

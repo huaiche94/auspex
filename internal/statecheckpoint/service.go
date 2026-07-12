@@ -1,0 +1,256 @@
+// service.go: wires manifest.go/build.go/serialize.go/store.go together
+// behind the frozen app.StateCheckpointService contract
+// (internal/app/ports.go), so the runtime role's Part A persist phase
+// (agents/checkpoint.md Part A "consumed directly by runtime Part A persist
+// phase") can depend on the interface without reaching into this package's
+// internals or into internal/progress directly.
+//
+// checkpoint-a04's CompleteNode already builds and inserts a State
+// Checkpoint row as part of its own atomic transaction — that is the
+// completion-triggered path (Constitution §6.3, "every node completion
+// creates a State Checkpoint in the same atomic operation") and stays
+// exactly as it is; this file does NOT change or wrap that path. What
+// CompleteNode does not provide is a STANDALONE, ad hoc snapshot entry
+// point that a caller (e.g. runtime's pause persist-phase, or a manual
+// "checkpoint now" request) can invoke against a Progress Tree's CURRENT
+// state without also completing a node — that is Create's job here, using
+// the exact same Build/Seal/Marshal/Store primitives CompleteNode already
+// proved correct, per this role's own lessons-learned note from a04 ("a05
+// should verify what remains, likely just Snapshot/verify-API polish").
+package statecheckpoint
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"time"
+
+	"github.com/huaiche94/preflight/internal/app"
+	"github.com/huaiche94/preflight/internal/domain"
+)
+
+// NodeSnapshot is the narrow view of one progress_nodes row Create needs to
+// assemble a ProgressTreeSummary and pick an active node — deliberately NOT
+// *progress.Node itself, so this package (internal/statecheckpoint) does not
+// import internal/progress (that would invert the existing dependency
+// direction: internal/progress already imports internal/statecheckpoint,
+// per complete_node.go; a cycle is not an option). Callers (the production
+// wiring layer, or a test) adapt their own node rows to this shape.
+type NodeSnapshot struct {
+	ID     domain.ProgressNodeID
+	Status domain.ProgressNodeStatus
+}
+
+// ArtifactSnapshot is the narrow view of one artifacts row Create needs.
+// Same dependency-direction rationale as NodeSnapshot above. Its field set
+// is deliberately identical (name, type, and order) to ArtifactSummary
+// (manifest.go) so Create can convert a slice of these with a plain type
+// cast rather than a field-by-field copy.
+type ArtifactSnapshot struct {
+	ID               string
+	URI              string
+	MediaType        string
+	Bytes            int64
+	SHA256           string
+	ValidationStatus string
+}
+
+// TreeReader is the seam Service.Create uses to read a task's current
+// Progress Tree state without importing internal/progress. Production
+// wiring supplies an adapter over *progress.NodeStore/*progress.ArtifactStore;
+// tests supply an in-memory fake.
+type TreeReader interface {
+	ListNodes(ctx context.Context, taskID domain.TaskID) ([]NodeSnapshot, error)
+	ListArtifacts(ctx context.Context, taskID domain.TaskID) ([]ArtifactSnapshot, error)
+}
+
+// Service implements app.StateCheckpointService.
+type Service struct {
+	store *Store
+	tree  TreeReader
+	clock domain.Clock
+	ids   domain.IDGenerator
+}
+
+// NewService constructs a Service. tree supplies the Progress Tree state
+// Create snapshots; store is this package's own CRUD layer (already proven
+// by checkpoint-a04's CompleteNode use of the identical type).
+func NewService(store *Store, tree TreeReader, clock domain.Clock, ids domain.IDGenerator) *Service {
+	return &Service{store: store, tree: tree, clock: clock, ids: ids}
+}
+
+var _ app.StateCheckpointService = (*Service)(nil)
+
+// Create assembles, seals, and persists a new State Checkpoint snapshot of
+// req.TaskID's CURRENT Progress Tree state (not tied to any single node
+// completion — see the package doc comment above for how this differs from
+// CompleteNode's own inline checkpoint-on-completion path). It never
+// mutates progress_nodes/artifacts itself; it only reads them via
+// TreeReader and writes a new state_checkpoints row.
+func (s *Service) Create(ctx context.Context, req app.CreateStateCheckpointRequest) (domain.StateCheckpoint, error) {
+	if req.TaskID == "" {
+		return domain.StateCheckpoint{}, &domain.Error{
+			Code:      domain.ErrCodeValidation,
+			Message:   "statecheckpoint: Create requires a non-empty TaskID",
+			Retryable: false,
+		}
+	}
+
+	nodes, err := s.tree.ListNodes(ctx, req.TaskID)
+	if err != nil {
+		return domain.StateCheckpoint{}, fmt.Errorf("statecheckpoint: Create: list nodes for task %s: %w", req.TaskID, err)
+	}
+	artifactRows, err := s.tree.ListArtifacts(ctx, req.TaskID)
+	if err != nil {
+		return domain.StateCheckpoint{}, fmt.Errorf("statecheckpoint: Create: list artifacts for task %s: %w", req.TaskID, err)
+	}
+
+	summary := summarizeNodes(nodes)
+	// ArtifactSnapshot and ArtifactSummary deliberately share an identical
+	// field set (name, type, and order) so this conversion is a plain type
+	// cast, not a field-by-field copy — see ArtifactSnapshot's doc comment.
+	artifactSummaries := make([]ArtifactSummary, 0, len(artifactRows))
+	for _, a := range artifactRows {
+		artifactSummaries = append(artifactSummaries, ArtifactSummary(a))
+	}
+
+	checkpointID := domain.StateCheckpointID(s.ids.NewID())
+	now := s.clock.Now()
+
+	manifest := Build(BuildInput{
+		CheckpointID: checkpointID,
+		TaskID:       req.TaskID,
+		CreatedAt:    now,
+		ProgressTree: summary,
+		Artifacts:    artifactSummaries,
+	})
+	sealed, err := Seal(manifest)
+	if err != nil {
+		return domain.StateCheckpoint{}, fmt.Errorf("statecheckpoint: Create: seal manifest for task %s: %w", req.TaskID, err)
+	}
+	manifestJSON, err := Marshal(sealed)
+	if err != nil {
+		return domain.StateCheckpoint{}, fmt.Errorf("statecheckpoint: Create: marshal manifest for task %s: %w", req.TaskID, err)
+	}
+
+	row := Row{
+		ID:                  checkpointID,
+		TaskID:              req.TaskID,
+		ProgressTreeVersion: int64(len(nodes)),
+		ActiveNodeID:        summary.ActiveNodeID,
+		ManifestJSON:        string(manifestJSON),
+		IntegritySHA256:     sealed.IntegritySHA256,
+		CreatedAt:           now.UTC().Format(time.RFC3339),
+	}
+	if err := s.store.Insert(ctx, row); err != nil {
+		return domain.StateCheckpoint{}, err
+	}
+
+	return rowToDomain(row, sealed), nil
+}
+
+// LoadLatest returns the most recently created State Checkpoint for
+// taskID, per ADD §18.9 reconciliation step 1 / this role's own
+// checkpoint-a04 deliverable #8 ("snapshot/load-latest/verify APIs").
+func (s *Service) LoadLatest(ctx context.Context, taskID domain.TaskID) (domain.StateCheckpoint, error) {
+	row, err := s.store.LoadLatest(ctx, taskID)
+	if err != nil {
+		return domain.StateCheckpoint{}, err
+	}
+	manifest, err := Unmarshal([]byte(row.ManifestJSON))
+	if err != nil {
+		return domain.StateCheckpoint{}, fmt.Errorf("statecheckpoint: LoadLatest: unmarshal manifest for checkpoint %s: %w", row.ID, err)
+	}
+	return rowToDomain(row, manifest), nil
+}
+
+// Verify loads the checkpoint's stored manifest and recomputes its digest
+// from scratch, reporting whether it still matches the stored
+// integrity_sha256 — mirroring internal/repocheckpoint's Verify "never
+// trust a stored checksum alone" discipline (checkpoint-b04's own doc
+// comment), applied here to Part A's manifest instead of Part B's
+// artifacts. A mismatch is reported, not silently corrected: an integrity
+// failure is a state-integrity bug (CONTRACT_FREEZE.md's fail-closed rule),
+// never papered over.
+func (s *Service) Verify(ctx context.Context, id domain.StateCheckpointID) (app.StateCheckpointVerification, error) {
+	row, err := s.store.Get(ctx, id)
+	if err != nil {
+		return app.StateCheckpointVerification{}, err
+	}
+	manifest, err := Unmarshal([]byte(row.ManifestJSON))
+	if err != nil {
+		// An unparseable manifest is itself a failed verification, not a
+		// plumbing error to propagate raw: the caller asked "is this
+		// checkpoint valid" and the honest, fail-closed answer is no.
+		return app.StateCheckpointVerification{ID: id, Valid: false}, nil //nolint:nilerr // deliberate: an unparseable manifest IS the fail-closed Valid:false answer, not an error to propagate.
+	}
+	ok, err := Verify(manifest)
+	if err != nil {
+		return app.StateCheckpointVerification{}, fmt.Errorf("statecheckpoint: Verify: recompute digest for checkpoint %s: %w", id, err)
+	}
+	return app.StateCheckpointVerification{ID: id, Valid: ok}, nil
+}
+
+// summarizeNodes derives a ProgressTreeSummary from a task's full node
+// list: the active (in_progress or checkpointing) node if exactly one
+// exists, every completed node ID, and every paused node ID — sorted so
+// the resulting manifest is deterministic regardless of the reader's own
+// row order.
+func summarizeNodes(nodes []NodeSnapshot) ProgressTreeSummary {
+	var (
+		activeID  *domain.ProgressNodeID
+		completed []domain.ProgressNodeID
+		paused    []domain.ProgressNodeID
+	)
+	for _, n := range nodes {
+		switch n.Status {
+		case domain.NodeInProgress, domain.NodeCheckpointing:
+			id := n.ID
+			activeID = &id
+		case domain.NodeCompleted:
+			completed = append(completed, n.ID)
+		case domain.NodePaused:
+			paused = append(paused, n.ID)
+		}
+	}
+	sort.Slice(completed, func(i, j int) bool { return completed[i] < completed[j] })
+	sort.Slice(paused, func(i, j int) bool { return paused[i] < paused[j] })
+
+	return ProgressTreeSummary{
+		Version:          int64(len(nodes)),
+		ActiveNodeID:     activeID,
+		CompletedNodeIDs: completed,
+		PausedNodeIDs:    paused,
+	}
+}
+
+// rowToDomain converts this package's own Row + Manifest into the frozen
+// domain.StateCheckpoint shape app.StateCheckpointService's methods return.
+func rowToDomain(row Row, manifest Manifest) domain.StateCheckpoint {
+	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
+	if err != nil {
+		createdAt = manifest.CreatedAt
+	}
+
+	quotaIDs := make([]string, 0, len(manifest.Quota))
+	for _, q := range manifest.Quota {
+		quotaIDs = append(quotaIDs, q.LimitID)
+	}
+
+	return domain.StateCheckpoint{
+		ID:                     row.ID,
+		TaskID:                 row.TaskID,
+		ProgressTreeVersion:    row.ProgressTreeVersion,
+		ActiveNodeID:           row.ActiveNodeID,
+		CompletedNodeIDs:       manifest.ProgressTree.CompletedNodeIDs,
+		NextAction:             domain.NextAction{Description: manifest.NextAction.Description, NodeID: manifest.NextAction.NodeID},
+		RepositorySnapshotID:   manifest.Repository.WorktreeID,
+		ProviderSessionID:      manifest.Provider.SessionID,
+		ProviderTurnID:         manifest.Provider.TurnID,
+		LatestQuotaIDs:         quotaIDs,
+		LatestContextID:        "",
+		RepositoryCheckpointID: row.RepositoryCheckpointID,
+		CreatedAt:              createdAt,
+		IntegritySHA256:        row.IntegritySHA256,
+	}
+}

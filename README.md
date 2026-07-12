@@ -63,14 +63,21 @@ planning) and must respect the DAG's stage and dependency order.
 |---|---|---|
 | Bootstrap | contract-integrator-01…07 — contract freeze (Stage 0) | ✅ Integrated (`940c5cb`) |
 | Wave 1 | foundation-01 · claude-provider-01/02/03 · checkpoint-b02 · predictor-02/03/04 | ✅ Integrated (`3fb37ce`) |
-| Wave 2 | foundation-02/03/04/05/09 · claude-provider-04/06 · checkpoint-b03 · predictor-05/06 | 🔄 In progress — implemented on role branches; integration + post-wave analysis under way |
-| Wave 3 | foundation-06→07/08 · predictor-05b→05c→07→08 (ADR-041 forecast layer) · runtime-b01 · qa-01/08 | Planned — foundation-06 is the biggest unblocker (6 tasks across 4 roles hard-depend on it); completes **foundation** |
-| Wave 4 | claude-provider-05→07 · checkpoint-a01→a02/a03 · checkpoint-b01→b04 · predictor-01→09→10→11 | Planned — completes **claude-provider** and **predictor** |
-| Wave 5 | checkpoint-a04→a05/a07→a06/a08→a09 · checkpoint-b05/b06→b07→b08→b09 | Planned — completes **checkpoint**; contains checkpoint-a04, the single highest-risk task in the DAG |
-| Wave 6 | runtime-a01→a02→a03/a04→a05 · runtime-a06→a07 · runtime-b02→b03/b04/b05/b08 | Planned — Stage 3 first half; Part B may start against fakes |
-| Wave 7 | runtime-a08→a09/a10→a11 · runtime-b06/b07→b09→b10 | Planned — completes **runtime** (largest role, on the critical path) |
-| Wave 8 | qa-02/03/04/05/06/07→09 | Planned — E2E demo, leakage scanner, security tests, final P0/P1/P2 report |
+| Wave 2 | foundation-02/03/04(reduced)/05/09 · claude-provider-04/06 · checkpoint-b03 · predictor-05/06 | ✅ Integrated (`528b6ad`) |
+| Wave 3 | foundation-06/08 · predictor-05b · runtime-b01 · qa-01/08 (ADR-041 Token Forecaster; first-ever nodes for **runtime** and **qa**, unassigned since Wave 1/Bootstrap respectively) | ✅ Integrated (`ca7062f`) |
+| Wave 4 | foundation-07 · claude-provider-05 · checkpoint-a01/b01 · predictor-01/05c · runtime-a01/b02 | 🔄 In progress — foundation-06 unlocked this whole wave; qa correctly idle (nothing of its remaining scope unlocked yet) |
+| Wave 5 | claude-provider-07 · checkpoint-a02/a03/b04 · predictor-05d(if any)/07 | Planned — re-derived from the DAG once Wave 4 lands, not fixed in advance |
+| Wave 6 | checkpoint-a04→a05/a07→a06/a08→a09 · checkpoint-b05/b06→b07→b08→b09 | Planned — contains checkpoint-a04, the single highest-risk task in the DAG |
+| Wave 7 | runtime-a02→a03/a04→a05 · runtime-a06→a07 · runtime-b03/b04/b05/b08 | Planned — Stage 3 continuation |
+| Wave 8 | runtime-a08→a09/a10→a11 · runtime-b06/b07→b09→b10 | Planned — completes **runtime** (largest role, on the critical path) |
+| Wave 9 | qa-02/03/04/05/06/07→09 | Planned — E2E demo, leakage scanner, security tests, final P0/P1/P2 report |
 | Final | contract-integrator-final (Stage 5) | Planned — `go test ./... -race` + cross-role contradiction review; last gate |
+
+Wave 5 onward is intentionally not fixed in detail — each wave is
+re-derived from the DAG's actual dependency edges once the prior wave
+integrates (see `docs/implementation/day1/wave2-analysis/Wave3_Recommendation.md`
+for the method), not planned far in advance against a DAG that keeps
+changing shape as work lands.
 
 `→` marks in-wave sequencing on a role's branch; `·` separates parallel
 role branches within the same wave.

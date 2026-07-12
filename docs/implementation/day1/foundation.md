@@ -13,9 +13,23 @@
   (`internal/storage/sqlite/migrations/0000-0009_*.sql`) is the only
   naming detail frozen so far. Deferred to foundation-06.
 - **Dependency requests**: none outstanding. `go.mod` now carries
-  `github.com/google/uuid` (UUIDv7 IDGenerator) and `github.com/spf13/cobra`
-  (CLI). No other role has requested a new dependency via its progress
-  artifact as of this commit.
+  `github.com/google/uuid` (UUIDv7 IDGenerator), `github.com/spf13/cobra`
+  (CLI), and `go.yaml.in/yaml/v3` (YAML config load — promoted from an
+  indirect cobra dependency to a direct one in foundation-03; same API
+  surface as the well-known `gopkg.in/yaml.v3`). No other role has
+  requested a new dependency via its progress artifact as of this commit.
+- **Config precedence/merge algorithm** (foundation-03): `internal/config.Load`
+  takes an unordered slice of `Layer{Source, Bytes}` and merges them in the
+  fixed order from ADD §26.1 (defaults < global_user_config < repo_config <
+  repo_local < environment < cli_flags), regardless of caller-supplied
+  order. Merge is a shallow top-level-key replace, not a recursive deep
+  merge — no section has a typed, consumed shape yet to design a deep-merge
+  algorithm against. `Config.Raw` is the generic decoded map; roles needing
+  a specific section decode it themselves once they have a real consumer.
+  `schema_version` must equal `preflight.config.v1` or Load errors.
+  Unknown top-level fields warn by default and are collected in
+  `Config.UnknownFields`; `Options.UnknownFieldPolicy = StrictUnknownFields`
+  turns that into a Load error instead (ADD §26.2).
 
 ## Node log
 
@@ -120,5 +134,66 @@ assumptions:
     (no abstractions a later milestone would need but this one doesn't)
     warns against. CLI flag / env overrides at the config-precedence
     level are foundation-03's concern (ADD §26.1), not this package's."
+blockers: []
+```
+
+```yaml
+node: foundation-03
+status: completed
+artifacts:
+  - internal/config/config.go
+  - internal/config/errors.go
+  - internal/config/config_test.go
+  - go.mod (go.yaml.in/yaml/v3 promoted to direct dependency)
+  - go.sum
+validation:
+  - "gofmt -l internal/config   # empty output"
+  - "go build ./internal/config/..."
+  - "go vet ./internal/config/..."
+  - "go test ./internal/config/...   # PASS, 15 test cases"
+commit: 0164673
+next_action: foundation-04, reduced scope (internal/lock only)
+assumptions:
+  - "Deliberately did NOT model ADD §26.4's full default-configuration tree
+    (runtime/privacy/prediction/risk/state_checkpointing/
+    repository_checkpoint/graceful_pause) as typed Go structs. As of this
+    node zero packages in this repository read a single config field —
+    predictor/policy/checkpoint/runtime business logic does not exist yet
+    and is explicitly out of scope for foundation. Inventing typed structs
+    for fields nothing consumes would violate Constitution §7 rule 10.
+    Instead, Config.Raw is a generic decoded map; section names from ADD
+    §26.4 are registered in knownTopLevelFields ONLY for unknown-field
+    detection (so a real, ADD-documented section name is never flagged as
+    unknown), without validating any section's internal shape. A later
+    role that actually consumes a section (e.g. predictor reading
+    `prediction:`) decodes Raw[\"prediction\"] into its own typed struct
+    at that point — this package does not pre-guess that shape."
+  - "Merge semantics are a shallow top-level-key replace, not a recursive
+    deep merge. Example: if defaults sets `runtime: {a: 1, b: 2}` and
+    repo_config sets `runtime: {a: 9}`, the merged result is `runtime: {a:
+    9}` — b is dropped, not preserved — because repo_config's `runtime`
+    key fully replaces defaults' `runtime` key. This is a real,
+    documented limitation, not an oversight: no section has a concrete,
+    consumed shape yet to design and test a correct deep-merge algorithm
+    against, and building one speculatively risks getting the merge
+    semantics wrong for a shape that doesn't exist yet. Flagged here per
+    Constitution §4.4 so a future role (or contract-integrator) can
+    request deep merge explicitly once a section actually needs it."
+  - "go.yaml.in/yaml/v3 (not gopkg.in/yaml.v3) was already present as an
+    indirect dependency of spf13/cobra and was promoted to a direct
+    top-level dependency via `go mod tidy` rather than adding a second,
+    competing YAML library. It is the actively maintained successor with
+    an API-compatible surface to gopkg.in/yaml.v3 (same package name
+    `yaml`, same Marshal/Unmarshal signatures)."
+  - "LoadFile treats a missing file as an empty Layer (not an error),
+    matching ADD §26.1: every layer below CLI flags/environment (global
+    user config, repo config, repo local config) is optional. Callers
+    that need to distinguish 'file legitimately absent' from 'path wrong'
+    do so before calling LoadFile; this package does not guess intent."
+  - "No CLI wiring (`preflight config show/validate`) was added — ADD's
+    CLI/API section places those commands under `runtime`'s ownership
+    (agents/foundation.md: 'the runtime role owns user-facing commands'),
+    and foundation-03's own DAG row scope is the load/precedence library
+    only."
 blockers: []
 ```

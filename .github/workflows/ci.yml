@@ -1,0 +1,113 @@
+name: CI
+
+# Day-1 CI scaffold (qa-01). Mirrors Preflight_ADD.md §30.3's ci.yml jobs
+# (format / vet / golangci-lint / unit+integration / race / build) that are
+# in scope for the current Day-1 vertical slice. VS Code lint/test/build,
+# JSON Schema checks, docs link/fence checks, and migration tests are not
+# yet applicable — no vscode/ tree, no JSON Schema artifacts, and no
+# migration files exist yet in this wave (foundation-06 is still pending)
+# — and are deliberately left for a later CI node once those trees exist,
+# rather than scaffolding jobs against paths that don't exist yet
+# (Constitution §7 rule 10).
+#
+# All steps below call into Taskfile.yml/Makefile targets rather than
+# reimplementing raw go/golangci-lint invocations, per this node's
+# instruction not to duplicate or conflict with foundation's task runner.
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26.x"
+
+jobs:
+  # Format, vet, and lint are OS-invariant (they inspect source text and
+  # AST, not compiled/OS-specific behavior), so they run once on Ubuntu
+  # rather than across the full matrix - a trivial PR does not need three
+  # redundant lint runs to get a real, fast signal.
+  lint:
+    name: fmt + vet + lint (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          # golangci-lint-action runs its own lint step; skip-cache-save
+          # avoids double-caching against setup-go's module cache.
+          install-mode: binary
+
+      - name: task fmt
+        run: task fmt
+
+      - name: task lint
+        run: task lint
+
+  # Build and test run across the full OS matrix per Preflight_ADD.md
+  # §30.3 ("Matrix: Ubuntu/macOS/Windows, Go 1.26.x") - Preflight ships a
+  # single static binary on all three, so build/test must be verified
+  # natively on each, not cross-compiled and assumed.
+  build-and-test:
+    name: build + test (${{ matrix.os }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Task
+        uses: arduino/setup-task@v2
+        with:
+          version: "3.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: task build
+        run: task build
+
+      # Go's race detector requires cgo and a working C toolchain
+      # (-race sets CGO_ENABLED=1 and links a C runtime component).
+      # Ubuntu and macOS GitHub-hosted runners ship a C toolchain
+      # (gcc/clang) by default, so `task test` (which always runs
+      # `go test -race`) works unmodified there. windows-latest runners
+      # do carry a working cgo toolchain today, but the race detector
+      # has a long history of being the least reliable combination on
+      # Windows CI (slower, occasionally flaky instrumentation, and not
+      # all Go/gcc-on-Windows pairings behave identically across
+      # windows-latest image updates) - so Windows deliberately runs the
+      # non-race test target instead of the race one, trading a small
+      # amount of race-detection coverage on that OS for a matrix job
+      # that isn't a recurring source of environment-flake noise. Race
+      # coverage is not lost project-wide: ubuntu-latest and
+      # macos-latest both run the full `-race` suite every PR.
+      - name: task test (race)
+        if: runner.os != 'Windows'
+        run: task test
+
+      - name: task test:short (no race on Windows)
+        if: runner.os == 'Windows'
+        run: task test:short

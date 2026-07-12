@@ -107,3 +107,32 @@ two-layer verification strategy, not just more test cases:
   non-hypothetical clamping gap in the first draft rather than merely confirming an already-correct
   implementation, reinforcing predictor-06/-07's lesson that this property-style sweep should be written
   and run *before* declaring a High-risk node's decision logic finished, not as a final rubber-stamp pass.
+
+## Wave 7 (predictor-09)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| predictor-09 | M | M/L — matched the M label for implementation, but genuinely required more design work than "wire four existing stages together" suggests | 4 | 6 (doc.go, datasource.go, store.go, service.go, pipeline.go, plus two test files helpers_test.go/service_test.go/authorization_test.go — 8 total counting tests) | 300 (DAG estimate) | one continuous pass, no wall-clock instrumentation in this environment | A real, documented conflict surfaced between three sources: this wave's task instructions (which explicitly asked for a full `ConsumeAuthorization` — expiry, replay rejection, prompt/session binding — to be built as part of predictor-09), `docs/implementation/day1/EXECUTION_DAG.md` (which assigns that exact behavior to a separate, not-yet-started downstream node, `predictor-10`, "One-time authorization", with its own dedicated `-run Authorization` validation gate), and migration `0044_authorizations.sql`'s own comment (written by this role in an earlier wave) stating consumption is "enforced by predictor-10's service logic." Resolved by building `ConsumeAuthorization` for real now (a frozen Go interface cannot be partially implemented, and Constitution §7 rule 11 forbids a stub-and-claim-complete), while documenting the conflict explicitly in `doc.go` and treating predictor-10's own dedicated validation gate as still the authoritative place this behavior is re-verified/extended in a later wave — not silently picking one instruction and hiding the discrepancy | None beyond the DataSource bridge interface itself (datasource.go), which was anticipated going in (mirrors scope/token's own FeatureSource precedent) | `app.DecideRequest` carries only an `EvaluationID`, no risk/runway payload — confirmed by reading `internal/orchestrator/evaluate.go` (a sibling role's already-merged code calling `Decide(ctx, DecideRequest{EvaluationID: evaluation.ID})` immediately after `EvaluateTurn`, with nothing else available to pass) that `Decide` cannot plausibly recompute a policy decision and must read back what `EvaluateTurn` already persisted. This was resolved by direct evidence (reading the actual calling code) rather than guessing from the DTO shape alone — recommend this as a default move whenever a frozen DTO looks under-specified for its own interface method: check whether another already-merged role's code already calls it, before assuming the DTO gap implies free design latitude | Also confirmed, by reading `internal/predictor/scope/estimator.go` and `internal/predictor/token/forecaster.go` side by side, that two same-named `FeatureSource.Progress` methods across sibling packages have genuinely different signatures (`*domain.TaskID` vs `domain.SessionID`) — a test-helper adapter that assumed structural/embedding compatibility across both would have silently compiled wrong (Go structural typing does not catch a same-name-different-signature mismatch at the embedding call site the way it would at a direct interface-satisfaction check) until `go vet`/`go test` surfaced it; cost about one extra edit cycle, not a real blocker | Migration files 0040-0044 (already written in Wave 4/predictor-01) turned out to double as load-bearing design documentation for this node — each one's own comment named "predictor-09" explicitly and described exactly what this node was expected to persist and how (including the predictor-10 authorization-consumption split noted above). Recommend this as a reusable pattern: a `-01`-style "just write migrations" node's SQL comments should keep naming the specific downstream node ID that will consume each table, since those comments turned out to be more precise and more load-bearing than the DAG's own one-line description when this node actually started building against them |
+
+## Wave 7 cross-node observation
+
+- This is the first predictor node to persist real state across a full multi-stage pipeline call inside a
+  single `app.TxRunner.WithTx` transaction (feature_vectors + predictions + policy_decisions as one atomic
+  write) — mirrors `checkpoint`'s `ProgressTreeService.CompleteNode` discipline (CONTRACT_FREEZE.md's
+  transaction-boundary section) one layer up in a different role's package, confirming that discipline
+  transfers cleanly to a read-heavy-then-write-once pipeline shape, not just a single-entity update.
+- `ConsumeAuthorization`'s exactly-once guarantee is enforced by a single conditional `UPDATE ... WHERE
+  consumed_at IS NULL` inside the same transaction as the read that validates binding/expiry, not by an
+  application-level "check then write" pattern — the latter has a TOCTOU race under concurrent callers
+  that the former closes structurally. Verified directly by a dedicated concurrent-goroutine test
+  (`TestConsumeAuthorization_ConcurrentReplayOnlyOneWins`, 8 goroutines racing one authorization ID,
+  asserting exactly 1 success) in addition to `go test -race`, since `-race` alone proves the absence of a
+  data race, not the absence of a logic race (two goroutines can each cleanly acquire their own
+  transaction and still both "succeed" if the UPDATE's WHERE clause were missing) — recommend this
+  distinction (data race vs logic race, and that `-race` alone does not catch the latter) be called out
+  explicitly for any future exactly-once/idempotency node in this project.
+- Every fixed-point-in-time assertion in this node's tests (expiry boundary, deterministic-output) is
+  driven by a local `fakeClock` with an explicit `Advance` method, never `time.Now()` — continuing the
+  project-wide convention already established in `internal/scheduler/lease_test.go`, confirming this
+  pattern (rather than a shared package-wide fake) remains the right default even for a node with heavier
+  clock-sensitivity (expiry) than most prior predictor nodes.

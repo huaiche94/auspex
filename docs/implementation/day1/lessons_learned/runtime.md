@@ -122,3 +122,38 @@
   Restart's unconditional-release semantics) was resolvable directly from Constitution §6/§7,
   CONTRACT_FREEZE.md, and the relevant ADD sections (§17.6, §20.2, §20.4, §28.3, §29.6) without
   escalation.
+
+# Lessons Learned — runtime (Wave 7: runtime-a05, runtime-b07)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| runtime-a05 | XL (DAG: 500 points, ~4h) | XL — estimate held; this was genuinely the wave's hardest node, exactly as the DAG's "second highest-risk task in the whole DAG" framing predicted, because two of the five write boundaries needed a REAL cross-role service (Repository Checkpoint) under crash injection, not just a fake | 4 (implied: orchestrator file + test, 2 modified) | 4 (persistphase.go, persistphase_test.go, requestpause.go modified, lease.go modified) — matches once modified-not-new files are counted the same way prior waves have | 500 points | one continuous pass, no rework, but the heaviest single test-harness build this role has done (real migrated SQLite DB + real temporary Git repository + real repocheckpoint.Service, layered under 6 crash-injection tests) | One real, self-discovered gap: `scheduler.Store` had no lookup-by-(pause_id,job_kind) accessor, needed to recover an already-scheduled wake job's ID after a retried `Schedule` call hit its own UNIQUE constraint (the exact crash window between phase 5's own commit and this package's bookkeeping of the result) | None beyond the 4-file estimate | The first test run failed with a FOREIGN KEY constraint error (`wake_jobs.pause_id` references the real `pause_records` table, but this node's `PersistPauseStore` is an in-memory `pause.MemStore`) — required seeding a real `pause_records` row alongside the in-memory record in every test, and documenting the resulting two-backing-stores-for-one-record gap explicitly rather than silently working around it | None — the `HaltAfter`/`HaltError` crash-injection technique was read directly from `internal/progress/complete_node_crash_test.go` before writing any code, exactly as the task brief instructed, and transplanted with zero redesign needed | Confirms Wave 6's own lesson (treat a literal required-test phrase as the acceptance criterion) at a larger scale: "crash after every phase resumes/reconciles correctly" was read as literally requiring one test per phase boundary PLUS a full reconciliation sweep, not just "some crash test exists" — recommend continuing to name the exact precedent file/test to mirror (as this task brief did) whenever a new node's required test matches an existing pattern elsewhere in the codebase, since it turned a genuinely hard design problem (5 independent write boundaries, no flat transaction) into a mechanical application of an already-proven technique |
+| runtime-b07 | M (DAG: 300 points, ~4h) | M — estimate held; four command surfaces instead of one made this feel larger than runtime-b05's single-command precedent, but each surface was individually simple (thin orchestration over already-real internals) | 3 (implied) | 9 (lifecycle.go, lifecycle_test.go, requestpause.go modified, requestpause_test.go modified, pauselifecycle.go, pauselifecycle_test.go, cli/pause.go, wiring.go modified, wiring_test.go modified) — roughly 3x the DAG's estimate, consistent with Wave 5's already-flagged observation that Part-B-shaped nodes (orchestrator+CLI+wiring) undercounted by the DAG, now confirmed again at a larger command-surface count | 300 points | one continuous pass, no rework | None — this was the first node where the DAG's dependency was explicitly "same branch, no fake needed" (both `internal/pause` and `internal/scheduler` are this same role's own prior work), and that held exactly as described: zero fakes used anywhere in pauselifecycle.go | requestpause.go/requestpause_test.go modified (PauseStore interface extension broke one existing test fake, `fakePauseStore`, requiring two new stub methods) — not counted in the DAG's 3-file estimate | None | None — reusing runtime-b05's exact CLI+wiring pattern (real orchestrator function, real Cobra constructor, `replaceSubcommand` in wiring.go) for four commands instead of one was mechanical once the pattern was internalized once | The "PauseStore interface extension breaks an existing test fake" cost (fixed in ~2 lines here) is itself a small, generalizable lesson: any node that widens an internal, package-owned interface (not just a frozen `internal/app/ports.go` one) should grep for every existing implementer INCLUDING test-only fakes before considering the change complete, since `go vet`/`go build` will catch it but only after the fact — recommend treating "grep for `var _ InterfaceName = ` across the whole module" as a standard last step before committing any interface-widening node |
+
+## Wave 7 cross-node observations
+
+- This wave's two nodes were sequenced Part A before Part B specifically because `runtime-b07`
+  has a real, same-branch dependency on Part A internals (`pause.RequestPause`/`Cancel`/`Resume`,
+  `scheduler.Store`) — `runtime-a05` didn't itself unlock anything `runtime-b07` needed (the two are
+  independent additions to the same underlying packages), but building the persist-phase
+  orchestration first kept the wave's highest-risk work at the front, consistent with every prior
+  wave's stated sequencing rationale (Part A's state-machine/concurrency-correctness risk always
+  precedes Part B's comparatively lower-risk plumbing).
+- The wave's single biggest technical lesson was `runtime-a05`'s: coordinating a crash-injection
+  proof across FIVE independent durable stores (two of them real, cross-role services) is
+  materially harder to test than a single-transaction protocol, but the underlying TECHNIQUE
+  (`HaltAfter`/`HaltError`, idempotent-skip-on-replay) generalizes without modification from
+  `internal/progress.CompleteNode`'s single-transaction case to this node's multi-store case — the
+  hard part was the test harness (real DB, real Git repo, seeding two backing stores for one
+  conceptual record), not the core algorithm.
+- A second, smaller lesson from `runtime-a05`: when a node's own required test needs a capability a
+  sibling-owned package doesn't expose (here, `scheduler.Store` recovering a job by natural key
+  after a constraint conflict), check whether the current role owns that package before treating it
+  as a blocker to escalate — Part A owns both `internal/pause` and `internal/scheduler`, so the gap
+  was closed directly in the same node, which is faster and leaves a cleaner trail than filing a
+  cross-role change request for something already in scope.
+- No new ADRs, no change-request escalations, and no frozen-contract questions this wave. The one
+  explicitly-tracked gap (`PersistPauseStore`'s in-memory backing vs. the real `pause_records` SQL
+  table) is deliberately left open for a later integration node rather than silently resolved,
+  consistent with this role's established practice of documenting rather than hiding known
+  incompleteness.

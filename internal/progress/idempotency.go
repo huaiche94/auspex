@@ -96,8 +96,22 @@ func insertCompletionLedger(ctx context.Context, db *sqlite.DB, clock domain.Clo
 // check. Returns (result, true, nil) if this exact request was already
 // completed and its recorded result should be returned unchanged;
 // (zero, false, nil) if no prior completion exists (caller should
-// proceed); or a non-nil error (ErrCodeConflict) if the SAME
-// idempotency key was used before with a DIFFERENT payload.
+// proceed); or a non-nil error (ErrCodeConflict) if the SAME idempotency
+// key was used before with a DIFFERENT payload.
+//
+// checkpoint-a07 extends this beyond same-key matching: a provider may
+// deliver a genuinely duplicate lifecycle signal (e.g. a "TaskCompleted"
+// webhook retried over a different channel, or redelivered after an at-
+// least-once delivery guarantee) carrying a DIFFERENT caller-derived
+// IdempotencyKey than the original delivery, simply because whatever
+// upstream layer computed the key did not share dedup state across
+// channels. Constitution §6.6 rejects "duplicate completion with
+// CONFLICTING evidence" — by construction that means duplicate completion
+// with IDENTICAL evidence is not a conflict at all, regardless of which key
+// arrived with it, and must not be rejected as one. See
+// checkDuplicateProviderEvent below for that key-independent path; this
+// function tries the fast, common case (matching key) first and only falls
+// back to it when the key does not match.
 func (c *CompleteNode) checkIdempotency(ctx context.Context, taskID domain.TaskID, nodeID domain.ProgressNodeID, key, digest string) (CompleteNodeResult, bool, error) {
 	ledger, found, err := getCompletionLedger(ctx, c.DB, nodeID)
 	if err != nil {
@@ -108,12 +122,12 @@ func (c *CompleteNode) checkIdempotency(ctx context.Context, taskID domain.TaskI
 	}
 
 	if ledger.IdempotencyKey != key {
-		// A different key entirely for an already-completed node: the
-		// caller is not replaying, it is attempting a fresh completion of
-		// a terminal node. Falls through to the generic
-		// already-completed rejection in Run (checked right after this
-		// call returns not-replayed).
-		return CompleteNodeResult{}, false, nil
+		// A different key for an already-completed node is NOT automatically
+		// a conflict: it may be a genuine duplicate provider event delivered
+		// through a different channel with its own independently-derived
+		// key. Distinguish by evidence, not by key, per the doc comment
+		// above.
+		return c.checkDuplicateProviderEvent(ctx, ledger, nodeID, digest)
 	}
 	if ledger.PayloadDigest != digest {
 		return CompleteNodeResult{}, false, &domain.Error{
@@ -128,19 +142,56 @@ func (c *CompleteNode) checkIdempotency(ctx context.Context, taskID domain.TaskI
 	}
 
 	// Same key, same payload: return the exact prior result.
+	result, err := c.loadReplayedResult(ctx, ledger, nodeID)
+	if err != nil {
+		return CompleteNodeResult{}, false, err
+	}
+	return result, true, nil
+}
+
+// checkDuplicateProviderEvent handles a completion request whose
+// IdempotencyKey does NOT match the ledger's recorded key for this node
+// (checkpoint-a07's own scope, distinct from a04's same-key replay/conflict
+// logic above). If the supplied evidence digest matches the ledger's
+// recorded digest byte-for-byte, this is treated as a duplicate delivery of
+// the SAME underlying provider event (not a conflict) and the original
+// result is replayed unchanged — exactly the same non-mutating outcome as a
+// same-key replay, just reached via evidence comparison instead of key
+// comparison. A digest mismatch is NOT decided here; it is reported as "no
+// replay found" (ok=false) so Run's existing already-completed rejection
+// (Constitution §6 "duplicate completion with conflicting evidence is
+// rejected") fires with its established error shape and message.
+func (c *CompleteNode) checkDuplicateProviderEvent(ctx context.Context, ledger completionLedgerRow, nodeID domain.ProgressNodeID, digest string) (CompleteNodeResult, bool, error) {
+	if ledger.PayloadDigest != digest {
+		return CompleteNodeResult{}, false, nil
+	}
+	result, err := c.loadReplayedResult(ctx, ledger, nodeID)
+	if err != nil {
+		return CompleteNodeResult{}, false, err
+	}
+	return result, true, nil
+}
+
+// loadReplayedResult reconstructs a CompleteNodeResult from a completion
+// ledger row that has already been determined to match the current request
+// (whether by matching key, per a04, or by matching evidence digest under a
+// different key, per a07) — the single place both paths above rebuild the
+// prior result, so they cannot drift into returning subtly different
+// shapes for what is semantically the same "replay" outcome.
+func (c *CompleteNode) loadReplayedResult(ctx context.Context, ledger completionLedgerRow, nodeID domain.ProgressNodeID) (CompleteNodeResult, error) {
 	var completed Node
 	if err := json.Unmarshal([]byte(ledger.CompletedNodeJSON), &completed); err != nil {
-		return CompleteNodeResult{}, false, fmt.Errorf("progress: unmarshal replayed node for %s: %w", nodeID, err)
+		return CompleteNodeResult{}, fmt.Errorf("progress: unmarshal replayed node for %s: %w", nodeID, err)
 	}
 	checkpointRow, err := c.Checkpoints.Get(ctx, ledger.StateCheckpointID)
 	if err != nil {
-		return CompleteNodeResult{}, false, fmt.Errorf("progress: load replayed checkpoint %s for node %s: %w", ledger.StateCheckpointID, nodeID, err)
+		return CompleteNodeResult{}, fmt.Errorf("progress: load replayed checkpoint %s for node %s: %w", ledger.StateCheckpointID, nodeID, err)
 	}
 	manifest, err := statecheckpoint.Unmarshal([]byte(checkpointRow.ManifestJSON))
 	if err != nil {
-		return CompleteNodeResult{}, false, fmt.Errorf("progress: unmarshal replayed manifest for node %s: %w", nodeID, err)
+		return CompleteNodeResult{}, fmt.Errorf("progress: unmarshal replayed manifest for node %s: %w", nodeID, err)
 	}
-	return CompleteNodeResult{Node: completed, Checkpoint: checkpointRow, Manifest: manifest, Replayed: true}, true, nil
+	return CompleteNodeResult{Node: completed, Checkpoint: checkpointRow, Manifest: manifest, Replayed: true}, nil
 }
 
 // recordIdempotency writes the ledger row for this completion, inside the

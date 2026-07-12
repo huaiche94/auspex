@@ -5,12 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/huaiche94/preflight/internal/app"
 	"github.com/huaiche94/preflight/internal/app/wiring"
 	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/preflight/internal/pause"
+	"github.com/huaiche94/preflight/internal/scheduler"
+	"github.com/huaiche94/preflight/internal/storage/sqlite"
 	"github.com/huaiche94/preflight/internal/testutil/fakes"
 )
 
@@ -419,4 +425,200 @@ func TestApp_RootCmd_DoctorIsRealNotStub(t *testing.T) {
 	if decoded["healthy"] != true {
 		t.Errorf("healthy = %v, want true (zero-value Diagnostics means all-skipped, which is healthy)", decoded["healthy"])
 	}
+}
+
+// --- runtime-b07: pause/resume/scheduler wiring -----------------------------
+
+// TestApp_RootCmd_PauseUnwired_StaysStub proves the documented fallback:
+// leaving Services.PauseLifecycle at its zero value (no Store injected)
+// keeps RootCmd's original `pause`/`resume`/`scheduler` stub tree in place,
+// exactly like every other not-yet-wired P0 command family.
+func TestApp_RootCmd_PauseUnwired_StaysStub(t *testing.T) {
+	a, err := wiring.New(fullFakeServices())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+
+	// No flags passed here: the standalone stub commands (internal/cli/
+	// root.go) never defined any flags at all (their RunE ignores input
+	// entirely and always returns notImplemented), so passing a real flag
+	// name would fail at cobra's own flag-parsing stage with "unknown
+	// flag" rather than reaching RunE — this test only needs to prove the
+	// stub tree, not the real one's flags, is what's still mounted.
+	for _, args := range [][]string{
+		{"pause", "request"},
+		{"resume"},
+		{"scheduler", "run-once"},
+	} {
+		root.SetArgs(args)
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+		err := root.Execute()
+		var derr *domain.Error
+		if !errors.As(err, &derr) || derr.Code != domain.ErrCodeUnavailable {
+			t.Errorf("args=%v: err = %v, want the stub's ErrCodeUnavailable", args, err)
+		}
+	}
+}
+
+// TestApp_RootCmd_PauseRequestCancelResume_RealEndToEnd proves runtime-b07's
+// wiring end to end through the actual CLI tree: `pause request` creates a
+// real record via internal/pause.RequestPause, `resume` (seeded to
+// WakePending directly against the same store, simulating a wake job having
+// already fired) advances it to Resumed, all through cobra command
+// execution, not a direct orchestrator call.
+func TestApp_RootCmd_PauseRequestThenCancel_RealEndToEnd(t *testing.T) {
+	store := pause.NewMemStore()
+	services := fullFakeServices()
+	services.PauseLifecycle = orchestrator.PauseLifecycleDeps{Store: store}
+
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+
+	root.SetArgs([]string{"pause", "request", "--task-id", "task-1", "--session-id", "sess-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("pause request: %v", err)
+	}
+	var requested map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &requested); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	pauseID, _ := requested["pause_id"].(string)
+	if pauseID == "" {
+		t.Fatal("expected a non-empty pause_id in pause request's output")
+	}
+	if requested["created"] != true {
+		t.Errorf("created = %v, want true", requested["created"])
+	}
+
+	out.Reset()
+	root.SetArgs([]string{"pause", "cancel", "--pause-id", pauseID})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("pause cancel: %v", err)
+	}
+	var cancelled map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &cancelled); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if cancelled["status"] != string(domain.PauseCancelled) {
+		t.Errorf("status = %v, want %q", cancelled["status"], domain.PauseCancelled)
+	}
+}
+
+// TestApp_RootCmd_Resume_RealEndToEnd proves `preflight resume` reaches the
+// real internal/pause.Resume through the wired CLI tree.
+func TestApp_RootCmd_Resume_RealEndToEnd(t *testing.T) {
+	store := pause.NewMemStore()
+	if err := store.Insert(context.Background(), pause.PauseRecord{
+		ID:     "pause-1",
+		Key:    pause.PauseKey{TaskID: "task-1", SessionID: "sess-1"},
+		Status: domain.PauseWakePending,
+		Reason: pause.TriggerReasonCalibrated,
+	}); err != nil {
+		t.Fatalf("seed Insert: %v", err)
+	}
+	services := fullFakeServices()
+	services.PauseLifecycle = orchestrator.PauseLifecycleDeps{Store: store}
+
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"resume", "--pause-id", "pause-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["status"] != string(domain.PauseResumed) {
+		t.Errorf("status = %v, want %q", decoded["status"], domain.PauseResumed)
+	}
+}
+
+// TestApp_RootCmd_SchedulerRunOnce_RealEndToEnd proves `preflight scheduler
+// run-once` reaches the real internal/scheduler.Store.Claim through the
+// wired CLI tree, against a real migrated temp-file SQLite database.
+func TestApp_RootCmd_SchedulerRunOnce_RealEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	db, err := sqlite.Open(context.Background(), filepath.Join(dir, "preflight.db"))
+	if err != nil {
+		t.Fatalf("sqlite.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	migrations, err := sqlite.AllMigrations()
+	if err != nil {
+		t.Fatalf("AllMigrations: %v", err)
+	}
+	if err := db.Migrate(context.Background(), migrations); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	now := "2026-07-12T09:00:00Z"
+	seed := []string{
+		`INSERT INTO repositories (id, canonical_root, git_common_dir, created_at, last_seen_at) VALUES ('repo1', '/tmp/repo1', '/tmp/repo1/.git', '` + now + `', '` + now + `')`,
+		`INSERT INTO worktrees (id, repository_id, root_path, git_dir, created_at, last_seen_at) VALUES ('wt1', 'repo1', '/tmp/repo1', '/tmp/repo1/.git', '` + now + `', '` + now + `')`,
+		`INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, started_at, metadata_json) VALUES ('sess1', 'wt1', 'claude-code', 'interactive', '` + now + `', '{}')`,
+		`INSERT INTO tasks (id, session_id, worktree_id, objective_hash, status, created_at, updated_at) VALUES ('task1', 'sess1', 'wt1', 'hash1', 'pending', '` + now + `', '` + now + `')`,
+		`INSERT INTO pause_records (id, task_id, session_id, turn_id, runway_forecast_id, status, requested_at, auto_resume_enabled) VALUES ('pause1', 'task1', 'sess1', 'turn1', 'rf1', 'sleeping', '` + now + `', 1)`,
+	}
+	for _, stmt := range seed {
+		if _, err := db.Conn().ExecContext(context.Background(), stmt); err != nil {
+			t.Fatalf("seed %q: %v", stmt, err)
+		}
+	}
+	wakeStore := scheduler.NewStore(db.Conn(), realClockAt(time.Date(2026, 7, 12, 10, 0, 0, 0, time.UTC)), &wiringSeqIDs{prefix: "wj"})
+	if _, err := wakeStore.Schedule(context.Background(), scheduler.ScheduleRequest{
+		PauseID: "pause1", Kind: "pause_resume", RunAfter: time.Date(2026, 7, 12, 9, 0, 0, 0, time.UTC), MaxAttempts: 3,
+	}); err != nil {
+		t.Fatalf("Schedule: %v", err)
+	}
+
+	services := fullFakeServices()
+	services.PauseLifecycle = orchestrator.PauseLifecycleDeps{WakeJobs: wakeStore}
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"scheduler", "run-once"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("scheduler run-once: %v", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["claimed"] != true {
+		t.Fatalf("claimed = %v, want true", decoded["claimed"])
+	}
+}
+
+type realClockAt time.Time
+
+func (c realClockAt) Now() time.Time { return time.Time(c) }
+
+type wiringSeqIDs struct {
+	n      int
+	prefix string
+}
+
+func (g *wiringSeqIDs) NewID() string {
+	g.n++
+	return g.prefix + "-" + string(rune('0'+g.n))
 }

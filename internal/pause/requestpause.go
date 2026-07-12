@@ -2,6 +2,7 @@ package pause
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/huaiche94/preflight/internal/domain"
@@ -35,6 +36,17 @@ type PauseRecord struct {
 	Key    PauseKey
 	Status domain.PauseStatus
 	Reason TriggerReason
+	// Persist is the durable phase-progress bookkeeping runtime-a05's
+	// PersistPhase orchestrator (persistphase.go) reads and updates via
+	// PersistPauseStore.GetProgress/SaveProgress. Zero value (no field set)
+	// means the persist phase has not been attempted yet for this record.
+	// Embedding it directly on PauseRecord — rather than a separate
+	// parallel map keyed by PauseID — keeps this package's one durable
+	// record type as the single source of truth for a pause's full
+	// lifecycle state, matching Constitution Sec 6's "state writes are
+	// atomic, idempotent, and crash-recoverable" applied to this package's
+	// own store, not just the cross-component stores it orchestrates.
+	Persist PersistProgress
 }
 
 // PauseStore is the narrow persistence port RequestPause needs. It is
@@ -61,6 +73,24 @@ type PauseStore interface {
 	// across processes is a real SQLite-backed store's concern, deferred
 	// to runtime-a05 per the DAG note).
 	Insert(ctx context.Context, rec PauseRecord) error
+	// GetByID returns the pause record identified by id, regardless of
+	// whether it is terminal (unlike FindActiveByKey, which deliberately
+	// hides terminal records so a fresh RequestPause can create a new one
+	// for the same key). Callers that already have a concrete PauseID
+	// (e.g. runtime-b07's `pause cancel`/`resume` CLI commands, which take
+	// a --pause-id flag rather than re-deriving a PauseKey) need the
+	// record regardless of its current lifecycle state. found is false if
+	// no record with this ID exists at all.
+	GetByID(ctx context.Context, id domain.PauseID) (rec PauseRecord, found bool, err error)
+	// UpdateStatus durably transitions an existing record's Status field.
+	// Callers are expected to have already validated the transition via
+	// pause.Apply before calling this — UpdateStatus itself performs no
+	// state-machine validation, it only persists whatever status the
+	// caller supplies (mirrors SetStatus's existing test-only convenience,
+	// promoted here to the frozen interface so a real caller — not just a
+	// test — can drive a lifecycle transition through the same store
+	// RequestPause/Persist already use).
+	UpdateStatus(ctx context.Context, id domain.PauseID, status domain.PauseStatus) error
 }
 
 // RequestPauseRequest is RequestPause's input.
@@ -181,6 +211,53 @@ func (m *MemStore) Insert(_ context.Context, rec PauseRecord) error {
 	return nil
 }
 
+var _ PersistPauseStore = (*MemStore)(nil)
+
+// findByID is MemStore's own linear scan from PauseID back to the record's
+// PauseKey (the map's actual index). MemStore is a reference/test double,
+// not a performance-sensitive production store (a real SQLite-backed
+// PauseStore would simply index by PauseID as its primary key instead — see
+// this package's persistphase_test.go harness, which layers exactly that
+// indexing on top of a real sqlite.DB-backed store for the crash-injection
+// tests), so a scan here is an acceptable, deliberately simple tradeoff.
+func (m *MemStore) findByID(id domain.PauseID) (PauseKey, PauseRecord, bool) {
+	for key, rec := range m.records {
+		if rec.ID == id {
+			return key, rec, true
+		}
+	}
+	return PauseKey{}, PauseRecord{}, false
+}
+
+// GetProgress implements PersistPauseStore.
+func (m *MemStore) GetProgress(_ context.Context, id domain.PauseID) (PersistProgress, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, rec, ok := m.findByID(id)
+	if !ok {
+		return PersistProgress{}, false, nil
+	}
+	return rec.Persist, true, nil
+}
+
+// SaveProgress implements PersistPauseStore.
+func (m *MemStore) SaveProgress(_ context.Context, id domain.PauseID, progress PersistProgress) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key, rec, ok := m.findByID(id)
+	if !ok {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: SaveProgress: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+	rec.Persist = progress
+	m.records[key] = rec
+	return nil
+}
+
 // SetStatus is a test/caller convenience for advancing a stored record's
 // status directly (e.g. to simulate a later phase's Apply result being
 // persisted, or to mark a record terminal so a subsequent RequestPause
@@ -194,4 +271,30 @@ func (m *MemStore) SetStatus(key PauseKey, status domain.PauseStatus) {
 		rec.Status = status
 		m.records[key] = rec
 	}
+}
+
+// GetByID implements PauseStore.GetByID.
+func (m *MemStore) GetByID(_ context.Context, id domain.PauseID) (PauseRecord, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, rec, ok := m.findByID(id)
+	return rec, ok, nil
+}
+
+// UpdateStatus implements PauseStore.UpdateStatus.
+func (m *MemStore) UpdateStatus(_ context.Context, id domain.PauseID, status domain.PauseStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key, rec, ok := m.findByID(id)
+	if !ok {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: UpdateStatus: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+	rec.Status = status
+	m.records[key] = rec
+	return nil
 }

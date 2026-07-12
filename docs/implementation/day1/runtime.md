@@ -1089,3 +1089,229 @@ blockers: []
   `internal/httpapi/**`, `internal/daemon/**`, `internal/app/wiring/**`,
   `internal/testutil/fakes/**`) was read for editing purposes or
   modified.
+
+# Wave 7
+
+Branch: `day1/runtime`, synced from `main` via `git fetch origin && git
+merge origin/main` (fast-forward, clean — no conflicts) before any Wave 7
+work, landing at `1440f4c`. Brings in Wave 6's integrated state: `checkpoint`'s
+real `CompleteNode`/State Checkpoint work (`internal/progress`,
+`internal/statecheckpoint`, migrations 0023-0024) and `predictor`'s real
+Policy layer (`internal/policy`). Per the task brief, `checkpoint-a05`
+(State Checkpoint service) and the frozen `app.StateCheckpointService`'s
+real implementation are **not** part of this merge — they are sibling
+teammates' concurrent work this same wave — so this wave still uses
+`internal/testutil/fakes.FakeStateCheckpointService` for that one specific
+dependency, exactly as instructed.
+
+Assigned nodes, executed sequentially with independent validate+commit
+after each: `runtime-a05` (persist phase orchestration) -> `runtime-b07`
+(pause/resume/scheduler CLI wiring).
+
+## runtime-a05 — Persist phase orchestration
+
+### What shipped
+
+- `internal/pause/persistphase.go` — `Persist(ctx, PersistDeps,
+  PersistRequest) (PersistResult, error)`: sequences the five durable
+  writes CONTRACT_FREEZE.md's "Transaction boundaries" section names —
+  Progress Tree snapshot, State Checkpoint, Repository Checkpoint, Pause
+  Record, Wake Job — in fixed order, each step idempotent-by-skip against
+  a new `PersistProgress` field recorded on `PauseRecord`. `HaltAfter`/
+  `HaltError` mirror `internal/progress.CompleteNode`'s own crash-injection
+  vocabulary and technique exactly, per the task brief's explicit
+  instruction to follow that precedent. A new `PersistPauseStore` interface
+  (`GetProgress`/`SaveProgress`) is this file's only new storage seam;
+  `pause.MemStore` implements it directly, extended with per-`PauseID`
+  lookup (`findByID`) since `PersistProgress` is keyed by `PauseID`, not
+  the `PauseKey` `MemStore`'s map already used.
+- `internal/scheduler/lease.go` — added `Store.GetByPauseKind`, a
+  read-only lookup by `(pauseID, kind)` — needed to recover an
+  already-scheduled wake job's identity after a retried `Schedule` call
+  hits the existing `UNIQUE(pause_id, job_kind)` constraint (the crash
+  window between `Schedule`'s own commit and `Persist`'s bookkeeping of the
+  resulting `WakeJobID`). Added here rather than left as a gap for a later
+  node, since Part A owns `internal/scheduler` directly.
+- `internal/pause/persistphase_test.go` — the required test verbatim
+  ("crash after every phase resumes/reconciles correctly"): one test per
+  phase boundary (`runToHalt` mirrors `internal/progress`'s own helper),
+  each proving the halted state exposes exactly that phase's durable
+  evidence and a subsequent `Persist` call resumes and completes without
+  re-creating any already-durable checkpoint, plus a full reconciliation
+  sweep across all five boundaries and validation/nil-dependency/unknown-
+  pause-record fail-closed cases. The Repository Checkpoint step's tests
+  build a REAL `internal/repocheckpoint.Service` against a real migrated
+  temp-file SQLite database and a real temporary Git repository (skipped
+  if `git` is unavailable) — no fake anywhere in that path, per the task
+  brief.
+
+### Design note: two backing stores for one conceptual pause record
+
+`wake_jobs.pause_id` carries a real foreign key into the `pause_records`
+SQL table (`0051_wake_jobs.sql`), but `PersistPauseStore` in these tests is
+`pause.MemStore` — an in-memory store, not backed by that table. Every
+crash-injection test therefore seeds BOTH: the in-memory record (this
+package's own durable-progress bookkeeping) AND a matching real
+`pause_records` row (so phase 5's `Schedule` call satisfies the FK). This
+is flagged explicitly as a tracked gap for a later integration node (a real
+SQLite-backed `PauseStore` implementing `PersistPauseStore` against the
+same `pause_records` table `wake_jobs` already references), not silently
+worked around.
+
+### Node log
+
+```yaml
+node: runtime-a05
+status: completed
+artifacts:
+  - internal/pause/persistphase.go
+  - internal/pause/persistphase_test.go
+  - internal/pause/requestpause.go (modified — PauseRecord.Persist field, MemStore.GetProgress/SaveProgress)
+  - internal/scheduler/lease.go (modified — Store.GetByPauseKind)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/...   # OK"
+  - "go test ./internal/pause/... -run PersistPhase -race -v   # 10/10 PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... -race -v   # all PASS"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: f5b3205
+next_action: runtime-b07
+assumptions:
+  - "State Checkpoint step uses internal/testutil/fakes.FakeStateCheckpointService
+    (checkpoint-a05's real implementation is a sibling teammate's
+    concurrent, not-yet-mergeable work this same wave, per the task
+    brief's explicit instruction)."
+  - "Progress Tree snapshot step calls the general
+    app.ProgressTreeService.Snapshot method (also faked this wave via
+    fakes.FakeProgressTreeService) rather than a dedicated snapshot-only
+    port — no such narrower port exists in the frozen contract, and the
+    task brief authorized a fake here regardless of checkpoint-a04's real
+    integration status elsewhere in the codebase."
+  - "Repository Checkpoint step uses the REAL internal/repocheckpoint.Service
+    (checkpoint-b04, integrated on main since Wave 5) — no fake, per the
+    task brief's explicit instruction."
+  - "PersistPauseStore is a new interface distinct from PauseStore
+    (requestpause.go) — kept separate because RequestPause's
+    FindActiveByKey/Insert operate on PauseKey while persist-phase
+    resumption operates on an already-known PauseID; PauseRecord itself
+    is the single shared durable type both interfaces read/write."
+  - "Two backing stores for one conceptual pause record during this wave's
+    tests (in-memory PersistPauseStore + real SQL pause_records row) — see
+    the dedicated design note above; tracked as a gap for a later
+    integration node, not silently resolved."
+blockers: []
+```
+
+## runtime-b07 — Pause/Resume/SchedulerRunOnce CLI+orchestrator wiring
+
+### What shipped
+
+- `internal/pause/lifecycle.go` — `Cancel` (applies `EventCancel` via the
+  existing transition table, persists the result) and `Resume` (drives
+  `WakePending -> Validating -> {Resuming -> Resumed | Sleeping |
+  BlockedConflict}` from a caller-supplied verdict — `Valid`/`QuotaUnsafe`/
+  `Conflict`, exactly one required). Resume's doc comment states explicitly
+  that real resume validation (quota/repository/session/authorization
+  checks, ADD §20.8) is `runtime-a08`'s not-yet-built scope; this node
+  implements only the state-machine half, per Constitution §7 rule 3
+  ("capability gaps are surfaced explicitly, never silently assumed
+  away").
+- `internal/pause/requestpause.go` — `PauseStore` gained `GetByID`/
+  `UpdateStatus` (both implemented on `MemStore`), needed because
+  Cancel/Resume take a caller-supplied `PauseID` (e.g. a `--pause-id` CLI
+  flag) rather than the `PauseKey` `RequestPause`'s existing methods key
+  on.
+- `internal/orchestrator/pauselifecycle.go` — `PauseRequestCmd`,
+  `PauseCancelCmd`, `ResumeCmd`, `SchedulerRunOnceCmd`: thin orchestration
+  over this same role's own real `pause.RequestPause`/`Cancel`/`Resume` and
+  `scheduler.Store.Claim` — no fake anywhere in this file, per the DAG's
+  "now a hard dependency... same branch, no fake needed" note.
+  `SchedulerRunOnceCmd` claims (does not execute) one due job per sweep —
+  "run a single scheduler sweep and exit" names a claim step, not a full
+  wake-to-resume pipeline (`runtime-a09`'s scope).
+- `internal/cli/pause.go` — `NewPauseCmd`/`NewResumeCmd`/`NewSchedulerCmd`,
+  the real Cobra constructors (schema-versioned JSON output, typed errors,
+  no raw prompt/log leakage), replacing `root.go`'s stub tree the same way
+  `NewCheckpointCmd`/`NewStatusCmd` did in earlier waves — `root.go` itself
+  is untouched, per that same precedent (the standalone stub tree stays as
+  the bare-`NewRootCmd()` fallback).
+- `internal/app/wiring/wiring.go` — new optional `Services.PauseLifecycle`
+  field (`orchestrator.PauseLifecycleDeps`); `RootCmd` swaps in the real
+  `pause`/`resume`/`scheduler` command trees only when a `Store`/
+  `WakeJobs` is actually configured, otherwise leaving the original stub
+  tree mounted (mirrors `Diagnostics`' existing optional-field, all-skipped
+  fallback precedent).
+
+### Node log
+
+```yaml
+node: runtime-b07
+status: completed
+artifacts:
+  - internal/pause/lifecycle.go
+  - internal/pause/lifecycle_test.go
+  - internal/pause/requestpause.go (modified — GetByID/UpdateStatus)
+  - internal/pause/requestpause_test.go (modified — fakePauseStore stub methods)
+  - internal/orchestrator/pauselifecycle.go
+  - internal/orchestrator/pauselifecycle_test.go
+  - internal/cli/pause.go
+  - internal/app/wiring/wiring.go (modified)
+  - internal/app/wiring/wiring_test.go (modified)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/...   # OK"
+  - "go test ./internal/orchestrator/... -run 'PauseRequest|Resume|SchedulerRunOnce' -race -v   # 11/11 PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... -race -v   # all PASS"
+  - "go test ./internal/app/wiring/... -race -v   # all PASS, including 4 new end-to-end CLI-tree tests"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: fdb5911
+next_action: none — both Wave 7 nodes complete; runtime-a08/a09/a10/a11/b06/b09/b10 remain, out of scope this wave
+assumptions:
+  - "Resume's Valid/QuotaUnsafe/Conflict verdict is caller-supplied this
+    wave, not independently computed — see lifecycle.go's package comment.
+    ResumeCmdRequest defaults to Valid when neither --quota-unsafe nor
+    --conflict is passed, keeping the common CLI case usable without
+    requiring a08's not-yet-built checks; documented, not silent."
+  - "SchedulerRunOnceCmd claims but does not execute/resume the claimed
+    job — left leased for a later worker loop (a09) to actually drive
+    through EventWakeDue/Resume; consistent with the command's own P0
+    description naming a sweep, not a pipeline."
+blockers: []
+```
+
+## Wave 7 cross-node observations
+
+- `runtime-a05` was the wave's (and, per the DAG's own risk ranking,
+  the role's) highest-risk node — crash-injection testing across FIVE
+  independent write boundaries, two of them real cross-role services
+  (Repository Checkpoint) rather than in-process fakes, required a
+  heavier test harness (real SQLite DB + real temporary Git repository)
+  than any prior Part A node needed. The `HaltAfter`/`HaltError`
+  precedent transplanted from `internal/progress.CompleteNode` (Wave 6's
+  sibling `checkpoint-a04` work, now on `main`) applied cleanly with no
+  redesign — direct evidence the technique generalizes beyond the single
+  package it was first proven in.
+- A real, if narrow, gap was found and closed rather than deferred:
+  `scheduler.Store` had no way to recover an already-scheduled job's
+  identity after a retried `Schedule` call hit its own `UNIQUE(pause_id,
+  job_kind)` constraint. Since Part A owns `internal/scheduler` directly,
+  `GetByPauseKind` was added in the same node rather than punted to a
+  future a06/a09 follow-up — the DAG's "no fake needed, same branch"
+  principle for `runtime-b07`'s dependencies applies by the same logic to
+  a same-role internal gap discovered mid-node.
+- `runtime-b07` mirrors `runtime-b05`'s (Wave 5) wiring shape almost
+  exactly (orchestrator file + test, CLI file, wiring.go diff) but for
+  FOUR command surfaces instead of one `checkpoint create` — consistent
+  with the Wave 5 lessons_learned observation that Part-B-shaped nodes'
+  file count runs higher than the DAG's estimate once CLI+wiring are
+  counted; this node's actual file count (9, including two modified
+  pre-existing files) is in line with that established pattern, not a new
+  surprise.
+- No new ADRs, no change-request escalations, and no frozen-contract
+  questions this wave. The one explicitly-tracked gap (`PersistPauseStore`
+  as an in-memory store distinct from the real `pause_records` SQL table
+  `wake_jobs` already references) is flagged in `runtime-a05`'s own
+  section above for a later integration node, not silently resolved or
+  left undiscoverable.

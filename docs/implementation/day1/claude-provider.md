@@ -126,3 +126,25 @@ assumptions:
 blockers: []
 ```
 
+```yaml
+node: claude-provider-06
+status: completed
+artifacts:
+  - integrations/claude/plugin.json
+  - integrations/claude/hooks.json
+  - integrations/claude/README.md
+validation:
+  - "manual: python3 -m json.tool on both plugin.json and hooks.json -> valid JSON"
+  - "manual: structural assertion script confirms UserPromptSubmit/Stop/StopFailure hook entries and the statusLine entry all invoke `preflight hook claude <subcommand>` with type=command, and plugin.json matches ADD Appendix E.2 verbatim"
+  - "go build ./...  -> ok (no .go files added by this node; confirms no accidental breakage)"
+next_action: none — Wave 2 scope (claude-provider-04, claude-provider-06) complete; claude-provider-05/-07 explicitly out of scope for this wave per task brief
+commit: PENDING_FILL_AFTER_COMMIT
+assumptions:
+  - "This is an explicitly forward-looking stub per the DAG's own note on claude-provider-06 ('stub acceptable before [runtime-b01]'): the `preflight` CLI binary and its `hook claude ...` subcommands do not exist on this branch (runtime-b01, a different role's later node, not built yet). The example configuration is syntactically valid and internally consistent with this role's Wave-1/Wave-2 primitives but is not exercisable end-to-end (`preflight hook claude user-prompt-submit < fixture` per the DAG's literal validation command cannot run — there is no `preflight` binary yet)."
+  - "plugin.json is copied verbatim from Preflight_ADD.md Appendix E.2, which is explicitly this role's documented ownership ('Appendix E.2/E.3' in agents/claude-provider.md)."
+  - "hooks.json's overall JSON shape ({\"hooks\": {\"<HookEventName>\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"...\"}]}]}}) is taken from Preflight_ADD.md Appendix E.3. This role's hooks.json only wires the three hook events this role has actually built parsers/normalizers for (UserPromptSubmit, Stop, StopFailure) plus the statusLine entry (§22.5), deliberately omitting Appendix E.3's SessionStart/TaskCreated/TaskCompleted/PreCompact/PostToolUse/PostToolUseFailure entries since this role has not built parsers for those (packet's P0 deliverables list them as optional, 'when fixtures are available' — none were built this wave) and wiring a hook with no corresponding parser would be example configuration promising behavior that doesn't exist yet."
+  - "GENUINE UNRESOLVED DOCUMENT CONFLICT (recorded per task instructions' STOP-and-report guidance, though this one did not block the node — a defensible default was available and taken): Preflight_ADD.md Appendix E.3 writes CLI subcommands in PascalCase (`preflight hook claude UserPromptSubmit`), matching Claude Code's own wire-level hook_event_name casing. agents/runtime.md's P0 commands list AND docs/implementation/day1/EXECUTION_DAG.md's own validation command for this exact node (claude-provider-06) both write kebab-case (`preflight hook claude user-prompt-submit`). Per Constitution §2's document priority order, the ADD (priority 2) would outrank agents/runtime.md (priority 4) if this is read as a real conflict rather than a casing typo in one of the two documents. This role does not own either document and cannot fix it. hooks.json here follows the DAG/runtime.md kebab-case form since it is this specific node's own frozen validation command; the discrepancy is written up in full in integrations/claude/README.md for contract-integrator to reconcile (likely by fixing Appendix E.3 to match standard kebab-case CLI convention, since agents/runtime.md's P0 command list reads as the more deliberate, recently-authored source for exact CLI spelling)."
+  - "Preflight_ADD.md §22.6 ('Compose existing status line' — installer must read/preserve a pre-existing status-line command and combine output rather than overwrite it) is installer behavior, not expressible in a static example config file, and is explicitly out of scope for this node — noted in the README rather than silently ignored."
+blockers: []
+```
+

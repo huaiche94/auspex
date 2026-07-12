@@ -170,8 +170,37 @@ func LoadMigrationsFS(fsys fs.FS, root string) ([]Migration, error) {
 // With zero migrations passed (this node's actual state — no .sql files
 // exist yet), Migrate creates schema_migrations and returns nil: a
 // deliberate, tested no-op.
+//
+// Concurrency (foundation-07): Migrate reserves a single dedicated
+// connection and opens it with "BEGIN IMMEDIATE" before reading the
+// database's current version, holding SQLite's write lock for the entire
+// read-current-version-then-apply-pending-migrations sequence. This closes
+// a real TOCTOU race foundation-07's concurrent-reopen test caught in the
+// prior (foundation-05/06) implementation: two connections could each read
+// current=0 before either committed, then both attempt to apply the same
+// migration ("table already exists"). BEGIN IMMEDIATE acquires the RESERVED
+// lock up front, so a second concurrent Migrate call blocks behind the
+// first (waiting up to db.go's busy_timeout pragma, per the "locked/busy
+// behavior" required test) rather than racing it, and observes the first
+// call's committed schema_migrations rows once it proceeds.
 func (d *DB) Migrate(ctx context.Context, migrations []Migration) error {
-	if _, err := d.sqlDB.ExecContext(ctx, schemaMigrationsTable); err != nil {
+	conn, err := d.sqlDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("sqlite: reserving connection for migration: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("sqlite: acquiring migration write lock: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+
+	if _, err := conn.ExecContext(ctx, schemaMigrationsTable); err != nil {
 		return fmt.Errorf("sqlite: creating schema_migrations: %w", err)
 	}
 
@@ -179,7 +208,7 @@ func (d *DB) Migrate(ctx context.Context, migrations []Migration) error {
 	copy(sorted, migrations)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Version < sorted[j].Version })
 
-	current, err := d.currentVersion(ctx)
+	current, err := currentVersionOn(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -198,10 +227,21 @@ func (d *DB) Migrate(ctx context.Context, migrations []Migration) error {
 		if m.Version <= current {
 			continue
 		}
-		if err := d.applyMigration(ctx, m); err != nil {
-			return fmt.Errorf("sqlite: applying migration %04d_%s.sql: %w", m.Version, m.Name, err)
+		if _, err := conn.ExecContext(ctx, m.SQL); err != nil {
+			return fmt.Errorf("sqlite: applying migration %04d_%s.sql: executing migration body: %w", m.Version, m.Name, err)
+		}
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO schema_migrations (version, name) VALUES (?, ?)`,
+			m.Version, m.Name,
+		); err != nil {
+			return fmt.Errorf("sqlite: applying migration %04d_%s.sql: recording schema_migrations row: %w", m.Version, m.Name, err)
 		}
 	}
+
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("sqlite: committing migration transaction: %w", err)
+	}
+	committed = true
 	return nil
 }
 
@@ -213,12 +253,17 @@ func (d *DB) CurrentVersion(ctx context.Context) (int, error) {
 	if _, err := d.sqlDB.ExecContext(ctx, schemaMigrationsTable); err != nil {
 		return 0, fmt.Errorf("sqlite: creating schema_migrations: %w", err)
 	}
-	return d.currentVersion(ctx)
+	return currentVersionOn(ctx, d.sqlDB)
 }
 
-func (d *DB) currentVersion(ctx context.Context) (int, error) {
+// currentVersionOn reads the highest applied migration version through q,
+// which is either d.sqlDB (CurrentVersion's plain-pool read) or a single
+// reserved *sql.Conn already holding Migrate's BEGIN IMMEDIATE write lock
+// (Migrate's read-then-apply sequence) — both satisfy Querier's
+// QueryRowContext method.
+func currentVersionOn(ctx context.Context, q Querier) (int, error) {
 	var version *int
-	row := d.sqlDB.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`)
+	row := q.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`)
 	if err := row.Scan(&version); err != nil {
 		return 0, fmt.Errorf("sqlite: reading current schema version: %w", err)
 	}
@@ -226,29 +271,4 @@ func (d *DB) currentVersion(ctx context.Context) (int, error) {
 		return 0, nil
 	}
 	return *version, nil
-}
-
-func (d *DB) applyMigration(ctx context.Context, m Migration) error {
-	tx, err := d.sqlDB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx, m.SQL); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("executing migration body: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO schema_migrations (version, name) VALUES (?, ?)`,
-		m.Version, m.Name,
-	); err != nil {
-		_ = tx.Rollback()
-		return fmt.Errorf("recording schema_migrations row: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-	return nil
 }

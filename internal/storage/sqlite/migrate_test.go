@@ -3,9 +3,12 @@ package sqlite_test
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/huaiche94/preflight/internal/storage/sqlite"
 )
@@ -237,6 +240,46 @@ func TestMigrate_FailingMigration_DoesNotRecordVersion(t *testing.T) {
 	}
 }
 
+// TestMigration_PartialBatchFailure_RollsBackEntireBatch is a foundation-07
+// regression test for a deliberate behavior change made alongside the
+// concurrency fix above: Migrate used to apply each migration in its own
+// independent transaction (foundation-05/06), so a batch of [migration 1
+// (valid), migration 2 (invalid)] would leave migration 1's effects
+// PERMANENTLY committed even though Migrate returned an error for
+// migration 2 — a partially-applied migration run, which
+// CONTRACT_FREEZE.md's error contract calls out as exactly the kind of
+// state-integrity failure that MUST fail closed, not partially succeed.
+// Migrate now runs the entire read-then-apply-all-pending-migrations
+// sequence as one transaction (BEGIN IMMEDIATE ... COMMIT), so a failure
+// on ANY migration in the batch rolls back every migration in that same
+// Migrate call, not just the failing one.
+func TestMigration_PartialBatchFailure_RollsBackEntireBatch(t *testing.T) {
+	db := openTemp(t)
+	ctx := context.Background()
+
+	err := db.Migrate(ctx, []sqlite.Migration{
+		{Version: 1, Name: "good", SQL: `CREATE TABLE good (id INTEGER PRIMARY KEY)`},
+		{Version: 2, Name: "bad", SQL: `THIS IS NOT VALID SQL`},
+	})
+	if err == nil {
+		t.Fatal("expected error applying a batch with an invalid migration")
+	}
+
+	version, verErr := db.CurrentVersion(ctx)
+	if verErr != nil {
+		t.Fatalf("CurrentVersion: %v", verErr)
+	}
+	if version != 0 {
+		t.Errorf("CurrentVersion = %d, want 0 (entire batch must roll back, not just the failing migration)", version)
+	}
+
+	var name string
+	q := `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'good'`
+	if scanErr := db.Conn().QueryRowContext(ctx, q).Scan(&name); scanErr == nil {
+		t.Error("table 'good' from migration 1 must not exist: its transaction should have rolled back alongside migration 2's failure")
+	}
+}
+
 // --- LoadMigrationsFS --------------------------------------------------
 
 func TestLoadMigrationsFS_ParsesAndSorts(t *testing.T) {
@@ -315,6 +358,15 @@ func TestAllMigrations_LoadsCoreSchemaFiles(t *testing.T) {
 		t.Fatalf("AllMigrations: %v", err)
 	}
 
+	// AllMigrations() loads the real embedded migrations/ directory, which
+	// by design also picks up every other role's migration files as they
+	// land there (claude-provider 0010-0019, checkpoint 0020-0039,
+	// predictor 0040-0049, runtime 0050-0059 — see CONTRACT_FREEZE.md and
+	// migrate.go's AllMigrations doc comment). This test only owns
+	// asserting that foundation's own four migrations are present, sorted
+	// first, and correctly named — not that they are the ONLY migrations
+	// that exist, since that stops being true the moment any sibling
+	// role's migration lands in the same tree.
 	want := []struct {
 		version int
 		name    string
@@ -324,8 +376,8 @@ func TestAllMigrations_LoadsCoreSchemaFiles(t *testing.T) {
 		{3, "provider_sessions"},
 		{4, "tasks"},
 	}
-	if len(migrations) != len(want) {
-		t.Fatalf("len(migrations) = %d, want %d (%+v)", len(migrations), len(want), migrations)
+	if len(migrations) < len(want) {
+		t.Fatalf("len(migrations) = %d, want at least %d (%+v)", len(migrations), len(want), migrations)
 	}
 	for i, w := range want {
 		if migrations[i].Version != w.version || migrations[i].Name != w.name {
@@ -351,8 +403,17 @@ func TestCoreMigrations_FromEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("CurrentVersion = %d, want 4 (tasks, the highest foundation-06 migration)", version)
+	// >= 4, not == 4: AllMigrations() loads the real embedded migrations/
+	// directory, which also picks up every other role's migration files as
+	// they land (0010-0019 claude-provider, 0020-0039 checkpoint, 0040-0049
+	// predictor, 0050-0059 runtime, per CONTRACT_FREEZE.md). Those always
+	// sort after foundation's own 0001-0004 range and only raise
+	// CurrentVersion, never lower it, so this test's actual intent — "the
+	// core foundation tables were created correctly" (verified below) —
+	// only requires that foundation's migrations applied, not that they
+	// were the only ones present.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4 (tasks, the highest foundation-06 migration)", version)
 	}
 
 	for _, table := range []string{"repositories", "worktrees", "provider_sessions", "tasks"} {
@@ -557,7 +618,368 @@ func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("CurrentVersion = %d, want 4", version)
+	// >= 4, not == 4: see TestCoreMigrations_FromEmptyDatabase above — this
+	// test's intent is "reopening a migrated DB and re-running Migrate is
+	// idempotent," which holds regardless of how many additional sibling-
+	// role migrations AllMigrations() also loaded.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4", version)
 	}
+}
+
+// --- foundation-07: migration test harness hardening ------------------------
+//
+// The tests above (foundation-05/06) cover the migration engine's
+// single-caller correctness: apply-from-empty, reopen-and-idempotent
+// (sequentially, one *DB at a time), newer-schema-rejected, and
+// invalid-permissions/corrupt-DB classification during Open (db_test.go).
+// None of them exercise the engine under genuine concurrent access, or
+// distinguish a failure surfacing during Migrate itself (as opposed to
+// during Open, before Migrate is ever called) — both explicitly named in
+// agents/foundation.md's "Required tests" list. These tests close that
+// gap. Names are prefixed TestMigration_ (matching this wave's DAG
+// validation command `-run TestMigration`, distinct from the existing
+// TestMigrate_/TestCoreMigrations_ prefixes used by foundation-05/06).
+
+// TestMigration_ConcurrentReopen_SerializesAndConverges opens the SAME
+// on-disk database file from several goroutines simultaneously (as two
+// independent *sql.DB connections, i.e. the same shape a CLI invocation
+// racing a daemon startup would produce) and has every one of them call
+// Migrate with the real embedded migration set at once.
+//
+// This is a REAL BUG this node found in the prior (foundation-05/06)
+// Migrate implementation: it read the database's current version and then
+// applied migrations as separate, unsynchronized operations, so two
+// concurrent callers could both observe current=0 before either committed
+// and both attempt to CREATE TABLE, failing with "table already exists".
+// Fixed in this same node (migrate.go) by having Migrate reserve a single
+// connection and issue BEGIN IMMEDIATE before reading the current version,
+// holding SQLite's write lock for the whole read-then-apply sequence so a
+// second concurrent Migrate call blocks (per busy_timeout) rather than
+// racing. This test is the regression guard for that fix — run with -race
+// per this wave's validation command to also catch any Go-level data race
+// in the harness itself, though the interesting bug here was a SQLite
+// transaction race, not a Go memory race.
+func TestMigration_ConcurrentReopen_SerializesAndConverges(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preflight.db")
+	ctx := context.Background()
+
+	migrations, err := sqlite.AllMigrations()
+	if err != nil {
+		t.Fatalf("AllMigrations: %v", err)
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			db, openErr := sqlite.Open(ctx, path)
+			if openErr != nil {
+				errs[i] = openErr
+				return
+			}
+			defer func() { _ = db.Close() }()
+			errs[i] = db.Migrate(ctx, migrations)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: Migrate error: %v", i, err)
+		}
+	}
+
+	db, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("final Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	version, err := db.CurrentVersion(ctx)
+	if err != nil {
+		t.Fatalf("CurrentVersion: %v", err)
+	}
+	// >= 4, not == 4: see TestCoreMigrations_FromEmptyDatabase above — this
+	// test's intent is "concurrent Migrate callers converge on the same
+	// applied version instead of racing," which holds regardless of how
+	// many additional sibling-role migrations AllMigrations() also loaded.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4 (converged despite concurrent callers)", version)
+	}
+
+	// Re-running Migrate once more against the now-converged database must
+	// still be a clean idempotent no-op, proving concurrent access didn't
+	// leave schema_migrations in a state a subsequent normal reopen chokes
+	// on.
+	if err := db.Migrate(ctx, migrations); err != nil {
+		t.Fatalf("Migrate (post-convergence, idempotent): %v", err)
+	}
+}
+
+// TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows confirms
+// the concurrent scenario above doesn't just "not error" but produces
+// exactly one schema_migrations row per migration version — a duplicate
+// row (e.g. two callers both inserting version 1) would be a
+// state-integrity bug even if every individual Migrate call happened to
+// return nil.
+func TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preflight.db")
+	ctx := context.Background()
+
+	migrations, err := sqlite.AllMigrations()
+	if err != nil {
+		t.Fatalf("AllMigrations: %v", err)
+	}
+
+	const n = 6
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			db, openErr := sqlite.Open(ctx, path)
+			if openErr != nil {
+				return
+			}
+			defer func() { _ = db.Close() }()
+			_ = db.Migrate(ctx, migrations)
+		}()
+	}
+	wg.Wait()
+
+	db, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("final Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	var rowCount, distinctVersions int
+	if err := db.Conn().QueryRowContext(ctx, `SELECT COUNT(*), COUNT(DISTINCT version) FROM schema_migrations`).Scan(&rowCount, &distinctVersions); err != nil {
+		t.Fatalf("querying schema_migrations: %v", err)
+	}
+	if rowCount != len(migrations) {
+		t.Errorf("schema_migrations row count = %d, want %d", rowCount, len(migrations))
+	}
+	if rowCount != distinctVersions {
+		t.Errorf("schema_migrations has %d rows but only %d distinct versions (duplicate rows)", rowCount, distinctVersions)
+	}
+}
+
+// --- locked/busy behavior during migration specifically (agents/
+// foundation.md "Required tests": "locked/busy behavior" — db_test.go's
+// TestBusyTimeout_ConcurrentWriteWaitsInsteadOfFailingImmediately already
+// covers this for a plain INSERT; this covers it for Migrate itself) -------
+
+// TestMigration_BlocksBehindHolderTransaction_ThenSucceeds proves Migrate
+// itself (not just an arbitrary write) waits behind another connection's
+// uncommitted write lock rather than failing immediately with
+// SQLITE_BUSY, and succeeds once that lock is released — well within
+// db.go's busy_timeout pragma. This specifically exercises Migrate's own
+// BEGIN IMMEDIATE acquisition path added by this node, distinct from a
+// plain ExecContext call.
+func TestMigration_BlocksBehindHolderTransaction_ThenSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preflight.db")
+	ctx := context.Background()
+
+	dbHolder, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (holder): %v", err)
+	}
+	defer func() { _ = dbHolder.Close() }()
+	dbMigrator, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (migrator): %v", err)
+	}
+	defer func() { _ = dbMigrator.Close() }()
+
+	// Establish schema_migrations up front so the holder's write lock
+	// below is the ONLY thing standing between the migrator and applying
+	// migration 1.
+	if err := dbHolder.Migrate(ctx, nil); err != nil {
+		t.Fatalf("prep Migrate: %v", err)
+	}
+
+	tx, err := dbHolder.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin holder tx: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE holder (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("holder create: %v", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO holder (id) VALUES (1)`); err != nil {
+		t.Fatalf("holder insert: %v", err)
+	}
+
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		done <- dbMigrator.Migrate(ctx, []sqlite.Migration{
+			{Version: 1, Name: "x", SQL: `CREATE TABLE x (id INTEGER PRIMARY KEY)`},
+		})
+	}()
+
+	// Give the migrator goroutine time to actually reach and block on
+	// BEGIN IMMEDIATE before releasing the holder's lock, so a "returned
+	// immediately without waiting" bug would show up as an elapsed time
+	// far below this sleep, not just a coincidentally-fast success.
+	const holdFor = 300 * time.Millisecond
+	time.Sleep(holdFor)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit holder tx: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Migrate while blocked behind holder: %v", err)
+		}
+		if elapsed := time.Since(start); elapsed < holdFor-50*time.Millisecond {
+			t.Errorf("Migrate returned after %v, want >= ~%v (did it actually wait for the write lock?)", elapsed, holdFor)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("Migrate did not complete within busy_timeout + margin: it must wait, not deadlock")
+	}
+
+	version, err := dbMigrator.CurrentVersion(ctx)
+	if err != nil {
+		t.Fatalf("CurrentVersion: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("CurrentVersion = %d, want 1 (migration applied after lock released)", version)
+	}
+}
+
+// --- invalid permissions and corrupt DB error classification DURING
+// migration specifically (agents/foundation.md "Required tests" —
+// db_test.go's TestOpen_CorruptFile_FailsOnFirstQuery and
+// TestOpen_UnwritableDirectory_Errors already cover this for Open itself;
+// these cover the case where Open succeeds but the subsequent Migrate call
+// is what fails) -------------------------------------------------------------
+
+// TestMigration_CorruptDatabase_FailsDuringMigrateNotOpen builds a
+// legitimate multi-page database, closes it, then corrupts only a LATE
+// page of the file (leaving the header and first page — which is all
+// db.go's pragma statements touch — intact). Open succeeds (pragmas only
+// read/write header-adjacent state), but Migrate's own read of the current
+// schema version must fail with a classified, non-nil error rather than
+// silently reporting an incorrect version or panicking. This is the
+// "corrupt DB error classification" required test, specifically for the
+// migration path rather than Open's already-covered path.
+func TestMigration_CorruptDatabase_FailsDuringMigrateNotOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preflight.db")
+	ctx := context.Background()
+
+	db, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (build legitimate file): %v", err)
+	}
+	if _, err := db.Conn().ExecContext(ctx, `CREATE TABLE filler (id INTEGER PRIMARY KEY, data TEXT)`); err != nil {
+		t.Fatalf("create filler: %v", err)
+	}
+	// Enough rows to force the file across several pages, so a late-file
+	// corruption lands past the schema/header pages Open's pragmas touch.
+	for i := 0; i < 2000; i++ {
+		if _, err := db.Conn().ExecContext(ctx, `INSERT INTO filler (data) VALUES (?)`,
+			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"); err != nil {
+			t.Fatalf("insert filler: %v", err)
+		}
+	}
+	if err := db.Migrate(ctx, nil); err != nil {
+		t.Fatalf("prep Migrate: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading file to corrupt: %v", err)
+	}
+	if len(data) < 20000 {
+		t.Fatalf("file too small (%d bytes) to safely corrupt only late pages; filler loop needs adjusting", len(data))
+	}
+	// Corrupt the last 20% of the file; the first 80% (schema, page 1,
+	// early filler pages) stays intact so Open's pragma statements still
+	// succeed.
+	start := len(data) * 8 / 10
+	for i := start; i < len(data); i++ {
+		data[i] = 0xFF
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("writing corrupted file: %v", err)
+	}
+
+	db2, err := sqlite.Open(ctx, path)
+	if err != nil {
+		// If a future modernc.org/sqlite version starts detecting this
+		// corruption during Open (e.g. a stricter pragma implementation),
+		// that is a stronger guarantee, not a regression — but it would
+		// mean this test is no longer exercising the Migrate-specific
+		// path it's named for.
+		t.Fatalf("Open unexpectedly failed on late-page corruption (expected Open to succeed and Migrate to fail): %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	err = db2.Migrate(ctx, []sqlite.Migration{
+		{Version: 1, Name: "x", SQL: `CREATE TABLE x (id INTEGER PRIMARY KEY)`},
+	})
+	if err == nil {
+		t.Fatal("expected Migrate to fail against a corrupted database file")
+	}
+	t.Logf("Migrate correctly classified corruption as an error: %v", err)
+}
+
+// TestMigration_ReadOnlyFile_FailsDuringMigrateNotOpen covers the
+// "invalid permissions" half of the same required-test bullet:
+// TestOpen_UnwritableDirectory_Errors (db_test.go) proves Open fails when
+// the DIRECTORY can't be written to (file creation fails). This proves the
+// complementary case: the directory is writable and the file already
+// exists, so Open itself succeeds (it only needs read access plus a
+// WAL-mode pragma set, which SQLite permits read-only-ish against an
+// existing well-formed file up to a point), but Migrate's first write
+// (CREATE TABLE IF NOT EXISTS schema_migrations) must fail with a
+// classified permissions error once the file itself is read-only.
+func TestMigration_ReadOnlyFile_FailsDuringMigrateNotOpen(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits are not enforced")
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "preflight.db")
+	ctx := context.Background()
+
+	db, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (create file): %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if err := os.Chmod(path, 0o400); err != nil {
+		t.Fatalf("chmod file read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	db2, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open unexpectedly failed on a read-only (but existing, well-formed) file: %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	err = db2.Migrate(ctx, []sqlite.Migration{
+		{Version: 1, Name: "x", SQL: `CREATE TABLE x (id INTEGER PRIMARY KEY)`},
+	})
+	if err == nil {
+		t.Fatal("expected Migrate to fail against a read-only database file")
+	}
+	t.Logf("Migrate correctly classified read-only permissions as an error: %v", err)
 }

@@ -649,3 +649,295 @@ assumptions:
     normally arrives (defaults layer), not a config.go bug."
 blockers: []
 ```
+
+## Wave 4
+
+### foundation-07: migration test harness hardening
+
+Scope per the Wave 4 DAG's foundation-07 row and the task instruction:
+strengthen `internal/storage/sqlite`'s migration test harness with
+additional race-condition and reliability coverage beyond foundation-05/06,
+specifically the three `agents/foundation.md` "Required tests" bullets not
+yet fully covered: reopen-and-idempotent migration **under concurrent
+access** (existing tests only reopen sequentially), locked/busy behavior
+**during migration itself** (existing `TestBusyTimeout_*` in `db_test.go`
+only covers a plain `INSERT`, not `Migrate()`), and invalid-permissions /
+corrupt-DB error classification **during `Migrate()` specifically** (existing
+`TestOpen_CorruptFile_*` / `TestOpen_UnwritableDirectory_*` in `db_test.go`
+only cover failures during `Open()`).
+
+Writing the concurrent-reopen test surfaced two real, reproducible bugs in
+code owned by this role — both fixed in this same node, since they were
+small, in-scope (`db.go`/`migrate.go`), and are exactly what a "test harness
+hardening" node exists to catch before a later role builds on top of them:
+
+1. **`Migrate()` had a TOCTOU race** (foundation-05/06's original
+   implementation): it read the database's current version and then applied
+   migrations as separate, unsynchronized statements/transactions, so two
+   concurrent `Migrate()` callers against the same file could both observe
+   `current=0` before either committed and both attempt `CREATE TABLE`,
+   failing with "table already exists". Fixed by having `Migrate()` reserve
+   a single dedicated `*sql.Conn` and issue `BEGIN IMMEDIATE` before reading
+   the current version, holding SQLite's write lock for the entire
+   read-then-apply-all-pending-migrations sequence, then `COMMIT`. A second
+   concurrent `Migrate()` call now blocks behind the first (bounded by
+   `busy_timeout`) instead of racing it.
+2. **`applyPragmas` (`Open()`'s pragma bootstrap) could fail immediately
+   with `SQLITE_BUSY`** on a brand-new connection racing another
+   connection's held write lock (most easily triggered by the fix above,
+   since `Migrate()` now holds a real write lock for longer): a fresh
+   connection's very first statement — including `PRAGMA busy_timeout`
+   itself — has no busy-wait protection yet, because `busy_timeout` only
+   takes effect once THAT statement successfully runs. Reproduced at a
+   ~5-30% rate under `go test -race -count=20`, depending on machine load.
+   Fixed two ways: (a) reordered `pragmaStatements` and the DSN's `_pragma`
+   list so `busy_timeout` is applied first (defense in depth — the driver
+   already prioritizes `busy_timeout` internally per its own DSN parsing,
+   confirmed by reading `modernc.org/sqlite`'s source, but explicit ordering
+   costs nothing and documents intent); (b) added a small bounded
+   retry-with-backoff (`execWithBusyRetry`, up to 10 attempts / ~500ms total,
+   well inside the 5000ms `busy_timeout`) around each `applyPragmas`
+   statement, keyed off a typed `errors.As` check against
+   `*modernc.Error.Code() == 5` (SQLITE_BUSY), not a string match.
+
+A third, related behavior change (not a bug fix, a natural consequence of
+making `Migrate()` one transaction instead of one-transaction-per-migration):
+a batch of `[migration N (valid), migration N+1 (invalid)]` now rolls back
+**both** migrations on failure, where the old per-migration-transaction
+design would have permanently committed migration N even though `Migrate()`
+returned an error for the batch — a partially-applied migration run, which
+is exactly the state-integrity failure `CONTRACT_FREEZE.md`'s error contract
+says must fail closed, not partially succeed. Covered by a new regression
+test (`TestMigration_PartialBatchFailure_RollsBackEntireBatch`).
+
+```yaml
+node: foundation-07
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrate.go (Migrate() rewritten to run its
+    entire read-current-version-then-apply-all-pending-migrations sequence
+    as one BEGIN IMMEDIATE ... COMMIT transaction on a single reserved
+    connection, fixing a real concurrent-caller TOCTOU race;
+    currentVersionOn(ctx, Querier) extracted so both CurrentVersion's
+    plain-pool read and Migrate's in-progress-transaction read share one
+    implementation; applyMigration removed, folded into Migrate directly)
+  - internal/storage/sqlite/db.go (pragmaStatements/dataSourceName reordered
+    busy_timeout-first; applyPragmas now retries transient SQLITE_BUSY via
+    new execWithBusyRetry/isBusyError helpers, fixing a real Open()
+    bootstrap race under concurrent access)
+  - internal/storage/sqlite/migrate_test.go (6 new tests: 2 concurrent-reopen
+    tests proving convergence and no duplicate schema_migrations rows under
+    N simultaneous Open+Migrate callers; 1 test proving Migrate itself waits
+    behind another connection's held write lock rather than failing
+    immediately, then succeeds; 1 test proving Migrate fails with a
+    classified error against a corrupted database file where Open itself
+    still succeeds; 1 test proving the same for a read-only database file;
+    1 regression test for the whole-batch-rollback behavior change)
+validation:
+  - "go test ./internal/storage/sqlite/... -run TestMigration -race -v ->
+    PASS, 6 tests matched and passing"
+  - "go test ./internal/storage/sqlite/... -run TestMigration -race
+    -count=30 -> PASS, no flakes across 180 total test executions (up from
+    a ~5-30%-per-run flake rate on the concurrent-reopen test before the
+    applyPragmas fix)"
+  - "go test ./internal/storage/sqlite/... -race -count=15 -> PASS, full
+    package suite (36 tests), no regressions, no flakes"
+  - "go test ./... -race -count=3 -> PASS, all packages, whole repo"
+  - "go build ./... -> clean"
+  - "go vet ./... -> clean"
+  - "gofmt -l internal/storage/sqlite -> empty output"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+commit: 042ed54
+next_action: none — foundation-07 was this wave's sole assigned node; STOP
+  per task instruction once Validated
+assumptions:
+  - "Fixing the two real bugs found (Migrate's TOCTOU race, applyPragmas'
+    bootstrap SQLITE_BUSY gap) rather than only documenting them was a
+    judgment call, since the task instruction scoped this node as 'test
+    harness hardening,' not 'engine rework.' Treated as in-scope because:
+    (a) both fixes are small, entirely inside foundation's own exclusive
+    paths (migrate.go, db.go), (b) both are the kind of latent bug a
+    'race-condition and reliability coverage' node exists specifically to
+    surface and close before a later role (runtime, wiring the real daemon
+    startup path) builds on top of an engine that silently loses migrations
+    under concurrent access, and (c) this mirrors the precedent
+    foundation-06 already set for this same file (finding and fixing its
+    own version-0 sentinel bug mid-node rather than only flagging it) —
+    consistent, not novel, practice for this role."
+  - "No caller in this repository wires Migrate() to internal/lock
+    (foundation-04's PID-file advisory lock) yet — verified via grep before
+    concluding the concurrency race was a real, reachable gap rather than
+    one already prevented by a higher-level single-instance guard.
+    internal/lock exists but nothing calls it from a DB-open path; wiring
+    an actual single-instance guard into a real daemon startup sequence is
+    explicitly out of scope for foundation (agents/foundation.md: 'the
+    runtime role owns user-facing commands') and was already flagged as
+    such by foundation-04's own assumptions. This means Migrate()'s own
+    internal concurrency safety (this node's fix) is NOT redundant with a
+    higher-level lock some other role already provides — as of this
+    commit, it is the only protection against concurrent-Migrate
+    corruption that exists anywhere in the codebase."
+  - "isBusyError uses errors.As against modernc.org/sqlite's exported
+    *sqlite.Error type and its Code() method (aliased as `modernc` in
+    db.go's import to avoid a name collision with this package's own name
+    `sqlite`), comparing against a locally-named sqliteBusyCode = 5 rather
+    than importing modernc.org/sqlite/lib for the sqlite3.SQLITE_BUSY
+    constant — the top-level modernc.org/sqlite package does not re-export
+    that constant, and importing its internal lib package for one integer
+    literal felt like the wrong dependency direction. SQLITE_BUSY's code
+    (5) is part of SQLite's own long-stable public C API
+    (https://www.sqlite.org/rescode.html#busy), not modernc.org/sqlite's
+    own invention, so hardcoding it locally with a named constant and a
+    comment pointing at the source of truth was preferred over either a
+    fragile string match on the error message or a heavier import."
+  - "execWithBusyRetry's bound (10 attempts x 50ms = up to ~500ms) is a
+    judgment call, not a spec value — no ADD/CONTRACT_FREEZE.md text names
+    a retry budget for this bootstrap-specific gap (busy_timeout itself,
+    5000ms, governs ordinary in-flight statement contention once pragmas
+    are already active, which is a different, already-covered scenario).
+    Chosen to be comfortably inside the 5000ms busy_timeout so Open()
+    itself never becomes a multi-second outlier, while still being long
+    enough that the ~5-30%-observed-rate race under concurrent Open()
+    calls could not be reproduced across 30 repeated full-suite runs
+    (180 executions of the concurrent-reopen test) after the fix."
+  - "Test names are prefixed TestMigration_ (not TestMigrate_ or
+    TestCoreMigrations_, both already used by foundation-05/06) so this
+    wave's DAG validation command (`-run TestMigration`) actually selects
+    them — verified before writing any test that the literal validation
+    command in the task matched ZERO existing tests (Go's -run is
+    unanchored regex, so `-run Migration` alone would have matched all 28
+    pre-existing tests too, but the task's literal command was
+    `TestMigration`, prefix-anchored by convention even though not by
+    regex). This mirrors foundation-06/foundation-08's own prior
+    observations in this same file that a DAG's stated validation command
+    and a package's actual test-naming convention can drift, and that it's
+    worth checking before writing tests rather than after."
+  - "The corrupt-database-during-Migrate test
+    (TestMigration_CorruptDatabase_FailsDuringMigrateNotOpen) needed a
+    specific corruption shape to actually separate 'fails during Open' from
+    'fails during Migrate': corrupting page 1 / the file header trips
+    Open()'s own PRAGMA statements (journal_mode itself walks enough of the
+    file to detect header-level corruption), which is already covered by
+    db_test.go's TestOpen_CorruptFile_FailsOnFirstQuery. Only corrupting a
+    LATE page (built by inserting ~2000 filler rows first to force a
+    multi-page file, then zeroing the last 20% of the file bytes) leaves
+    Open() succeeding while Migrate()'s currentVersion read later fails —
+    confirmed via a throwaway probe test before writing the real one,
+    the same bisection-by-probe approach foundation-06's lessons-learned
+    entry already recommended for this kind of investigation."
+blockers: []
+```
+
+### Corrective fix (post foundation-07): migrate_test.go migration-count brittleness
+
+Not a new DAG node — a corrective fix to foundation's own `migrate_test.go`,
+requested directly (not via the normal DAG) after being independently
+confirmed by five separate sources in the same wave: the lead (twice, via
+direct verification) and three sibling Wave 4 roles (claude-provider,
+checkpoint, predictor, runtime), each of whom hit the identical failure
+while building their own Wave 4 migrations and filed it as a change request
+against foundation rather than editing a file outside their own exclusive
+paths.
+
+Root cause: three tests in `migrate_test.go` (`TestCoreMigrations_FromEmptyDatabase`,
+`TestCoreMigrations_ReopenFromFile_AppliesOnce`,
+`TestMigration_ConcurrentReopen_SerializesAndConverges`) asserted
+`CurrentVersion == 4` (hardcoded), and one (`TestAllMigrations_LoadsCoreSchemaFiles`)
+asserted `len(migrations) == 4` (hardcoded), against `sqlite.AllMigrations()` —
+the real `embed.FS`-backed loader that, by design (see `migrate.go`'s own doc
+comment), automatically picks up every other role's migration files the
+moment they land under `internal/storage/sqlite/migrations/`
+(claude-provider 0010-0019, checkpoint 0020-0039, predictor 0040-0049,
+runtime 0050-0059, per `CONTRACT_FREEZE.md`). "Exactly 4" was only ever true
+while foundation's own 0001-0004 were the sole files on disk — true for
+foundation-05 through foundation-07's own branch, but false the instant any
+one sibling branch's migration merges into the same tree, which is exactly
+what Wave 4 integration does across four branches simultaneously.
+
+Fix applied (all four via the "assert at-least, not exactly" path — no
+test's actual intent, per its name/comments, was "verify 0001-0004 apply
+with nothing else ever present"; that isolation already exists implicitly
+in the earlier `TestMigrate_*` tests, which use hand-built synthetic
+`[]sqlite.Migration{}` slices rather than `AllMigrations()`, so a
+scoped-to-own-range rewrite would have been redundant):
+
+- `TestAllMigrations_LoadsCoreSchemaFiles`: `len(migrations) != len(want)`
+  (exactly 4) changed to `len(migrations) < len(want)` (at least 4); still
+  asserts the first four entries are exactly `{1,repositories}`,
+  `{2,worktrees}`, `{3,provider_sessions}`, `{4,tasks}` in that order —
+  unchanged, since that part of the test's intent (foundation's own
+  migrations load correctly and sort first) is still correct and still
+  worth enforcing.
+- `TestCoreMigrations_FromEmptyDatabase`: `version != 4` changed to
+  `version < 4`. Table-existence assertions for the 4 foundation tables
+  (`repositories`, `worktrees`, `provider_sessions`, `tasks`) are unchanged
+  — this test's real intent per its name ("core tables were created
+  correctly") never required that no other tables exist.
+- `TestCoreMigrations_ReopenFromFile_AppliesOnce`: `version != 4` changed to
+  `version < 4`. Test's intent (reopen + re-`Migrate()` is idempotent) is
+  independent of how many total migrations exist.
+- `TestMigration_ConcurrentReopen_SerializesAndConverges`: `version != 4`
+  changed to `version < 4`. Test's intent (concurrent `Migrate()` callers
+  converge instead of racing) is independent of the total migration count.
+- `TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows` (checked,
+  not changed): already compared against `len(migrations)` dynamically, not
+  a hardcoded literal — already correct, not part of this fix.
+
+```yaml
+node: foundation-07-correction
+status: completed
+type: corrective_fix
+reason: "Cross-role-confirmed (5 independent reports this wave: lead x2,
+  claude-provider, checkpoint, predictor, runtime) test brittleness in
+  migrate_test.go — three tests hardcoded CurrentVersion/len(migrations) ==
+  4, which only held while foundation's own migrations were the only files
+  under internal/storage/sqlite/migrations/. Breaks the instant any sibling
+  role's Wave 4 migration lands in the same tree, blocking Wave 4
+  integration entirely since every role's tests run against the same
+  merged migrations/ directory."
+artifacts:
+  - internal/storage/sqlite/migrate_test.go (4 assertions relaxed from
+    exact-match to at-least-match against sqlite.AllMigrations()'s real
+    embedded migration count/version:
+    TestAllMigrations_LoadsCoreSchemaFiles's len(migrations) check,
+    TestCoreMigrations_FromEmptyDatabase's CurrentVersion check,
+    TestCoreMigrations_ReopenFromFile_AppliesOnce's CurrentVersion check,
+    TestMigration_ConcurrentReopen_SerializesAndConverges's CurrentVersion
+    check; no other file touched, no new DAG node started)
+validation:
+  - "gofmt -l internal/storage/sqlite -> empty output"
+  - "go build ./internal/storage/sqlite/... -> clean"
+  - "go vet ./internal/storage/sqlite/... -> clean"
+  - "go test ./internal/storage/sqlite/... -race -v -> PASS, all 36 tests"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+  - "Manual sanity check: temporarily added a throwaway
+    migrations/0099_scratch_test.sql (trivial CREATE TABLE, version 99,
+    outside foundation's 0001-0009 range) to prove the fixed tests
+    tolerate 'more than 4 migrations exist' for real, not just
+    theoretically — ran the full package suite (-race) with it present,
+    confirmed all tests still PASS (CurrentVersion correctly read as 5,
+    every relaxed assertion held), then deleted the throwaway file before
+    committing; it is not part of this fix's commit."
+commit: dc8d2a1
+next_action: none — this was a scoped corrective fix to an existing file,
+  not a new node; STOP once validated and committed, per task instruction.
+assumptions:
+  - "All four fixes used the 'assert at-least-4' approach rather than the
+    task's alternative 'scope to foundation's own 0001-0009 range' option,
+    because no flagged test's stated name/intent was actually 'verify
+    migrations apply in isolation with nothing else present' — that
+    scenario is already covered by the earlier synthetic-migration
+    TestMigrate_* tests (foundation-05), which never call AllMigrations()
+    at all. Rewriting the AllMigrations()-based tests to filter down to a
+    synthetic 0001-0009-only fs.FS would have duplicated that existing
+    coverage while making the AllMigrations()-based tests worse at their
+    actual job: proving the real embedded loader and a real multi-role
+    schema converge correctly, which is precisely the integration-time
+    behavior Wave 4 needs verified now that sibling migrations exist."
+  - "TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows was
+    inspected and left unchanged: its row-count assertion already compares
+    against len(migrations) (the dynamic slice returned by AllMigrations()
+    in that same test), not a hardcoded literal, so it was never affected
+    by this bug and needed no fix."
+blockers: []
+```

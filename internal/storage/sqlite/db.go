@@ -16,10 +16,12 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
+	"time"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
+	modernc "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
 	"github.com/huaiche94/preflight/internal/app"
 )
@@ -46,11 +48,24 @@ const (
 
 // pragmaStatements is applied, in order, to every new connection this
 // package opens.
+//
+// busy_timeout MUST be applied first (foundation-07): PRAGMA journal_mode =
+// WAL itself briefly needs to acquire a lock to switch modes, so on a
+// connection racing another process/connection's write lock (e.g. several
+// callers opening the same database file concurrently, per this package's
+// TestMigration_ConcurrentReopen_* tests), applying journal_mode before
+// busy_timeout is confirmed active on THIS connection let SQLITE_BUSY
+// surface immediately from applyPragmas during Open, instead of the
+// connection waiting up to busy_timeout the way every other write on this
+// package is documented to. This was a real, reproducible flake
+// (~30% failure rate under `-race -count=20` on several concurrent Opens
+// against one file) caught by foundation-07's concurrent-reopen test, not
+// a theoretical concern.
 var pragmaStatements = []string{
+	pragmaBusyTimeout,
 	pragmaJournalMode,
 	pragmaSynchronous,
 	pragmaForeignKeys,
-	pragmaBusyTimeout,
 	pragmaTempStore,
 }
 
@@ -116,11 +131,15 @@ func dataSourceName(path string) string {
 	if path == ":memory:" {
 		return "file::memory:?cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
 	}
+	// busy_timeout first, matching pragmaStatements' ordering below and
+	// for the same reason (foundation-07): journal_mode(WAL) itself briefly
+	// needs a lock to switch modes, so it must not run on a connection
+	// before that connection's own busy_timeout is active.
 	v := url.Values{}
+	v.Add("_pragma", "busy_timeout(5000)")
 	v.Add("_pragma", "journal_mode(WAL)")
 	v.Add("_pragma", "synchronous(NORMAL)")
 	v.Add("_pragma", "foreign_keys(ON)")
-	v.Add("_pragma", "busy_timeout(5000)")
 	v.Add("_pragma", "temp_store(MEMORY)")
 	return "file:" + path + "?" + v.Encode()
 }
@@ -131,13 +150,83 @@ func dataSourceName(path string) string {
 // pragma set explicit and independently testable (db_test.go asserts each
 // one's effective value), rather than relying solely on DSN parsing
 // behavior that could silently change between driver versions.
+//
+// Retries transient SQLITE_BUSY on each statement (foundation-07): a brand
+// new connection's very first statement — including PRAGMA busy_timeout
+// itself — has no busy-wait protection yet, because busy_timeout only takes
+// effect once IT successfully runs. Under concurrent Open() calls racing
+// another connection's held write lock (e.g. this package's Migrate, which
+// holds a BEGIN IMMEDIATE lock for its whole read-then-apply sequence),
+// that bootstrap statement can itself be rejected immediately with
+// SQLITE_BUSY rather than waiting — a real, reproducible failure this node
+// found via TestMigration_ConcurrentReopen_SerializesAndConverges (~5-30%
+// under `-race -count=20`, depending on machine load). A short bounded
+// retry closes this bootstrap gap without weakening the "fail-closed on
+// state-integrity failures" rule (CONTRACT_FREEZE.md): SQLITE_BUSY here is
+// the definition of an operational, transiently-retryable condition, not a
+// state-integrity failure, and retrying a handful of times over a fraction
+// of a second is strictly less surprising to a caller than a bare Open()
+// occasionally failing under ordinary concurrent access this package is
+// documented to support.
 func applyPragmas(ctx context.Context, sqlDB *sql.DB) error {
 	for _, stmt := range pragmaStatements {
-		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
+		if err := execWithBusyRetry(ctx, sqlDB, stmt); err != nil {
 			return fmt.Errorf("executing %q: %w", stmt, err)
 		}
 	}
 	return nil
+}
+
+// pragmaBusyRetryAttempts and pragmaBusyRetryDelay bound applyPragmas'
+// SQLITE_BUSY retry: up to ~500ms total across 10 attempts, comfortably
+// inside the 5000ms busy_timeout this same pragma set establishes once it
+// succeeds, and short enough that Open() does not itself become a
+// surprising source of multi-second latency under contention.
+const (
+	pragmaBusyRetryAttempts = 10
+	pragmaBusyRetryDelay    = 50 * time.Millisecond
+)
+
+// execWithBusyRetry runs stmt against sqlDB, retrying a bounded number of
+// times if the error is SQLITE_BUSY (matched by message substring, since
+// modernc.org/sqlite's *sqlite.Error/Code() is an internal type this
+// package does not import — see isBusyError). Any other error returns
+// immediately, unretried.
+func execWithBusyRetry(ctx context.Context, sqlDB *sql.DB, stmt string) error {
+	var lastErr error
+	for attempt := 0; attempt < pragmaBusyRetryAttempts; attempt++ {
+		_, err := sqlDB.ExecContext(ctx, stmt)
+		if err == nil {
+			return nil
+		}
+		if !isBusyError(err) {
+			return err
+		}
+		lastErr = err
+		select {
+		case <-ctx.Done():
+			return errors.Join(lastErr, ctx.Err())
+		case <-time.After(pragmaBusyRetryDelay):
+		}
+	}
+	return lastErr
+}
+
+// sqliteBusyCode is SQLITE_BUSY's numeric result code, per SQLite's public,
+// long-stable C API (https://www.sqlite.org/rescode.html#busy). Not
+// re-exported by modernc.org/sqlite's top-level package (only by its
+// internal modernc.org/sqlite/lib, which this package does not otherwise
+// need), so it is named here as its own constant rather than importing
+// that internal package for one value.
+const sqliteBusyCode = 5
+
+// isBusyError reports whether err is SQLite's SQLITE_BUSY ("database is
+// locked"), via errors.As against the driver's exported *modernc.Error
+// type and its Code() method — not a string match, so it is not sensitive
+// to error-message wording changes across driver versions.
+func isBusyError(err error) bool {
+	var sqliteErr *modernc.Error
+	return errors.As(err, &sqliteErr) && sqliteErr.Code() == sqliteBusyCode
 }
 
 // Close closes the underlying connection pool.

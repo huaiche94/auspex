@@ -182,3 +182,121 @@ integrated), and the whole repo built and tested green at that point —
 the only test regressions on this branch afterward are the three
 pre-documented foundation exact-count tests triggered by this wave's own
 migration files, exactly as analyzed above.
+
+---
+
+## Wave 5
+
+Assigned nodes this wave: `checkpoint-a02` (Part A: node state machine +
+Progress Tree Go-level stores), `checkpoint-a03` (Part A: artifact
+validators), `checkpoint-b04` (Part B: Repository Checkpoint create/verify)
+— done sequentially with an independent validate+commit after each, per
+explicit wave instruction. Pre-step: `git fetch origin && git merge
+origin/main` — clean fast-forward to `5470e4d` (Wave 4's integrated state,
+including foundation's fix for the exact-count migration test conflict this
+role flagged in its Wave 4 entry above — confirmed resolved: `go test ./...`
+was green immediately after the merge, before any new work started).
+
+### checkpoint-a02: Progress Tree node state machine and stores
+
+```yaml
+node: checkpoint-a02
+status: completed
+artifacts:
+  - internal/progress/statemachine.go       # ValidateTransition/IsTerminal/AllowedTransitions over the frozen ProgressNodeStatus enum
+  - internal/progress/statemachine_test.go  # every valid edge + a wide invalid-edge matrix + terminal-state + table self-consistency check
+  - internal/progress/node_store.go         # NodeStore: Insert/Get/ListByTask/TransitionStatus (optimistic concurrency, WHERE status=? AND version=?)/SetTimestamps
+  - internal/progress/node_store_test.go    # CRUD, invalid-transition-rejected (store-enforced), stale-version conflict, 20-goroutine concurrent-transition race (exactly 1 winner)
+  - internal/progress/edge_store.go         # EdgeStore over progress_edges: depends_on/relates_to, duplicate + self-referential rejection
+  - internal/progress/edge_store_test.go
+  - internal/progress/artifact_store.go     # ArtifactStore over artifacts: exact-duplicate-evidence rejected as conflict; differing sha256 for same (node,uri) deliberately NOT blocked here (documented, locked by a test) — that conflict policy is checkpoint-a04's CompleteNode job
+  - internal/progress/artifact_store_test.go
+  - internal/progress/helpers_test.go       # shared openTestDB/seedTask/fixedClock test scaffolding
+  - schemas/progress-tree.schema.json       # wire schema for Progress Tree export/import (ADD Appendix A shape)
+  - testdata/progress-trees/sample-task.json # fixture transcribed from ADD Appendix A, schema-validated
+validation:
+  - "gofmt -l internal/progress -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/progress/... -> OK"
+  - "go test ./internal/progress/... -race -v -> PASS (all tests, including the DAG's required invalid-transition-rejected and concurrent-completion-race)"
+  - "golangci-lint run ./internal/progress/... -> 0 issues"
+commit: 3557e61
+next_action: checkpoint-a04 (CompleteNode atomic protocol) — the single highest-risk DAG node — is now unblocked on the a02 side (also needs a03 + contract-integrator-04); NOT started this wave per explicit assignment
+assumptions:
+  - "a01 shipped migrations only (0020-0022 SQL, per its own DAG validation command targeting ./internal/storage/sqlite/...); internal/progress did not exist before this node. a02 is therefore the first Go-level domain package over those tables, exactly as the wave brief anticipated."
+  - "State machine extends CONTRACT_FREEZE.md's frozen backbone (pending->ready->in_progress->checkpointing->{completed|failed}) with documented, narrow additions only: pending/ready/paused/blocked -> skipped or blocked as side states; checkpointing -> in_progress for ADD §18.4's validation-fails recovery path; failed -> in_progress as the one explicit retry edge. completed and skipped are the only fully terminal states; failed has exactly one outbound edge (retry), which IsTerminal's doc comment states explicitly rather than leaving implicit."
+  - "TransitionStatus's optimistic-concurrency guard (UPDATE ... WHERE status=? AND version=?) is deliberately NOT the full CompleteNode atomic protocol (stage/verify artifact evidence + node update + State Checkpoint creation in one transaction) — that orchestration, and its crash-injection tests, is checkpoint-a04's explicitly scoped job per the wave brief. This node's own concurrent-race test (20 goroutines) validates the store's own concurrency primitive in isolation, not the full completion protocol."
+  - "ArtifactStore.Insert's duplicate-evidence conflict only fires on an EXACT (progress_node_id, uri, sha256) repeat (0022's own UNIQUE constraint); a different sha256 for the same (node, uri) is accepted at the store layer by design — surfacing THAT as a completion conflict is Constitution §6.6's concern and checkpoint-a04's job, not this store's. Locked by TestArtifactStore_DifferentSHA256_NotBlockedByStore so a04 doesn't have to rediscover the boundary."
+blockers: none
+```
+
+### checkpoint-a03: Artifact validators
+
+```yaml
+node: checkpoint-a03
+status: completed
+artifacts:
+  - internal/artifacts/validator.go       # Validator interface, Candidate input shape, Result/Passed/Failed
+  - internal/artifacts/file_exists.go
+  - internal/artifacts/checksum.go        # SHA-256, case-insensitive hex compare
+  - internal/artifacts/heading.go         # CommonMark-aware ATX heading match, skips lines inside fenced code blocks
+  - internal/artifacts/fence_balance.go   # tracks fence char+run-length per CommonMark's >= close-length rule
+  - internal/artifacts/registry.go        # Registry pre-populated with the 4 built-ins; Register rejects duplicate Kind
+  - internal/artifacts/*_test.go          # one test file per validator + registry_test.go
+  - testdata/checkpoints/state/add-section-18-valid.md              # REAL Preflight_ADD.md §18 verbatim (212 lines, 6 real fences)
+  - testdata/checkpoints/state/add-section-18-unbalanced-fence.md    # targeted mutation: one closing fence removed
+  - testdata/checkpoints/state/add-section-18-missing-heading.md     # targeted mutation: H1 removed
+validation:
+  - "gofmt -l internal/artifacts -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/artifacts/... -> OK"
+  - "go test ./internal/artifacts/... -race -v -> PASS (all tests, including missing-heading-rejected and unbalanced-fence-rejected against the REAL fixtures, and validators-all-pass-together on the real valid fixture)"
+  - "golangci-lint run ./internal/artifacts/... -> 0 issues"
+commit: f34f12c
+next_action: checkpoint-a04 — unblocked on the a03 side (also needs a02 + contract-integrator-04); NOT started this wave per explicit assignment
+assumptions:
+  - "Per the DAG note ('Needs real ADD-section fixtures'), fixtures are Preflight_ADD.md §18 transcribed verbatim via `sed`, not synthetic toy Markdown — the negative fixtures are targeted single-line mutations of that same real content, so the validators are proven against real-world Markdown structure (mixed yaml/mermaid/text fences, Chinese-language headings, nested list/prose structure), not a simplified stand-in."
+  - "'Valid Markdown section completes and checkpoints' (required test) is scoped, per the wave brief, to 'validator returns success' — TestRegistry_ValidMarkdownSection_CompletesValidation runs file_exists+heading_exists+fence_balance together against the real fixture and asserts all three pass. The full completes-AND-checkpoints protocol (State Checkpoint creation) is checkpoint-a04's job."
+  - "HeadingExistsValidator and FenceBalanceValidator share fence-tracking logic (the `fence{char,n}` type and CommonMark's >=-run-length close rule) to guarantee both validators agree on what counts as 'inside a fence' — verified by TestHeadingExists_HeadingTextInsideFence_NotCountedAsHeading, which would fail if the two validators disagreed."
+blockers: none
+```
+
+### checkpoint-b04: Repository Checkpoint create and verify
+
+```yaml
+node: checkpoint-b04
+status: completed
+artifacts:
+  - internal/gitx/patch.go                # NEW small addition to b02/b03's package: DiffPatch (binary-safe, --full-index --no-ext-diff) + ListUntracked (git ls-files --others --exclude-standard -z) — neither existed yet and b04 needed both for a meaningful create/verify
+  - internal/gitx/patch_test.go
+  - internal/repocheckpoint/capture.go     # Capture(): ADD §19.3 protocol end to end, read-only Git only, initial/final fingerprint race check (fail closed, errIntegrity)
+  - internal/repocheckpoint/archive.go     # untracked zip archive with per-file/total/file-count caps + skip ledger
+  - internal/repocheckpoint/security.go    # validateUntrackedPath: traversal-string, .git-internal, symlink (leaf + every ancestor dir) rejection
+  - internal/repocheckpoint/atomicwrite.go + dirsync_unix.go/dirsync_windows.go  # temp-dir -> fsync -> atomic rename; refuses to overwrite an existing checkpoint ID; removes temp dir on any failure
+  - internal/repocheckpoint/verify.go      # recomputes SHA-256 for every artifact against manifest.json; never trusts the DB row alone
+  - internal/repocheckpoint/manifest.go, serialize.go  # Manifest Go type (ADD Appendix D shape) + JSON (de)serialization + summary.md renderer
+  - internal/repocheckpoint/store.go       # Store CRUD over repository_checkpoints (migrations/0030)
+  - internal/repocheckpoint/service.go     # Service implementing app.RepositoryCheckpointService; Restore returns explicit ErrCodeUnavailable (real restore is b08/ADD §19.6 stretch scope)
+  - internal/repocheckpoint/*_test.go      # capture_test.go, security_test.go, security_internal_test.go, verify_test.go, store_test.go, service_test.go, helpers_test.go
+  - schemas/repository-checkpoint.schema.json
+  - testdata/checkpoints/repository/sample-manifest.json  # generated from an ACTUAL Capture run against a real temp repo, schema-validated
+  - testdata/repositories/README.md        # documents why this role uses on-demand temp repos (internal/gitx + internal/repocheckpoint test helpers) rather than a frozen `.git` fixture tree
+validation:
+  - "gofmt -l internal/repocheckpoint internal/gitx -> empty"
+  - "go build ./... (darwin, GOOS=linux, GOOS=windows) -> all OK"
+  - "go vet ./internal/repocheckpoint/... ./internal/gitx/... -> OK"
+  - "go test ./internal/repocheckpoint/... -race -v -> PASS (34 tests, incl. tracked/staged/unstaged/untracked, rename/delete, binary file, spaces-in-path, nested/linked worktree, concurrent-mutation race, temp-cleanup-on-failure, path traversal (string + symlink, leaf + ancestor dir), oversize, file/total-size caps)"
+  - "golangci-lint run ./internal/repocheckpoint/... ./internal/gitx/... -> 0 issues"
+  - "go test ./... -race -> green whole-repo, zero regressions from the internal/gitx addition"
+commit: d692fd6
+next_action: checkpoint-b05 (binary-safe patch edge cases), checkpoint-b06 (untracked archive + redact/secret-scan), checkpoint-b07 (atomic write -race hardening) — all now unblocked on b04; NOT started this wave per explicit assignment. Deliberately left as TODOs for those nodes (do NOT under-deliver b04's own scope, but do not duplicate theirs either):
+  - "b05: DiffPatch's binary-safety is exercised by one test (TestCapture_BinaryFile / TestDiffPatch_BinaryFile_UsesBinaryDirective) proving the GIT-binary-patch directive appears; b05's own deeper edge cases (e.g. very large binary diffs, mixed binary+text in one patch, apply-round-trip verification) are NOT built here."
+  - "b06: untracked archive policy here is STRUCTURAL only (size/path/symlink caps) — no content-based secret scanning exists yet (internal/redact/** is still an empty exclusive-path placeholder). skipped-files.json + Recoverability.Warnings give b06 a ready extension point (add a new SkipReason + a scan step in buildUntrackedArchive) rather than a redesign."
+  - "b07: atomic write here is single-process-safe (temp-dir + fsync + atomic rename, verified by TestCapture_TempCleanup_NoOrphanOnFailure) but does NOT include cross-process crash-injection tests or a startup orphan-temp-dir scan — that hardening, and its own -race-named test target, is b07's explicit DAG scope."
+assumptions:
+  - "Capture never issues a Git subcommand capable of mutating repository state — grepped for write verbs; only Status/Fingerprint/DiffNumstat/DiffPatch/ListUntracked are called, all read-only. TestCapture_NeverMutatesActiveBranch asserts `git rev-parse HEAD` and `git status --porcelain` are byte-identical before and after a Capture call, as a regression guard on this exact invariant (Constitution §7 rule 6, this node's own DAG risk note)."
+  - "Race detection (ADD §19.3 step 11) compares initial vs. final gitx.Fingerprint and fails closed (errIntegrity, ErrCodeIntegrity, Retryable:false) on any difference; the retry-once policy the ADD step also describes is explicitly left to checkpoint-b07 per the wave brief's scoping guidance, so this function performs exactly one attempt."
+  - "Cross-platform directory-fsync handling (dirsync_unix.go/dirsync_windows.go, build-tag split) was added because Preflight's own ADD §30.4 release targets include windows/amd64+arm64, and a naive syscall.ENOTSUP reference would not compile there — verified via GOOS=windows go build ./... in addition to the native darwin build."
+  - "Service.resolveWorktree is an injected callback (WorktreeLocation) rather than this package reaching into foundation's worktrees table directly — internal/repocheckpoint does not own that table and the wave's cross-part-boundary note (agents/checkpoint.md) already establishes that Part B does not reach into other roles' storage directly; the runtime role (or a future checkpoint node) supplies the real resolver."
+blockers: none
+```

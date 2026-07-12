@@ -375,3 +375,90 @@ assumptions:
     daemon+CLI+scheduler access patterns exist."
 blockers: []
 ```
+
+```yaml
+node: foundation-09
+status: completed
+artifacts:
+  - Taskfile.yml
+  - Makefile
+  - .golangci.yml
+  - internal/lock/lock.go (lint fix: nilerr nolint annotation)
+  - internal/lock/lock_test.go (lint fix: check Release() error in defers)
+  - internal/storage/sqlite/db.go (lint fix: errorlint %w for rollback error)
+  - internal/storage/sqlite/db_test.go (lint fix: check Close() error in
+    defers; errors.Is instead of == for sentinel comparison)
+  - internal/storage/sqlite/migrate.go (lint fix: errorlint %w for
+    strconv error)
+  - internal/storage/sqlite/migrate_test.go (lint fix: check Close()
+    error in defers)
+  - internal/clock/clock_test.go (lint fix: staticcheck QF1011 nolint
+    annotation, assertion intentionally kept explicit)
+  - internal/idgen/idgen_test.go (same as above)
+validation:
+  - "task lint   # go vet + golangci-lint run ./... -> 0 issues"
+  - "task build   # go build -o bin/preflight ./cmd/preflight; ./bin/preflight version -> 0.0.0-dev"
+  - "task test    # go test -race ./... -> all packages PASS"
+  - "make lint && make build   # Makefile mirror verified equivalent to Taskfile"
+commit: 2eac579
+next_action: none — this was the last node assigned this wave (foundation-06,
+  -07, -08 are explicitly out of scope; STOP per task instruction)
+assumptions:
+  - "Taskfile.yml is the richer/primary task runner (default task runs
+    fmt+lint+test; separate fmt/fmt:fix, test/test:short, tidy, clean,
+    run targets); Makefile is a deliberately thin, dependency-free mirror
+    of the same target set for contributors/CI steps that only have
+    `make`. agents/foundation.md's exclusive-paths glob names both files
+    without stating a primary, so keeping them behaviorally equivalent
+    (not divergent) was the safest reading, per the task instruction's
+    'both files should exist and be consistent.'"
+  - "Neither `task` (go-task/task) nor `golangci-lint` was preinstalled on
+    this dev machine; `brew install` failed (outdated Xcode Command Line
+    Tools blocking bottle installation, unrelated to this repo). Both
+    were installed via `go install .../cmd/task@latest` and
+    `go install .../cmd/golangci-lint@latest` into $(go env GOPATH)/bin
+    instead — this does NOT touch the repository's own go.mod/go.sum
+    (tool installation via `go install` of a separate module is
+    independent of the current module's dependency graph), and both
+    tools were then used to actually execute and verify `task lint` /
+    `task build`, not merely written and assumed correct."
+  - ".golangci.yml targets golangci-lint v2 config schema (`version: \"2\"`
+    top-level key; linters.default: standard plus an explicit enable
+    list; formatters block for gofmt/goimports) since v2 is the version
+    that installed via `go install .../golangci-lint/v2/cmd/golangci-lint@latest`
+    and is what actually ran during validation — an older v1-schema config
+    would not have been validated against a real tool run."
+  - "Running golangci-lint surfaced 16 real, fixable issues across files
+    from THIS wave's earlier nodes (foundation-02 through -05) plus two
+    from foundation-01 (Wave 1): unchecked defer'd Close()/Release()
+    errors (errcheck), %v used where %w should wrap an error (errorlint),
+    a direct == comparison on a sentinel error instead of errors.Is
+    (errorlint), a deliberate-but-linter-suspicious nil return after a
+    non-nil err check in internal/lock (nilerr, suppressed with a
+    documented nolint since the behavior is intentional, not a bug), and
+    two staticcheck QF1011 hints on Wave-1 test files where an explicit
+    interface type on a var declaration is redundant with the RHS
+    function's return type (suppressed with nolint since the explicit
+    type is the test's documentation value, not an oversight). All were
+    fixed rather than blanket-suppressed at the linter-config level,
+    since agents/foundation.md's validation bar is `task lint` passing
+    cleanly, not a permissive config that hides real signal."
+  - "No LICENSE or NOTICE file was added even though both are named in
+    foundation's exclusive-paths list and are currently missing from the
+    repository entirely. This task's node list (foundation-02 through
+    foundation-09) never assigns LICENSE/NOTICE creation to any node in
+    this wave, and foundation-09's own validation command (`task lint &&
+    task build`) does not depend on them existing. Creating them now
+    would be scope creep beyond the assigned nodes, not a natural
+    byproduct of Makefile/Taskfile/.golangci.yml work — flagged here so a
+    future wave assigns it explicitly (owning role is foundation per the
+    exclusive-paths list) rather than it being silently done or silently
+    forgotten."
+  - "bin/ (the build output directory task build/make build creates) is
+    not committed and was removed after validation; no .gitignore entry
+    for it was added since .gitignore is not in foundation's declared
+    exclusive paths list — flagged as a gap another role or a future
+    foundation node may want to close, not fixed here to avoid touching
+    a file outside this role's ownership."
+blockers: []
+```

@@ -531,6 +531,33 @@ assumptions:
 blockers: []
 ```
 
+```yaml
+node: predictor-10
+status: completed
+artifacts:
+  - internal/evaluation/service.go
+  - internal/evaluation/authorization_test.go
+  - internal/evaluation/doc.go
+validation:
+  - "gofmt -l internal/evaluation  # clean"
+  - "go build ./internal/evaluation/...  # ok"
+  - "go vet ./internal/evaluation/...  # ok"
+  - "go test ./internal/evaluation/... -run Authorization -v  # PASS (21 tests — see full enumeration below)"
+  - "go test ./internal/evaluation/... -race -count=1  # PASS, whole package"
+  - "go build ./...  # ok, whole module"
+  - "go test ./... -race -count=1  # PASS, whole module, no regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide (three errcheck findings on unused *domain.Error returns from a new test helper, caught and fixed by prefixing the standalone-statement call sites with `_ =` before this wave's final commit)"
+commit: <see final report>
+next_action: none — predictor-10 is the sole assigned Wave 8 node; predictor-11 explicitly out of scope, not started
+assumptions:
+  - "This was an audit/hardening node, not a rebuild: predictor-09's ConsumeAuthorization/IssueAuthorization implementation was re-read in full first, then adversarially tested against scenarios beyond its original 8-goroutine concurrent-replay test, per this wave's explicit instruction to fix only real gaps and not manufacture busywork around already-correct behavior."
+  - "One real gap was found and fixed: the prompt-hash binding check (`if req.PromptHash != \"\" && row.PromptHash != req.PromptHash`) skipped the comparison whenever the REQUEST omitted PromptHash, regardless of what the authorization ROW was actually bound to at issuance. A caller who knew only AuthorizationID + TurnID (no prompt hash — e.g. leaked via logs, or a buggy/malicious caller) could consume an authorization that WAS bound to a specific prompt by simply not supplying PromptHash, defeating prompt binding as a control. This was a latent gap, not yet exploited by any wired caller in this tree (no caller invokes ConsumeAuthorization yet — runtime-b06, a later wave, is the first) but a real defect in the function's own defensive contract, and predictor-09's own recorded assumption #530 explicitly named this exact behavior (\"PromptHash binding is checked only when req.PromptHash is non-empty\") as a documented-but-unaudited design choice — precisely the kind of claim this node's adversarial pass exists to verify, not just take on faith. Fixed by keying the skip on the AUTHORIZATION ROW's own PromptHash (`row.PromptHash != \"\" && row.PromptHash != req.PromptHash`): binding is now evaluated against what the authorization was actually issued with, not whether the caller chose to assert it; the one legitimate skip case (an authorization deliberately issued with no prompt hash at all, row.PromptHash == \"\") still works, and is now pinned down by its own dedicated test (TestConsumeAuthorization_AllowsOmittedPromptWhenAuthorizationHasNone) so a future 'fix' can't reintroduce the bypass by conflating the two cases again. Verified as a real, non-hypothetical fix by reverting service.go and confirming the new adversarial test (TestConsumeAuthorization_RejectsOmittedPromptAgainstBoundAuthorization) fails without it, then passes with it restored."
+  - "Every other adversarial scenario tested — higher-contention concurrent replay (64 goroutines vs predictor-09's original 8), a 200-iteration tight sequential replay loop against an already-consumed authorization, replay attempts racing the exact expiry boundary (burst of concurrent consumers 1 second before expiry, then a sequential follow-up confirming the winner's consumption sticks and is reported as conflict, not expiry, afterward), nanosecond-adjacent expiry boundaries (1ns before/after ExpiresAt, tightening predictor-09's original 1-second-granularity boundary tests), whitespace-only prompt-hash mismatches, case-sensitivity of both TurnID and PromptHash bindings, and byte-distinct-but-canonically-equivalent unicode normalization forms (precomposed U+00E9 vs decomposed e+U+0301) — passed on the FIRST try against predictor-09's existing logic, unchanged. Confirmed by direct code inspection that this codebase has no COLLATE NOCASE anywhere in internal/storage/sqlite/migrations/0044_authorizations.sql, no case-insensitive Go string comparison (no strings.EqualFold/ToLower/ToUpper touching TurnID/PromptHash), and no TrimSpace/normalization step anywhere in internal/evaluation — all binding comparisons are plain Go `!=` on raw strings, which is exactly the correct, unsurprising security posture (byte-exact, no accidental case- or whitespace-folding) and required no code change, only confirming tests."
+  - "The storage-layer exactly-once guarantee (a single conditional `UPDATE authorizations SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL`) was confirmed contention-independent by design, not just empirically lucky at 8 goroutines: internal/storage/sqlite/db.go configures WAL journal mode + a 5000ms busy_timeout PRAGMA (applied busy_timeout-before-journal_mode per foundation-07's own documented ordering requirement) and a max-8-open-connections pool, so concurrent writers serialize and retry within the busy_timeout window rather than erroring unpredictably under higher contention — this is why raising the concurrent test from 8 to 64 goroutines was expected to (and did) pass without any code change, and is now a permanent regression guard (TestConsumeAuthorization_HighContentionReplayOnlyOneWins) rather than a one-off manual check."
+  - "authorization_test.go was reorganized (not just appended to) into four labeled sections — exactly-once/replay, prompt/session binding, expiry precision, baseline/plumbing — so `go test ./internal/evaluation/... -run Authorization` produces output an external auditor can read in isolation as a coherent security test suite, per this wave's explicit instruction. Every predictor-09 test that already passed was kept with its original assertions and behavior unchanged (only a few had their manual errors.As/domain.Error boilerplate replaced by a shared requireDomainError test helper for readability — a pure refactor, confirmed by running the full suite before and after)."
+blockers: []
+```
+
 ## Wave 7 summary
 
 The single assigned node (`predictor-09`) is `completed` with durable artifacts and passing validation
@@ -561,3 +588,37 @@ rejection, and clock-bound expiry at and around the exact boundary. No other rol
 `internal/policy/**` and `internal/predictor/**` remain exactly as `predictor-08`/earlier waves left them.
 `golangci-lint run ./...` reports 0 issues repository-wide as of this wave's final commit (one `errorlint`
 finding in a first draft was caught and fixed before that final state).
+
+## Wave 8 summary
+
+The single assigned node (`predictor-10`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `origin/main` was merged first per instruction (clean fast-forward,
+`efd0601` -> `2b7c29c`, bringing in Wave 7's integrated state), confirmed building/testing cleanly before
+any new code was written. This was an audit/hardening node against predictor-09's existing
+`ConsumeAuthorization`/`IssueAuthorization` implementation, not a rebuild — predictor-09's own code, the
+Constitution, `agents/predictor.md`, `CONTRACT_FREEZE.md`, and the EXECUTION_DAG's predictor-10 entry were
+all re-read first. The audit found and fixed exactly one real gap: `ConsumeAuthorization`'s prompt-hash
+binding check used to skip the comparison whenever the *request* omitted `PromptHash`
+(`req.PromptHash != "" && ...`), regardless of what the authorization *row* was actually bound to at
+issuance — a caller who knew only an `AuthorizationID` and `TurnID` could bypass prompt binding entirely by
+not supplying a prompt hash. Fixed by keying the skip on the authorization row's own `PromptHash` instead
+(`row.PromptHash != "" && row.PromptHash != req.PromptHash`), so binding is now evaluated against what the
+authorization was actually issued with. This was verified as a real, not hypothetical, defect: reverting
+the one-line fix and re-running the new adversarial test
+(`TestConsumeAuthorization_RejectsOmittedPromptAgainstBoundAuthorization`) makes it fail with "expected an
+error with code unauthorized, got nil"; restoring the fix makes it pass. Every other adversarial scenario
+exercised this wave — 64-goroutine high-contention replay (8x predictor-09's original), a 200-iteration
+tight sequential replay loop, replay attempts racing the exact expiry boundary, nanosecond-adjacent expiry
+boundaries (1ns before/after `ExpiresAt`), whitespace-only prompt-hash mismatches, case-sensitivity of both
+binding fields, and byte-distinct unicode-normalization-equivalent forms — passed on the first try against
+predictor-09's existing logic, confirming (rather than assuming) that the codebase has no accidental
+case-insensitive or normalized comparison anywhere in the authorization path (no `COLLATE NOCASE` in
+migration 0044, no `strings.EqualFold`/`ToLower`/`TrimSpace` touching `TurnID`/`PromptHash` anywhere in
+`internal/evaluation`). `authorization_test.go` was reorganized into four labeled sections (exactly-once/
+replay, prompt/session binding, expiry precision, baseline/plumbing) so its dedicated `-run Authorization`
+validation gate produces a test suite readable in isolation by an external auditor, per this wave's
+instruction — every predictor-09 test that already passed was kept with unchanged behavior. No other
+role's paths were touched. `golangci-lint run ./...` reports 0 issues repository-wide as of this wave's
+final commit (three `errcheck` findings against a new shared test helper's unused `*domain.Error` return
+value, caught and fixed by prefixing the standalone-statement call sites with `_ =` before the final
+commit).

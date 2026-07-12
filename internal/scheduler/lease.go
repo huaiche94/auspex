@@ -177,6 +177,34 @@ func (s *Store) Get(ctx context.Context, id domain.WakeJobID) (Job, error) {
 	return getJob(ctx, s.db, id)
 }
 
+// GetByPauseKind loads the wake job for (pauseID, kind), if one exists.
+// found is false if no such row exists (not an error). This is a read-only
+// lookup keyed on the same natural key wake_jobs' own
+// UNIQUE(pause_id, job_kind) constraint (0051_wake_jobs.sql) already
+// enforces at the schema level — it exists so a caller that hits that
+// constraint on a retried Schedule call (e.g. runtime-a05's persist-phase
+// orchestrator recovering from a crash between Schedule's own commit and
+// the caller's own bookkeeping of the resulting WakeJobID) can recover the
+// existing row's identity without resorting to Claim, which would mutate
+// state (lease the job) as a side effect of merely finding it.
+func (s *Store) GetByPauseKind(ctx context.Context, pauseID domain.PauseID, kind string) (Job, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, pause_id, job_kind, status, run_after, lease_owner, lease_expires_at,
+		       attempts, max_attempts, last_error, created_at, updated_at
+		FROM wake_jobs WHERE pause_id = ? AND job_kind = ?
+	`, string(pauseID), kind)
+	job, err := scanJob(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Job{}, false, nil
+	}
+	if err != nil {
+		return Job{}, false, &domain.Error{
+			Code: domain.ErrCodeIntegrity, Message: fmt.Sprintf("scheduler: scan wake job by pause/kind: %v", err), Retryable: false,
+		}
+	}
+	return job, true, nil
+}
+
 // getJob is Get's implementation, parameterized over the Querier so Claim
 // can reuse it against its own reserved *sql.Conn instead of going back to
 // the pooled s.db — reusing s.db here would ask database/sql's pool for a

@@ -69,6 +69,16 @@ type Services struct {
 	// missing piece IS doctor's correct behavior in that case, not a
 	// construction-time error.
 	Diagnostics DiagnosticsSupport
+
+	// PauseLifecycle configures `pause request`/`pause cancel`/`resume`/
+	// `scheduler run-once` (runtime-b07, internal/orchestrator.
+	// PauseLifecycleDeps). Not required, same reasoning as Diagnostics: a
+	// caller that hasn't wired Part A's real stores yet still gets a
+	// working container, with these four commands left as RootCmd's
+	// original stub tree rather than swapped for real handlers — see
+	// RootCmd's own replaceSubcommand call for exactly which condition
+	// triggers the swap.
+	PauseLifecycle orchestrator.PauseLifecycleDeps
 }
 
 // HookSupport bundles the optional collaborators
@@ -209,6 +219,30 @@ func (a *App) RootCmd() *cobra.Command {
 	replaceSubcommand(root, "doctor", func(_ string) *cobra.Command {
 		return cli.NewDoctorCmd(doctorDeps)
 	})
+
+	// pause/resume/scheduler (runtime-b07) only swap to the real handlers
+	// when a Store has actually been wired — unlike the other command
+	// families above, Part A's stores have no fake-able frozen interface
+	// standing in for them (this role's own real internal/pause,
+	// internal/scheduler, same-branch dependency per the DAG), so a
+	// caller that hasn't wired PauseLifecycle yet keeps RootCmd's original
+	// stub tree rather than swapping to a handler that would immediately
+	// fail closed on every call.
+	if a.services.PauseLifecycle.Store != nil {
+		pauseDeps := a.services.PauseLifecycle
+		replaceSubcommand(root, "pause", func(_ string) *cobra.Command {
+			return cli.NewPauseCmd(pauseDeps)
+		})
+		replaceSubcommand(root, "resume", func(_ string) *cobra.Command {
+			return cli.NewResumeCmd(pauseDeps)
+		})
+	}
+	if a.services.PauseLifecycle.WakeJobs != nil {
+		schedulerDeps := a.services.PauseLifecycle
+		replaceSubcommand(root, "scheduler", func(_ string) *cobra.Command {
+			return cli.NewSchedulerCmd(schedulerDeps)
+		})
+	}
 
 	return root
 }

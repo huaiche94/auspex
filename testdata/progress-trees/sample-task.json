@@ -1,0 +1,72 @@
+{
+  "schema_version": "preflight.progress-tree.v1",
+  "task": {
+    "id": "0198f5d8-2e36-7b75-8af3-8f09fd0f7081",
+    "title": "Build Preflight Architecture Design Document",
+    "objective": "Produce a production-grade ADD that Codex can execute milestone by milestone without relying on conversation memory.",
+    "status": "in_progress",
+    "version": 17,
+    "active_node_id": "section-20",
+    "auto_resume_enabled": true
+  },
+  "nodes": [
+    {
+      "id": "section-01",
+      "parent_id": null,
+      "ordinal": 1,
+      "kind": "document_section",
+      "title": "Executive Decision Record",
+      "status": "completed",
+      "acceptance": [
+        { "kind": "heading_exists", "value": "# 1. Executive Decision Record" },
+        { "kind": "minimum_bytes", "value": "2000" }
+      ],
+      "artifacts": [
+        {
+          "uri": "file:Preflight_ADD.md",
+          "selector": "# 1. Executive Decision Record",
+          "sha256": "0ac9cd0123257779efd9297f1a6fdb19f083191abc94955b10f4c960f707bcca",
+          "validation_status": "passed"
+        }
+      ],
+      "state_checkpoint_id": "0198f5d8-9dd1-7f80-90f3-2f7a12345678",
+      "version": 3
+    },
+    {
+      "id": "section-20",
+      "parent_id": null,
+      "ordinal": 20,
+      "kind": "document_section",
+      "title": "Graceful Pause and Auto Resume",
+      "status": "in_progress",
+      "acceptance": [
+        { "kind": "heading_exists", "value": "# 20. Graceful Pause 與 Auto Resume" },
+        { "kind": "required_subheadings", "value": "## 20.5 State machine" },
+        { "kind": "minimum_bytes", "value": "5000" }
+      ],
+      "next_action": {
+        "description": "Add failure modes and E2E acceptance scenarios.",
+        "artifact_uri": "file:Preflight_ADD.md"
+      },
+      "version": 2
+    },
+    {
+      "id": "final-validation",
+      "parent_id": null,
+      "ordinal": 35,
+      "kind": "test",
+      "title": "Validate complete ADD",
+      "status": "pending",
+      "dependencies": ["section-01", "section-20"],
+      "acceptance": [
+        { "kind": "markdown_fences_balanced", "value": "true" },
+        { "kind": "all_required_headings_present", "value": "true" }
+      ],
+      "version": 1
+    }
+  ],
+  "edges": [
+    { "from_node_id": "final-validation", "to_node_id": "section-01", "edge_kind": "depends_on" },
+    { "from_node_id": "final-validation", "to_node_id": "section-20", "edge_kind": "depends_on" }
+  ]
+}

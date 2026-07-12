@@ -136,3 +136,36 @@ two-layer verification strategy, not just more test cases:
   project-wide convention already established in `internal/scheduler/lease_test.go`, confirming this
   pattern (rather than a shared package-wide fake) remains the right default even for a node with heavier
   clock-sensitivity (expiry) than most prior predictor nodes.
+
+## Wave 8 (predictor-10)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| predictor-10 | M | M — matched estimate, but the value was almost entirely in the audit reasoning, not the code volume (the real fix is a one-line diff) | 4 (DAG estimate) | 3 (service.go one-line-condition fix + comment, authorization_test.go rewritten/expanded, doc.go addendum) | 350 (DAG estimate) | one continuous pass, no wall-clock instrumentation in this environment | None — this node's whole point was to audit its own already-merged package, not integrate with any other role's code | None | None | The single real finding (prompt-hash binding skippable by omitting the request field, regardless of what the authorization was actually bound to) was hiding in plain sight in predictor-09's own recorded assumption #530 ("PromptHash binding is checked only when req.PromptHash is non-empty") — the previous wave had already noticed and documented the asymmetry between TurnID (always checked) and PromptHash (conditionally checked) without flagging it as a risk, because at the time it was framed as "mirrors the frozen DTO's own optional field" rather than "a caller can choose not to be bound." This is a distinct kind of gap from a missing test: the behavior was tested (`TestConsumeAuthorization_RejectsWrongPrompt` always supplied a non-empty, wrong PromptHash) but the boundary case that mattered — omitting it entirely against a bound authorization — was never exercised, so green tests coexisted with a real bypass. Recommend that any "field is optional in the DTO" design note attached to a security-relevant binding check be treated as a required adversarial-test prompt for the next audit pass, not just a settled assumption | Reverting the one-line fix and re-running the new adversarial test to confirm it fails without the fix (and passes with it) took under a minute and produced unambiguous, load-bearing proof that the finding was real rather than a defensive-but-unnecessary addition — recommend this "revert, confirm red, restore, confirm green" step as a mandatory part of any audit-node report claiming a fix, not just a nice-to-have, since without it a reviewer has no way to distinguish "found and fixed a real gap" from "added a redundant test around code that was already correct" |
+
+## Wave 8 cross-node observation
+
+- An audit/hardening node (re-verify existing, already-shipped logic rather than build new logic) has a
+  different cost profile than a build node: almost all the effort went into deciding which adversarial
+  scenarios were worth testing and reading the existing code/docs/history closely enough to find the one
+  real asymmetry (prompt-hash binding conditioned on the request, not the row), while the fix itself and
+  most of the new tests were mechanical once the gap was identified. Recommend the DAG continue
+  distinguishing "audit" nodes from "build" nodes explicitly (as predictor-10 already was, via its
+  dedicated `-run Authorization` gate and "re-verified/extended" framing in predictor-09's own scope note)
+  since raw LOC/file-count estimates are a weak signal for this node shape — the real cost driver is
+  reasoning time against existing code and documented assumptions, not new surface area.
+- Confirmed empirically (not just by reading `internal/storage/sqlite/db.go`'s comments) that this
+  package's SQLite WAL + `busy_timeout=5000` configuration makes the `UPDATE ... WHERE consumed_at IS
+  NULL` exactly-once guarantee contention-independent within a wide range: raising the concurrent-replay
+  test from predictor-09's original 8 goroutines to 64 required no code change and no increase in test
+  flakiness. Recommend treating "raise the goroutine count on an existing concurrent test by 8x with zero
+  code change and confirm it still holds" as a cheap, standard hardening-pass technique for any future
+  exactly-once/idempotency audit node, rather than assuming a low-concurrency test that already passes is
+  sufficient evidence at higher contention.
+- A shared `requireDomainError(t, err, wantCode) *domain.Error` test helper (returning the asserted error
+  for the few call sites that need to inspect it further, e.g. checking `Retryable`) replaced repeated
+  `errors.As`/`domain.Error` boilerplate across the rewritten test file — but this introduced a real
+  `golangci-lint` `errcheck` finding at call sites that didn't use the return value as a bare statement.
+  Recommend that any shared test helper returning a value only some callers need should be written with
+  that in mind from the start (e.g. document that bare-statement callers must use `_ = helper(...)`),
+  rather than discovering the lint gap only after golangci-lint runs — it cost one extra edit pass here.

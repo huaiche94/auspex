@@ -89,6 +89,21 @@
 // here; predictor-10 is not started, stubbed, or scaffolded beyond what
 // already had to exist for this interface to compile.
 //
+// Addendum (predictor-10, later wave): the dedicated hardening/re-verification
+// pass named above has now run. It found and fixed one real gap — the
+// prompt-hash binding check used to key off whether the REQUEST supplied a
+// PromptHash rather than whether the authorization ROW was actually issued
+// with one, letting a caller omit PromptHash to bypass prompt binding
+// entirely (see service.go's inline comment on that check, and
+// authorization_test.go's "Section 2: prompt/session binding hardening" for
+// the adversarial test that caught it). Every other adversarial scenario
+// exercised this wave — higher-contention concurrent replay, tight
+// sequential replay loops, replay racing the expiry boundary,
+// nanosecond-adjacent expiry boundaries, whitespace/case/unicode-
+// normalization variants on the binding fields — passed against predictor-09's
+// existing logic unchanged. See docs/implementation/day1/predictor.md's
+// predictor-10 entry for the full account.
+//
 // # Boundary (agents/predictor.md)
 //
 // No provider JSON parsing, Git commands, checkpoint creation, or process

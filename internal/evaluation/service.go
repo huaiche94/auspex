@@ -345,7 +345,22 @@ func (s *Service) ConsumeAuthorization(ctx context.Context, req app.ConsumeAutho
 				Details:   map[string]string{"authorization_id": req.AuthorizationID},
 			}
 		}
-		if req.PromptHash != "" && row.PromptHash != req.PromptHash {
+		//
+		// predictor-10 audit finding: this used to be
+		// `req.PromptHash != "" && row.PromptHash != req.PromptHash`, i.e.
+		// the check was skipped whenever the REQUEST omitted PromptHash,
+		// regardless of what the authorization was actually bound to at
+		// issuance. That let a caller who knows only AuthorizationID and
+		// TurnID (e.g. leaked via logs, or reused across turns in the
+		// same session) bypass prompt binding entirely by simply not
+		// supplying PromptHash — defeating the point of binding an
+		// authorization to a specific prompt. The binding must be
+		// evaluated against what the authorization ROW was issued with,
+		// not whether the caller chose to assert it: skip only when the
+		// authorization itself carries no prompt hash (row.PromptHash ==
+		// ""), which is the one legitimate "not applicable" case (an
+		// authorization deliberately issued without prompt binding).
+		if row.PromptHash != "" && row.PromptHash != req.PromptHash {
 			return &domain.Error{
 				Code:      domain.ErrCodeUnauthorized,
 				Message:   "evaluation: authorization prompt hash does not match",

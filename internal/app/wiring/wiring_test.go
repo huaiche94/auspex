@@ -1,7 +1,9 @@
 package wiring_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -221,5 +223,88 @@ func TestApp_RootCmd_BuildsP0CommandTree(t *testing.T) {
 		if !got[name] {
 			t.Errorf("RootCmd tree is missing top-level command %q", name)
 		}
+	}
+}
+
+// TestApp_RootCmd_HookClaudeIsRealNotStub proves runtime-b04's wiring:
+// `preflight hook claude user-prompt-submit` on the App-built tree is
+// internal/cli.NewHookClaudeCmd's real handler (which renders a
+// provider-compatible JSON response and returns nil), not
+// internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub.
+func TestApp_RootCmd_HookClaudeIsRealNotStub(t *testing.T) {
+	a, err := wiring.New(fullFakeServices())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	root.SetArgs([]string{"hook", "claude", "user-prompt-submit"})
+	root.SetIn(strings.NewReader(`{"session_id":"sess-1","prompt":"do a thing"}`))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("hook claude user-prompt-submit: %v (want the real handler to succeed, not the stub's ErrCodeUnavailable)", err)
+	}
+	if out.Len() == 0 {
+		t.Fatal("hook claude user-prompt-submit produced no stdout output")
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+}
+
+// TestApp_RootCmd_HookClaudeFallsBackToRealClockWhenHooksUnset proves the
+// zero-value HookSupport fallback: a Services value with Hooks left unset
+// still produces a working hook command tree (real domain.Clock/
+// domain.IDGenerator, no persistence) rather than panicking on a nil
+// Clock inside the orchestrator's Normalizer construction.
+func TestApp_RootCmd_HookClaudeFallsBackToRealClockWhenHooksUnset(t *testing.T) {
+	services := fullFakeServices() // Hooks left at zero value
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	root.SetArgs([]string{"hook", "claude", "stop"})
+	root.SetIn(strings.NewReader(`{"session_id":"sess-1","hook_event_name":"Stop","stop_hook_active":false}`))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("hook claude stop with zero-value HookSupport: %v", err)
+	}
+}
+
+// TestApp_RootCmd_HookClaudeMalformedInputStillProducesValidJSON proves
+// "hook fallback remains syntactically valid when Preflight fails"
+// end-to-end through the wired CLI tree, not just at the orchestrator
+// unit level (internal/orchestrator/hooks_test.go already covers the
+// orchestrator function directly) — malformed stdin on
+// user-prompt-submit must still yield a valid JSON allow response, never
+// a raw error dumped to stdout.
+func TestApp_RootCmd_HookClaudeMalformedInputStillProducesValidJSON(t *testing.T) {
+	a, err := wiring.New(fullFakeServices())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	root.SetArgs([]string{"hook", "claude", "user-prompt-submit"})
+	root.SetIn(strings.NewReader(`{ not valid json`))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("hook claude user-prompt-submit with malformed input: %v, want fail-open success", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON on malformed input: %v (output: %q)", jsonErr, out.String())
 	}
 }

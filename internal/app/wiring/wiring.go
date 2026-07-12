@@ -30,7 +30,10 @@ import (
 
 	"github.com/huaiche94/preflight/internal/app"
 	"github.com/huaiche94/preflight/internal/cli"
+	"github.com/huaiche94/preflight/internal/clock"
 	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/preflight/internal/idgen"
+	"github.com/huaiche94/preflight/internal/orchestrator"
 )
 
 // Services carries one implementation of each frozen service interface.
@@ -44,6 +47,29 @@ type Services struct {
 	StateCheckpoint      app.StateCheckpointService
 	GracefulPause        app.GracefulPauseService
 	RepositoryCheckpoint app.RepositoryCheckpointService
+
+	// Hooks configures the Claude Code hook command handlers
+	// (runtime-b04, internal/orchestrator.HookDeps). Unlike the five
+	// service fields above, this is NOT required: a caller that only
+	// needs the other P0 commands (e.g. most tests) may leave it at its
+	// zero value, and RootCmd falls back to real domain.Clock/
+	// domain.IDGenerator implementations with no event persistence or
+	// evaluation wiring (matching HookDeps' own documented nil-safe
+	// defaults — see internal/orchestrator/hooks.go). A caller that wants
+	// hook telemetry actually persisted, or UserPromptSubmit actually
+	// evaluated, sets Hooks explicitly.
+	Hooks HookSupport
+}
+
+// HookSupport bundles the optional collaborators
+// internal/orchestrator.HookDeps needs beyond the five core services
+// above. See Services.Hooks' doc comment for the zero-value fallback
+// behavior.
+type HookSupport struct {
+	Clock     domain.Clock
+	IDs       domain.IDGenerator
+	Persister orchestrator.EventPersister
+	TxRunner  app.TxRunner
 }
 
 // App is the validated, immutable-after-construction service container.
@@ -107,15 +133,46 @@ func (a *App) RepositoryCheckpoint() app.RepositoryCheckpointService {
 }
 
 // RootCmd builds the Preflight CLI command tree for this container. This
-// is the seam between the wiring layer and internal/cli: as of
-// runtime-b02 every handler below `preflight version` is still
-// runtime-b01's honest ErrCodeUnavailable stub, so the container's
-// services are not yet threaded into individual handlers — runtime-b03+
-// replaces those stubs by passing the relevant service into each command
-// constructor, and this method is where that threading starts. Callers
-// that want the CLI wired to *this* App must obtain the tree here rather
-// than calling cli.NewRootCmd directly, so the b03+ change is invisible
-// to them.
+// is the seam between the wiring layer and internal/cli: runtime-b02
+// started from cli.NewRootCmd()'s all-stub tree; runtime-b04 (this
+// change) is the first node to actually thread a service into a command
+// constructor — the `hook claude ...` subtree is now replaced with
+// internal/cli.NewHookClaudeCmd's real handlers, wired against an
+// internal/orchestrator.HookDeps built from a.services.Hooks (falling
+// back to real domain.Clock/domain.IDGenerator implementations when the
+// caller left HookSupport at its zero value — see Services.Hooks' doc
+// comment). Every other P0 command remains cli.NewRootCmd's stub as of
+// this node; later nodes (runtime-b05, b08, ...) replace them the same
+// way. Callers that want the CLI wired to *this* App must obtain the tree
+// here rather than calling cli.NewRootCmd directly, so this replacement
+// is invisible to them.
 func (a *App) RootCmd() *cobra.Command {
-	return cli.NewRootCmd()
+	root := cli.NewRootCmd()
+
+	hookDeps := orchestrator.HookDeps{
+		Clock:      a.services.Hooks.Clock,
+		IDs:        a.services.Hooks.IDs,
+		Persister:  a.services.Hooks.Persister,
+		TxRunner:   a.services.Hooks.TxRunner,
+		Evaluation: a.services.Evaluation,
+	}
+	if hookDeps.Clock == nil {
+		hookDeps.Clock = clock.New()
+	}
+	if hookDeps.IDs == nil {
+		hookDeps.IDs = idgen.New()
+	}
+
+	for _, sub := range root.Commands() {
+		if sub.Name() != "hook" {
+			continue
+		}
+		root.RemoveCommand(sub)
+		newHook := &cobra.Command{Use: "hook", Short: sub.Short}
+		newHook.AddCommand(cli.NewHookClaudeCmd(hookDeps))
+		root.AddCommand(newHook)
+		break
+	}
+
+	return root
 }

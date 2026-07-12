@@ -90,10 +90,9 @@ func TestStatus_ProgressTreeErrorDegradesNotAborts(t *testing.T) {
 // --- Doctor -----------------------------------------------------------------
 
 type fakeDB struct {
-	sqlDB       *sql.DB
-	version     int
-	versionErr  error
-	unreachable bool
+	sqlDB      *sql.DB
+	version    int
+	versionErr error
 }
 
 func (f *fakeDB) Conn() *sql.DB { return f.sqlDB }
@@ -138,7 +137,7 @@ func TestDoctor_DBReachableAndMigrated_OK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	migrations, err := sqlite.AllMigrations()
 	if err != nil {

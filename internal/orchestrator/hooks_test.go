@@ -192,7 +192,7 @@ func TestHookHandlers_UserPromptSubmit_NeverSeesRawPromptText(t *testing.T) {
 		t.Errorf("PromptHash = %q (len %d), want a 64-char hex digest", capturedHash, len(capturedHash))
 	}
 	for _, r := range capturedHash {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			t.Fatalf("PromptHash %q contains a non-hex character %q — looks like raw text leaked", capturedHash, r)
 		}
 	}

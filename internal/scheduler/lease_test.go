@@ -3,6 +3,7 @@ package scheduler_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -583,7 +584,7 @@ func TestLease_ScheduleRejectsDuplicatePauseAndKind(t *testing.T) {
 		t.Fatal("expected an error scheduling a duplicate (pause_id, job_kind)")
 	}
 	var derr *domain.Error
-	if !asDomainError(err, &derr) {
+	if !errors.As(err, &derr) {
 		t.Fatalf("got err %v (%T), want *domain.Error", err, err)
 	}
 	if derr.Code != domain.ErrCodeConflict {
@@ -622,7 +623,7 @@ func TestLease_GetUnknownJobFailsNotFound(t *testing.T) {
 	store, _ := newStore(t, clock)
 	_, err := store.Get(context.Background(), "does-not-exist")
 	var derr *domain.Error
-	if !asDomainError(err, &derr) {
+	if !errors.As(err, &derr) {
 		t.Fatalf("got err %v, want *domain.Error", err)
 	}
 	if derr.Code != domain.ErrCodeNotFound {
@@ -635,21 +636,12 @@ func TestLease_GetUnknownJobFailsNotFound(t *testing.T) {
 func assertConflict(t *testing.T, err error) {
 	t.Helper()
 	var derr *domain.Error
-	if !asDomainError(err, &derr) {
+	if !errors.As(err, &derr) {
 		t.Fatalf("got err %v (%T), want *domain.Error", err, err)
 	}
 	if derr.Code != domain.ErrCodeConflict {
 		t.Fatalf("Code = %q, want %q", derr.Code, domain.ErrCodeConflict)
 	}
-}
-
-func asDomainError(err error, target **domain.Error) bool {
-	de, ok := err.(*domain.Error)
-	if !ok {
-		return false
-	}
-	*target = de
-	return true
 }
 
 // Compile-time sanity: *sql.DB (as returned by sqlite.DB.Conn()) satisfies

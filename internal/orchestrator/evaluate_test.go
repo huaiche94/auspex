@@ -152,7 +152,7 @@ func TestEvaluate_EvaluateTurnErrorPropagatesFailClosed(t *testing.T) {
 		},
 	}
 	_, err := orchestrator.Evaluate(context.Background(), orchestrator.Deps{Evaluation: evalSvc}, baseRequest())
-	if err != wantErr {
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the exact EvaluateTurn error propagated", err)
 	}
 }
@@ -168,7 +168,7 @@ func TestEvaluate_DecideErrorPropagatesFailClosed(t *testing.T) {
 		},
 	}
 	_, err := orchestrator.Evaluate(context.Background(), orchestrator.Deps{Evaluation: evalSvc}, baseRequest())
-	if err != wantErr {
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the exact Decide error propagated", err)
 	}
 }

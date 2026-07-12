@@ -93,7 +93,7 @@ func TestCheckpointCreate_StateFailureNeverCallsRepository(t *testing.T) {
 		RepositoryCheckpoint: repoSvc,
 	}, baseCheckpointRequest())
 
-	if err != wantErr {
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the exact StateCheckpoint.Create error propagated", err)
 	}
 	if repositoryCalled {
@@ -132,7 +132,7 @@ func TestCheckpointCreate_RepositoryFailurePropagatesWithStateAlreadyDone(t *tes
 		RepositoryCheckpoint: repoSvc,
 	}, baseCheckpointRequest())
 
-	if err != wantErr {
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the exact RepositoryCheckpoint.Create error propagated", err)
 	}
 	if !stateCreated {

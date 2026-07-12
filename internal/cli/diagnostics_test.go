@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/huaiche94/preflight/internal/app"
@@ -27,10 +28,7 @@ func TestStatusCmd_RequiresSessionIDFlag(t *testing.T) {
 		t.Fatal("expected an error when --session-id is omitted")
 	}
 	var derr *domain.Error
-	if de, ok := err.(*domain.Error); ok {
-		derr = de
-	}
-	if derr == nil {
+	if !errors.As(err, &derr) {
 		t.Fatalf("err = %T (%v), want *domain.Error", err, err)
 	}
 	if derr.Code != domain.ErrCodeValidation {

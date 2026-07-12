@@ -173,9 +173,12 @@ type UserPromptSubmitResult struct {
 func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (UserPromptSubmitResult, error) {
 	parsed, err := claudehooks.ParseUserPromptSubmit(stdin)
 	if err != nil {
+		// fail-open: malformed hook input falls back to the safe allow
+		// response rather than propagating the parse error.
+		//nolint:nilerr // deliberate fail-open, see the function doc comment above.
 		return UserPromptSubmitResult{
 			Response: claudehooks.UserPromptSubmitResponse{Decision: claudehooks.HookDecisionAllow},
-		}, nil //nolint:nilerr // fail-open: malformed hook input falls back to the safe allow response.
+		}, nil
 	}
 
 	observedAt := deps.Clock.Now()
@@ -204,12 +207,14 @@ func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (U
 		// reason to block the user's prompt (ADD §17.5: "predictor error
 		// -> fallback heuristic"); this handler's fallback is the plain
 		// allow response already set above.
+		//nolint:nilerr // deliberate fail-open, see the function doc comment above.
 		return result, nil
 	}
 	result.Evaluated = true
 
 	decision, err := deps.Evaluation.Decide(ctx, app.DecideRequest{EvaluationID: eval.ID})
 	if err != nil {
+		//nolint:nilerr // deliberate fail-open, see the function doc comment above.
 		return result, nil
 	}
 

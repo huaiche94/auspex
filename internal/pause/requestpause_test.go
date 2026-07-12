@@ -239,3 +239,16 @@ func (f *fakePauseStore) Insert(ctx context.Context, rec PauseRecord) error {
 	}
 	return f.insertFunc(ctx, rec)
 }
+
+// GetByID/UpdateStatus are not exercised by this package's own
+// RequestPause-focused tests (see lifecycle_test.go for Cancel/Resume
+// coverage against a real MemStore instead) — minimal stubs keep
+// fakePauseStore satisfying the full PauseStore interface without pulling
+// in unused configurability this file's tests don't need.
+func (f *fakePauseStore) GetByID(context.Context, domain.PauseID) (PauseRecord, bool, error) {
+	return PauseRecord{}, false, nil
+}
+
+func (f *fakePauseStore) UpdateStatus(context.Context, domain.PauseID, domain.PauseStatus) error {
+	return nil
+}

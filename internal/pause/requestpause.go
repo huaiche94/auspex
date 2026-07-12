@@ -73,6 +73,24 @@ type PauseStore interface {
 	// across processes is a real SQLite-backed store's concern, deferred
 	// to runtime-a05 per the DAG note).
 	Insert(ctx context.Context, rec PauseRecord) error
+	// GetByID returns the pause record identified by id, regardless of
+	// whether it is terminal (unlike FindActiveByKey, which deliberately
+	// hides terminal records so a fresh RequestPause can create a new one
+	// for the same key). Callers that already have a concrete PauseID
+	// (e.g. runtime-b07's `pause cancel`/`resume` CLI commands, which take
+	// a --pause-id flag rather than re-deriving a PauseKey) need the
+	// record regardless of its current lifecycle state. found is false if
+	// no record with this ID exists at all.
+	GetByID(ctx context.Context, id domain.PauseID) (rec PauseRecord, found bool, err error)
+	// UpdateStatus durably transitions an existing record's Status field.
+	// Callers are expected to have already validated the transition via
+	// pause.Apply before calling this — UpdateStatus itself performs no
+	// state-machine validation, it only persists whatever status the
+	// caller supplies (mirrors SetStatus's existing test-only convenience,
+	// promoted here to the frozen interface so a real caller — not just a
+	// test — can drive a lifecycle transition through the same store
+	// RequestPause/Persist already use).
+	UpdateStatus(ctx context.Context, id domain.PauseID, status domain.PauseStatus) error
 }
 
 // RequestPauseRequest is RequestPause's input.
@@ -253,4 +271,30 @@ func (m *MemStore) SetStatus(key PauseKey, status domain.PauseStatus) {
 		rec.Status = status
 		m.records[key] = rec
 	}
+}
+
+// GetByID implements PauseStore.GetByID.
+func (m *MemStore) GetByID(_ context.Context, id domain.PauseID) (PauseRecord, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, rec, ok := m.findByID(id)
+	return rec, ok, nil
+}
+
+// UpdateStatus implements PauseStore.UpdateStatus.
+func (m *MemStore) UpdateStatus(_ context.Context, id domain.PauseID, status domain.PauseStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key, rec, ok := m.findByID(id)
+	if !ok {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: UpdateStatus: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+	rec.Status = status
+	m.records[key] = rec
+	return nil
 }

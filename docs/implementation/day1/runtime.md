@@ -1,5 +1,12 @@
 # runtime — Progress Artifact
 
+> **Wave 4 sections appended below the Wave 3 node log** — see "Wave 4"
+> heading. Wave 4 adds `runtime-a01` (Part A's migration range 0050-0059,
+> this role's first Part A node) and `runtime-b02` (app wiring), and
+> includes one **cross-role change request to `foundation`** (stale exact
+> count/version assertions in `internal/storage/sqlite/migrate_test.go`)
+> that the merge integrator should read before merging this branch.
+
 This is `runtime`'s first progress artifact. Per `agents/runtime.md`, this
 role consolidates two internal sub-components — **Part A** (Graceful
 Pause, Safe Points, Durable Scheduler) and **Part B** (Application
@@ -163,4 +170,128 @@ assumptions:
     foundation's established pattern, just the same pattern applied at a
     package boundary that didn't exist yet when foundation-01 was written."
 blockers: []
+```
+
+---
+
+# Wave 4
+
+Branch: `day1/runtime`, synced from `main` (Wave 3 integration state,
+`664436d`) via fast-forward before any Wave 4 work — required so
+foundation-06's migration engine + 0001-0004 core-schema files exist on
+this branch. Assigned nodes, executed sequentially: `runtime-a01`
+(Part A migrations 0050-0059), then `runtime-b02` (app wiring).
+
+## runtime-a01 — Graceful Pause/Scheduler core migrations
+
+### What shipped
+
+- `internal/storage/sqlite/migrations/0050_pause_records.sql` —
+  `pause_records` + `idx_pause_status` (ADD §12.2/§12.3).
+- `internal/storage/sqlite/migrations/0051_wake_jobs.sql` — `wake_jobs` +
+  `idx_wake_jobs_due`, including `UNIQUE(pause_id, job_kind)` (the
+  schema-level exactly-once-wake anchor) and the column set the ADD §12.4
+  lease query requires (`status`, `run_after`, `lease_owner`,
+  `lease_expires_at`, `attempts`, `max_attempts`).
+- `internal/storage/sqlite/migrations/0052_resume_attempts.sql` —
+  `resume_attempts` audit-trail table.
+- `internal/storage/sqlite/migrations_0050_pause_test.go` — this range's
+  tests (all named `TestMigration0050_*` so the DAG's validation command
+  `go test ./internal/storage/sqlite/... -run Migration0050` selects
+  exactly these): embedded-file loading, apply-from-empty (tables +
+  §12.3 indexes present), idempotent re-apply, FK enforcement into
+  foundation's `tasks`/`provider_sessions` (reject unknown ids; full
+  repository → worktree → task → pause cascade), `runway_forecast_id`
+  NOT NULL, wake-job cascade + unique-kind, resume-attempt
+  survives-wake-job (SET NULL) but not pause (CASCADE).
+
+### Documented deviation from ADD §12.2 canonical FKs (needs contract-integrator's eye; mirrors the 0004_tasks.sql precedent)
+
+ADD §12.2 declares `pause_records.turn_id/runway_forecast_id/
+state_checkpoint_id/repository_checkpoint_id` as `REFERENCES` into
+`turns` (claude-provider 0010-0019), `runway_forecasts` (predictor
+0040-0049), `state_checkpoints` (checkpoint 0020-0029), and
+`repository_checkpoints` (checkpoint 0030-0039). None of those migration
+files exist yet. SQLite accepts forward FK declarations at CREATE time,
+but with `PRAGMA foreign_keys = ON` it resolves *every* parent table on
+*any* DML touching the child — **including cascade processing initiated
+from `repositories`/`worktrees`/`tasks` deletes**. Empirically (first
+draft of this node used the canonical FKs): foundation's own
+`TestCoreMigrations_ForeignKeys_*` tests immediately failed with
+`no such table: main.repository_checkpoints` on a plain
+`DELETE FROM repositories`, i.e. the forward FKs would have poisoned
+unrelated DML repo-wide and hard-blocked `runtime-a02` (pause state
+machine, DAG-scheduled against runtime-a01 alone) on three other roles'
+ranges.
+
+Resolution: these four columns ship as plain `TEXT` pointers, exactly the
+precedent foundation-06 set for `tasks.active_node_id` → `progress_nodes`
+in `0004_tasks.sql`. FKs that *can* be enforced today (into `tasks`,
+`provider_sessions`, and within this range `wake_jobs`/`resume_attempts` →
+`pause_records`) are declared and tested. **Proposal to
+contract-integrator:** once 0010-0049 have all landed, either (a) accept
+the plain-pointer precedent permanently (consistent with 0004), or (b)
+assign runtime a follow-up migration in its own range (0053+) that
+recreates `pause_records` with the canonical FK set via SQLite's
+copy-drop-rename pattern. Either way the decision belongs above this role;
+this node did not silently pick (a) forever — it picked the only option
+that keeps the repo's DML working today, and flagged the choice here.
+
+### CHANGE REQUEST → foundation (Constitution §4.4 — not edited by runtime)
+
+Three assertions in `internal/storage/sqlite/migrate_test.go`
+(foundation's file) are over-constrained and fail the moment *any* later
+role's migration range lands — which contradicts `migrate.go`'s own
+design comment ("later roles' migrations … are picked up automatically
+once present, with no change needed here"):
+
+1. `TestAllMigrations_LoadsCoreSchemaFiles` asserts
+   `len(migrations) == 4` — should filter to foundation's own 0000-0009
+   range (the way `TestMigration0050_AllMigrationsIncludesPauseRange`
+   filters to 0050-0059).
+2. `TestCoreMigrations_FromEmptyDatabase` asserts `CurrentVersion == 4` —
+   should assert `>= 4` or derive the expectation from `AllMigrations()`.
+3. `TestCoreMigrations_ReopenFromFile_AppliesOnce` asserts
+   `CurrentVersion == 4` — same fix.
+
+Until foundation applies this mechanical fix, `go test
+./internal/storage/sqlite/...` (full package, no `-run` filter) reports
+these three failures on this branch. **No runtime-owned test fails**, and
+the failures are assertion staleness, not behavior: foundation's
+FK/cascade/unique behavioral tests all still pass against the combined
+0001-0052 schema. Per Constitution §4.4 runtime did not edit the file and
+did not wait idle; flagging here for foundation + the merge integrator.
+
+### Node log
+
+```yaml
+node: runtime-a01
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0050_pause_records.sql
+  - internal/storage/sqlite/migrations/0051_wake_jobs.sql
+  - internal/storage/sqlite/migrations/0052_resume_attempts.sql
+  - internal/storage/sqlite/migrations_0050_pause_test.go
+validation:
+  - "go test ./internal/storage/sqlite/... -run Migration0050   # all 6 PASS"
+  - "gofmt -l internal/storage/sqlite   # empty"
+next_action: runtime-a02 (pause state machine) — NOT this wave, per explicit scope
+assumptions:
+  - "Plain TEXT (no FK) for pause_records' four references into
+    not-yet-landed migration ranges — see the deviation section above;
+    decision (a)-vs-(b) escalated to contract-integrator."
+  - "migrations_0050_pause_test.go lives in internal/storage/sqlite/
+    (foundation's directory) because the DAG's validation command
+    requires tests selectable there and migration SQL is not testable
+    from any runtime-owned Go package; the file is named with this
+    range's 0050 prefix and contains only runtime-range tests. If
+    contract-integrator prefers a different ownership carve-out
+    (e.g. adding the filename to runtime's exclusive paths), that is a
+    one-line agents/runtime.md change — requested here rather than
+    self-granted."
+blockers:
+  - "foundation's migrate_test.go stale exact-count assertions (see
+    CHANGE REQUEST above) — does not block this node's validation
+    command, but blocks a fully green `go test ./...` until foundation's
+    3-line fix lands."
 ```

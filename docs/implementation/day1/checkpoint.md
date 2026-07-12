@@ -26,7 +26,7 @@ validation:
   - "go test ./internal/gitx/... -run 'Porcelain|Fingerprint|Resolver' -v       # PASS, all subtests green (Fingerprint has no matches yet — that's checkpoint-b03 scope)"
   - "go test ./internal/gitx/... -race -v                                       # PASS"
   - "go build ./... && go vet ./...                                             # whole-repo build/vet unaffected"
-commit: <FILL_IN_AT_COMMIT_TIME>
+commit: 9b222d0
 next_action: checkpoint-a01 and checkpoint-b01 (both blocked on foundation-06, not started this wave)
 assumptions:
   - "Status() pins --branch --untracked-files=all --find-renames on top of --porcelain=v2 -z so output is deterministic regardless of the caller's git config (status.renames, status.showUntrackedFiles). This is additive to the exact flag string in the DAG's validation command and does not change the parser's contract."

@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -81,8 +82,8 @@ func TestParseStop(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				derr, ok := err.(*domain.Error)
-				if !ok || derr.Code != domain.ErrCodeValidation {
+				var derr *domain.Error
+				if !errors.As(err, &derr) || derr.Code != domain.ErrCodeValidation {
 					t.Fatalf("expected ErrCodeValidation, got %v", err)
 				}
 				return
@@ -160,8 +161,8 @@ func TestParseStopFailure(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				derr, ok := err.(*domain.Error)
-				if !ok || derr.Code != domain.ErrCodeValidation {
+				var derr *domain.Error
+				if !errors.As(err, &derr) || derr.Code != domain.ErrCodeValidation {
 					t.Fatalf("expected ErrCodeValidation, got %v", err)
 				}
 				return

@@ -164,7 +164,7 @@ func assertNoRawText(t *testing.T, v reflect.Value, needle string) {
 		if strings.Contains(v.String(), needle) {
 			t.Fatalf("field of kind string contains raw prompt text: %q", v.String())
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if !v.IsNil() {
 			assertNoRawText(t, v.Elem(), needle)
 		}

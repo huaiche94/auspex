@@ -148,3 +148,22 @@ assumptions:
 blockers: []
 ```
 
+---
+
+## Corrective note (post-Wave-2 lint pass)
+
+A cross-role integration validation pass (golangci-lint run against the full
+merged Wave 2 tree) surfaced 4 code issues plus 1 documentation whitespace
+issue in files owned by this role. A corrective commit was made to fix these
+findings in place:
+
+- `internal/hooks/claude/stop_test.go` (lines 84, 163): replaced direct
+  `err.(*domain.Error)` type assertions with `errors.As` (errorlint).
+- `internal/hooks/claude/userpromptsubmit_test.go` (line 167): replaced the
+  deprecated `reflect.Ptr` constant with `reflect.Pointer` (govet inline check).
+- This file (formerly line 150): removed a trailing blank line at EOF
+  (`git diff --check` whitespace finding).
+
+This was a corrective fix to existing Wave 2 deliverables, not a new DAG node.
+No test behavior/intent changed; `gofmt`, `go build`, `go vet`, and
+`go test ./internal/hooks/claude/... -race` all pass after the fix.

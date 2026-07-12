@@ -9,12 +9,13 @@ gracefully pause, or block that turn.
 It answers a different question than checkpoint/resume/memory tools do:
 not "how do we continue?" but **"should we even start this turn?"**
 
-> **Project status: Day-1 vertical slice in progress (Wave 7 of 9, integrated).**
-> Bootstrap (Stage-0 contract freeze) and Waves 1-7 are integrated on
-> `main`. `qa` began its Stage-4 work this wave (`qa-05`'s leakage
-> scanner), which surfaced one real, unfixed P1 finding — see the
-> Wave 7 integration commit for detail. Wave 8 is being re-derived from
-> the DAG's current dependency edges. See the
+> **Project status: Day-1 vertical slice in progress (Wave 8 of 9, integrated).**
+> Bootstrap (Stage-0 contract freeze) and Waves 1-8 are integrated on
+> `main`. Wave 7's P1 leakage finding (tracked-file-diff secrets not
+> redacted) is fixed and independently confirmed. `qa-04` surfaced one
+> new, non-blocking P1 (no production wiring yet connects provider events
+> to Progress Tree node completion — routed for a future wave). Wave 9
+> is being re-derived from the DAG's current dependency edges. See the
 > [Day-1 wave roadmap](#day-1-wave-roadmap) below and
 > `docs/implementation/day1/EXECUTION_DAG.md` for task-level status.
 > Milestone gating per `Preflight_ADD.md` §31 still applies.
@@ -71,8 +72,8 @@ planning) and must respect the DAG's stage and dependency order.
 | Wave 5 | claude-provider-07 · checkpoint-a02/a03/b04 · predictor-07 · runtime-a02/a06/b03/b04/b05/b08 | ✅ Integrated (`dabaa9f`) — the DAG's real unlocked frontier after Wave 4 was larger than originally guessed (six runtime nodes unlocked at once, no `predictor-05d` ever existed); `b03`/`b04`/`b05` still run against fakes for `predictor-08`/`predictor-09`/`checkpoint-a04`, swapped to real implementations at a later integration |
 | Wave 6 | checkpoint-a04/b05/b06 · predictor-08 · runtime-a03/a04/a07 | ✅ Integrated (`f5f0f28`) — checkpoint-a04 (CompleteNode atomic protocol) is now real, with crash-injection and concurrent-completion-race proofs independently re-verified; predictor-08's cold-start "probability: null" invariant independently traced to exactly two gated call sites |
 | Wave 7 | checkpoint-a05/a07/b07 · predictor-09 · runtime-a05/b07 · qa-05 | ✅ Integrated (`25e3d40`) — qa's first Stage-4 node since Wave 3; found one real P1 (secret filtering doesn't cover tracked-file diffs, only untracked-file archives), not fixed here per qa's file-don't-fix boundary, routed to checkpoint |
-| Wave 8 | runtime-a08→a09/a10→a11 · runtime-b06→b09→b10 · checkpoint-a06/a08→a09 · checkpoint-b08→b09 | Planned — re-derived from the DAG once Wave 7 lands |
-| Wave 9 | qa-02/03/04/05/06/07→09 | Planned — E2E demo, leakage scanner, security tests, final P0/P1/P2 report |
+| Wave 8 | checkpoint-a06/a08/b08 · predictor-10 · runtime-a08 · qa-04 | ✅ Integrated (`b5a1937`) — includes a corrective fix extending secret redaction to tracked-file diffs (closing Wave 7's P1), and predictor-10's adversarial audit found and fixed a real authorization prompt-binding bypass |
+| Wave 9 | checkpoint-a09/b09 · predictor-11 · runtime-a09/a10/a11/b06/b09/b10 · qa-02/03/06/07/09 | Planned — re-derived from the DAG once Wave 8 lands; completes **runtime** and **checkpoint**, then qa's E2E demo/security suite and final P0/P1/P2 report |
 | Final | contract-integrator-final (Stage 5) | Planned — `go test ./... -race` + cross-role contradiction review; last gate |
 
 Wave 5 onward is intentionally not fixed in detail — each wave is

@@ -53,6 +53,17 @@ type CaptureOptions struct {
 	MaxUntrackedFileBytes  int64
 	MaxUntrackedTotalBytes int64
 	MaxUntrackedFileCount  int
+	// DisableSecretScan turns off internal/redact's filename/content
+	// secret scan over untracked files (ADD §19.5's "secret scan" default
+	// policy bullet). Deliberately an opt-OUT flag (zero value = false =
+	// scanning ENABLED) rather than an opt-in one, so a caller that never
+	// touches this field still gets the safe default — matching this
+	// package's existing "safe by default, explicit escape hatch" posture
+	// for every other cap in this struct. Expected use: a caller (e.g. a
+	// future admin/debug command) that has already made an informed,
+	// explicit decision to accept the leakage risk for a specific
+	// checkpoint, never a default any code path should reach for silently.
+	DisableSecretScan bool
 }
 
 func (o CaptureOptions) withDefaults() CaptureOptions {
@@ -121,7 +132,7 @@ func Capture(ctx context.Context, gitClient *gitx.Client, clock domain.Clock, re
 	}
 
 	archiveResult, err := buildUntrackedArchive(ctx, gitClient, initial.WorktreeRoot,
-		opts.MaxUntrackedFileBytes, opts.MaxUntrackedTotalBytes, opts.MaxUntrackedFileCount)
+		opts.MaxUntrackedFileBytes, opts.MaxUntrackedTotalBytes, opts.MaxUntrackedFileCount, !opts.DisableSecretScan)
 	if err != nil {
 		return CaptureResult{}, fmt.Errorf("repocheckpoint: untracked archive: %w", err)
 	}

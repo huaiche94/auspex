@@ -1,0 +1,63 @@
+{
+  "schema_version": "preflight.state-checkpoint.v1",
+  "checkpoint_id": "0198f5d8-9dd1-7f80-90f3-2f7a12345678",
+  "task_id": "0198f5d8-2e36-7b75-8af3-8f09fd0f7081",
+  "created_at": "2026-07-12T18:00:00Z",
+  "progress_tree": {
+    "version": 17,
+    "active_node_id": "section-20",
+    "completed_node_ids": [
+      "section-01",
+      "section-02",
+      "section-03"
+    ],
+    "paused_node_ids": []
+  },
+  "artifacts": [
+    {
+      "id": "artifact-add",
+      "uri": "file:Preflight_ADD.md",
+      "media_type": "text/markdown",
+      "bytes": 128442,
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+      "validation_status": "passed"
+    }
+  ],
+  "repository": {
+    "repository_id": "0198f5d8-0000-7000-8000-000000000001",
+    "worktree_id": "0198f5d8-0000-7000-8000-000000000002",
+    "git_head": "f1a83bc123",
+    "branch": "docs/preflight-add",
+    "index_diff_hash": "sha256:index-diff-hash",
+    "worktree_diff_hash": "sha256:worktree-diff-hash"
+  },
+  "provider": {
+    "name": "codex",
+    "session_id": "thr_123",
+    "turn_id": "turn_456",
+    "invocation_mode": "managed_app_server"
+  },
+  "quota": [
+    {
+      "limit_id": "codex",
+      "used_percent": 87.2,
+      "window_seconds": 18000,
+      "resets_at": "2026-07-12T22:14:03Z"
+    }
+  ],
+  "context": {
+    "used_percent": 61.4
+  },
+  "next_action": {
+    "node_id": "section-20",
+    "description": "Continue after subsection 20.8 and run document validation."
+  },
+  "resume": {
+    "strategy_order": [
+      "same_provider_session",
+      "new_session_progress_bootstrap"
+    ],
+    "permission_mode": "default"
+  },
+  "integrity_sha256": "bbd2aeaecc276b0c2c7617e056302db89e3389c1210f5be0389d51662d9db866"
+}

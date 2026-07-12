@@ -615,7 +615,7 @@ validation:
   - "go build ./... -> clean"
   - "go vet ./... -> clean"
   - "golangci-lint run ./... (whole repo) -> 0 issues"
-commit: <recorded after commit, see below>
+commit: 13e05ae
 next_action: none — this was the last node assigned this wave (per task
   instruction: STOP immediately once both nodes are Validated; foundation-07
   is explicitly out of scope, a Wave 4 decision)

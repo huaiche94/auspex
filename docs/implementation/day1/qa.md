@@ -45,6 +45,111 @@
 ## Node log
 
 ```yaml
+node: qa-04
+status: completed
+artifacts:
+  - internal/integrationtest/duplicate_outoforder_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run 'Duplicate|OutOfOrder' -v   # 5/5 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./... -race   # whole repo, all packages PASS, zero regressions"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: <recorded below>
+next_action: none — qa-04 was this wave's full qa assignment; STOP per task instruction; report findings to lead for routing
+assumptions:
+  - "Before writing any test, did a repo-wide investigation (grep for any
+    file importing both internal/telemetry/claude and internal/progress,
+    or pkg/protocol/v1 and internal/progress; grep for
+    adapter/bridge/consumer/dispatcher; read internal/orchestrator/hooks.go,
+    internal/app/wiring/wiring.go, internal/app/ports.go in full) to
+    confirm exactly how (if at all) a persisted claude-provider v1.Event
+    currently drives internal/progress.CompleteNode.Run in production
+    code. Finding: it does not, anywhere. See the findings section below
+    and this file's own package doc comment
+    (internal/integrationtest/duplicate_outoforder_test.go) for the full
+    evidence trail. This determined the test design: real components
+    driven together as far as the frozen contract (v1.Event,
+    CompleteNodeInput, CompleteNodeRequest) actually allows, plus a
+    clearly-labeled TEST-ONLY `deriveCompleteNodeInput` glue function
+    standing in for the missing production adapter — never added as
+    production code, per agents/qa.md's 'do not alter feature production
+    code' rule."
+  - "Scenario 1 (duplicate provider event, end-to-end): real
+    claudehooks.ParseStop + claudetelemetry.Normalizer.NormalizeStop against
+    the real testdata/provider-events/claude/stop/normal.json fixture,
+    persisted via the real claudetelemetry.EventStore into a REAL on-disk
+    (temp-file, not :memory:) SQLite database that also holds
+    checkpoint-a07's progress_nodes/node_completions/state_checkpoints
+    tables (the same DB a real process would use) — not two separate
+    in-memory fakes. Verified EventStore-layer dedup
+    (CountByIdempotencyKey==1, GetByEventID unchanged, the redelivered
+    event's own EventID never separately stored) AND, using the derived
+    CompleteNodeInput, that a second completion attempt keyed off the same
+    real event's IdempotencyKey replays (Replayed=true, same checkpoint ID)
+    rather than erroring or double-completing. A second test
+    (DifferentChannel_DifferentKey_SameEvidence_Replayed) repeats this
+    using a real StopFailure fixture and an independently-chosen second
+    key, exercising checkpoint-a07's evidence-digest-based (not
+    key-based) duplicate detection specifically."
+  - "Scenario 2 (out-of-order delivery, end-to-end): a REAL Stop fixture
+    event, parsed/normalized/persisted through the real pipeline exactly as
+    internal/orchestrator/hooks.go's HandleStop does in production, used
+    (via the same derive helper) as the trigger for a CHILD node's
+    completion while its PARENT node was deliberately left at `pending`
+    (never transitioned to in_progress) — modeling the parent's own
+    in-progress signal having been delayed/lost relative to the child's
+    completion signal. Confirmed: rejection with domain.ErrCodeConflict,
+    Retryable=true (matching checkpoint-a07's documented semantics exactly,
+    not merely 'some error'); the real persisted provider event remains
+    durably stored despite the rejected completion (proving the two
+    integrity boundaries — event persistence and node completion — are
+    correctly independent); the child node remains in_progress, not
+    corrupted; and a retry of the identical input succeeds once the parent
+    is (realistically) moved to in_progress, proving the rejection was
+    genuinely about ordering and not some other defect in the derived
+    input. A companion test independently verifies the EventStore layer's
+    own documented ordering-agnostic behavior (store.go: 'no mutable
+    current-state row... persists correctly either way') by persisting a
+    real turn.completed event before a real turn.started event and
+    confirming both land as independent, correctly stored rows — proving
+    the storage layer's permissiveness and CompleteNode's strictness about
+    ordering are two deliberately different, non-contradictory behaviors
+    at two different layers."
+  - "All fixtures are real: testdata/provider-events/claude/{stop,
+    stopfailure,userpromptsubmit}/*.json, read directly off disk and run
+    through the real claudehooks.Parse*/claudetelemetry.Normalizer
+    pipeline — no hand-built v1.Event values anywhere in this file except
+    where explicitly and separately confirming the storage layer's
+    ordering-agnostic contract."
+  - "Test-double patterns (fixedClock/seqIDs-style, openTestDB, seedTask,
+    newDocumentNode, newCompleteNodeHarness, moveNodeToInProgress) are
+    small duplicates of the exact same helpers internal/progress's own
+    test suite and qa-05's leakage_scanner_test.go already established —
+    both are unexported to their own test packages, so re-declaring the
+    same minimal shape here (prefixed qa04* to avoid collisions with
+    qa-05's own same-named helpers in this package) follows the same
+    precedent those files' own doc comments already documented for this
+    kind of cross-file duplication."
+blockers: []
+findings:
+  - severity: P1
+    title: "No production code path connects a persisted claude-provider v1.Event to internal/progress.CompleteNode.Run — the two components qa-04 was asked to integrate-test are wired together only inside this test file's own TEST-ONLY glue, not in production"
+    file: "internal/orchestrator/hooks.go (HandleStop/HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize+persist and stop there — HandleStop's own doc comment: 'Full Progress Tree/Git/artifact reconciliation... is outcome labeling depth beyond this node's scope'); internal/telemetry/claude/normalizer.go (no producer ever assigns Event.TaskID or Event.ProgressNodeID — every event's envelope() helper sets only SessionID); internal/progress/complete_node.go's CompleteNodeInput and internal/app/ports.go's CompleteNodeRequest (both frozen to exactly {NodeID, IdempotencyKey, Artifacts[, RepositoryCheckpointID]} — no v1.Event/EventID/EventType field anywhere); internal/progress/node_store.go's Node.ProviderNodeID field (stored and read back, confirmed via grep, but no code anywhere looks a node up BY ProviderNodeID); internal/app/wiring/wiring.go (wires no bridge between internal/telemetry/claude and internal/progress; Services.ProgressTree is still just the bare frozen interface, unimplemented, per that package's own doc comment)."
+    reproduction: "go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v — parses+normalizes a real Stop fixture and asserts ev.TaskID==\"\" and ev.ProgressNodeID==\"\" (both true today); combined with a repo-wide grep (documented in this file's own package doc comment) for any file importing both internal/telemetry/claude and internal/progress (zero matches) or pkg/protocol/v1 and internal/progress (zero matches), and for any adapter/bridge/consumer/dispatcher file (none exist)."
+    expected_invariant: "Preflight_ADD.md's Progress Tree is meant to be driven forward by real provider observations (a provider.turn.completed signal is exactly the kind of real-world event that should be able to trigger a node's completion) — Constitution §6.1 ('Progress Tree is the canonical durable task state... never an agent's own claim of done') implies SOME real signal must be able to drive a real completion, not just a test harness hand-constructing a CompleteNodeInput. Today, nothing does: the event pipeline (claude-provider) and the completion pipeline (checkpoint/progress) are both individually correct and individually well-tested, but there is a genuine missing middle layer between them. This is exactly the kind of integration-only gap qa-04 was chartered to find, per its own task brief ('an event type or field mapping mismatch, a case where claude-provider's real events don't actually carry information checkpoint's ordering-check logic expects')."
+    owning_role: "contract-integrator (a new cross-component port/field is needed on the frozen v1.Event/CompleteNodeRequest contract, or a documented decision that TaskID/ProgressNodeID resolution happens via a different, not-yet-built lookup path — Constitution §4.2 reserves pkg/protocol/v1/** and internal/app/ports.go exclusively to this role) in coordination with claude-provider (would need to populate TaskID/ProgressNodeID on produced events once a resolution mechanism exists) and checkpoint (whichever role builds the actual consumer/adapter). Not routed as P0: every individual component this gap spans is itself correct and passes its own tests, no existing invariant is violated, and Day-1's frozen DAG never assigned any node the explicit job of building this adapter this wave — it is a forward-looking integration gap this node exists to surface, not a regression."
+  - severity: P2
+    title: "checkpoint-a07's duplicate/out-of-order semantics hold correctly when driven by REAL claude-provider events end-to-end, not just hand-built CompleteNodeInput values — no defect found in either component's own logic"
+    file: "internal/telemetry/claude/store.go (claude-provider-05); internal/progress/idempotency.go, internal/progress/complete_node.go (checkpoint-a07)"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run 'Duplicate|OutOfOrder' -v (this node's own suite, 5/5 passing) is the closure evidence: TestDuplicateProviderEvent_EndToEnd_StoredOnceAndCompletionReplayed and TestDuplicateProviderEvent_DifferentChannel_DifferentKey_SameEvidence_Replayed prove the duplicate case; TestOutOfOrderDelivery_EndToEnd_ChildCompletionBeforeParentStarted_Rejected and TestOutOfOrderDelivery_EndToEnd_EventStoreAcceptsEitherArrivalOrder prove the out-of-order case, including the retry-succeeds-once-parent-starts positive path and the EventStore-layer/CompleteNode-layer non-contradiction."
+    expected_invariant: "Both upstream nodes' own unit tests already proved their own logic correct in isolation; qa-04's own DAG row exists specifically to prove they remain correct when the actual field flowing between them (a real, deterministically-digested IdempotencyKey derived from a real fixture, not a string literal) is used. Recorded per agents/qa.md's instruction to record 'any findings, even non-blocking ones.'"
+    owning_role: "qa (this node) — informational; no action needed from claude-provider or checkpoint for this specific behavior."
+```
+
+```yaml
 node: qa-05
 status: completed
 artifacts:
@@ -342,4 +447,85 @@ blockers:
     progress artifact rather than making the edit itself) - this is a
     re-flag of the same gap foundation-09 already surfaced in its own
     progress artifact, not a new discovery."
+```
+
+```yaml
+node: qa-05-followup
+status: completed (test updated; not yet passable on this branch — see note)
+artifacts:
+  - internal/integrationtest/leakage_scanner_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -v   # 9/10 PASS, 1 EXPECTED FAIL (see below)"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: <recorded below>
+next_action: none — this is a corrective task, not a new DAG node; STOP once committed. Re-validation of the updated test to an actual PASS happens once the lead merges day1/checkpoint into day1/qa; not this node's job to force that merge.
+assumptions:
+  - "checkpoint independently fixed this wave's qa-05 P1 finding
+    ('Secret-shaped content in a TRACKED file's staged/unstaged diff is
+    never filtered by internal/redact') via day1/checkpoint commit
+    f981bde ('checkpoint: extend secret scanning to tracked-file diff
+    content (fixes qa-05 P1 finding)'), adding
+    internal/repocheckpoint/patchredact.go and wiring it into Capture
+    (capture.go) right after the staged/unstaged DiffPatch calls, before
+    archiving. Verified this independently by reading both files via
+    `git show day1/checkpoint:internal/repocheckpoint/patchredact.go` and
+    `git show day1/checkpoint:internal/repocheckpoint/capture.go`
+    read-only (day1/checkpoint was never merged or checked out into this
+    worktree; internal/repocheckpoint/** remains checkpoint's exclusive
+    path, untouched here) — did not just trust the lead's claim."
+  - "patchredact.go's redactPatchSecrets scans only '+'/'-'-prefixed line
+    bodies of the staged/unstaged patch (explicitly excluding '+++'/'---'
+    file-header lines, '@@ ... @@' hunk headers, and all context lines)
+    using internal/redact.ScanContent, and on a match replaces the ENTIRE
+    line body with a fixed, non-echoing placeholder constant:
+    `redactedLinePlaceholder = \"[REDACTED: secret-shaped content removed
+    by preflight checkpoint capture]\"`. Line prefix byte and trailing
+    terminator are preserved. This was a deliberate redact-in-place
+    design choice (over skip-with-manifest-annotation) specifically so
+    checkpoint-b08's restore-dry-run (`git apply --check`) keeps working
+    against the rest of the patch."
+  - "Renamed TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered
+    to TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered, since the
+    documented gap is no longer an accepted/known gap — it's now a
+    confirmed-fixed invariant this test guards going forward. Flipped the
+    assertion: the test now asserts (a) scanBytesForSecrets finds nothing
+    in staged.patch.gz, (b) the raw secret string is not a verbatim
+    substring of the patch either (belt-and-suspenders vs. the scanner
+    itself), and (c) patchredact.go's exact redaction placeholder string
+    IS present in the patch in the secret's place — a precise positive
+    assertion, not just an absence check, confirming redact-in-place
+    happened as designed rather than e.g. the whole patch/line being
+    dropped some other way. Also added a lightweight assertPatchApplies
+    helper that clones the scratch repo, writes the (decompressed)
+    redacted patch to a file, and runs `git apply --check` against it,
+    confirming redaction did not corrupt the patch's applicability — a
+    sanity check only, not a re-test of checkpoint-b08's own
+    restore-dry-run logic, which remains out of this node's scope."
+  - "This test CANNOT pass on day1/qa alone right now, and that is
+    expected, not a regression: internal/repocheckpoint/patchredact.go
+    does not exist on this branch until the lead integrates
+    day1/checkpoint into day1/qa (or both into main). Ran the full
+    updated test locally to confirm: it fails with exactly 'secret-shaped
+    content leaked into staged.patch.gz unredacted' (the github_token
+    detector still fires, since this branch's Capture has no redaction
+    step yet) — i.e., the new test correctly still detects the
+    old/pre-fix behavior on this branch, and will flip to PASS once
+    checkpoint's fix is actually present. All 9 other tests in
+    internal/integrationtest (the 5 qa-04 duplicate/out-of-order tests
+    plus the other 4 qa-05 leakage-scanner tests) pass unaffected."
+  - "Did not touch internal/repocheckpoint/** or merge day1/checkpoint
+    into day1/qa, per this task's explicit constraint — checkpoint's
+    branch was inspected read-only via `git show
+    day1/checkpoint:<path>` only."
+blockers: []
+findings:
+  - severity: informational
+    title: "qa-05 P1 finding ('secret-shaped content in a TRACKED file's staged/unstaged diff is never filtered') is now fixed upstream by checkpoint (day1/checkpoint@f981bde, internal/repocheckpoint/patchredact.go) — this node's test updated to assert the corrected behavior; re-validated for real once the lead's integration merges day1/checkpoint and day1/qa together."
+    file: "internal/integrationtest/leakage_scanner_test.go (this node); internal/repocheckpoint/patchredact.go, internal/repocheckpoint/capture.go (checkpoint, read-only reference only)"
+    reproduction: "go test ./internal/integrationtest/... -run TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered -v — on day1/qa alone (checkpoint's fix absent) this currently fails as expected with 'secret-shaped content leaked into staged.patch.gz unredacted'; once day1/checkpoint@f981bde is integrated, the same command is expected to PASS, asserting no raw secret survives in staged.patch.gz, checkpoint's exact redaction placeholder string is present instead, and the redacted patch remains git-apply-able."
+    expected_invariant: "Once integrated, no secret-shaped content staged/unstaged into a tracked file survives unredacted into a Repository Checkpoint's patch artifacts, and the redacted patch remains structurally valid (git-apply-able) — closing this wave's qa-05 P1 finding."
+    owning_role: "qa (this node) for the test; checkpoint (already delivered, per f981bde) for the fix; lead for final integration and re-validation."
 ```

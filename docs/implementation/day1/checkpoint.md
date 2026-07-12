@@ -300,3 +300,121 @@ assumptions:
   - "Service.resolveWorktree is an injected callback (WorktreeLocation) rather than this package reaching into foundation's worktrees table directly — internal/repocheckpoint does not own that table and the wave's cross-part-boundary note (agents/checkpoint.md) already establishes that Part B does not reach into other roles' storage directly; the runtime role (or a future checkpoint node) supplies the real resolver."
 blockers: none
 ```
+
+---
+
+## Wave 6
+
+Assigned nodes this wave: `checkpoint-a04` (Part A: CompleteNode atomic
+protocol — the single most consequential node in the whole DAG),
+`checkpoint-b05` (Part B: binary-safe patch generation edge cases),
+`checkpoint-b06` (Part B: untracked file policy secret filters +
+`internal/redact`) — done sequentially with an independent validate+commit
+after each, per explicit wave instruction, with a04 given the fullest
+attention per the DAG's own risk annotation. Pre-step: `git fetch origin &&
+git merge origin/main` — clean fast-forward to `abce1d0` (Wave 5's
+integrated state: predictor/runtime/orchestrator/pause/scheduler work from
+other roles, nothing touching this role's paths); `go test ./...` was green
+immediately after the merge, before any new work started.
+
+### checkpoint-a04: CompleteNode atomic protocol
+
+```yaml
+node: checkpoint-a04
+status: completed
+artifacts:
+  - internal/storage/sqlite/migrations/0023_state_checkpoints.sql  # deferred from a01; state_checkpoints table + idx_state_checkpoints_task_created
+  - internal/storage/sqlite/migrations/0024_node_completions.sql   # NEW: durable idempotency ledger backing ADD §18.12's completion_key contract
+  - internal/storage/sqlite/migrations_checkpoint_a04_test.go      # DDL-level constraint tests for both migrations (checkpoint-owned, foundation's directory, same convention as a01)
+  - internal/statecheckpoint/manifest.go     # Manifest Go type mirroring ADD Appendix B exactly
+  - internal/statecheckpoint/serialize.go    # Digest (SHA-256 over canonical JSON, excludes IntegritySHA256 itself)/Seal/Marshal/Unmarshal/Verify
+  - internal/statecheckpoint/build.go        # Build(): assembles an unsealed Manifest from a caller-supplied snapshot (keeps internal/progress from reaching into a manifest-shape decision directly)
+  - internal/statecheckpoint/store.go        # Store: Insert/Get/LoadLatest/ListByTask over state_checkpoints
+  - internal/statecheckpoint/*_test.go       # serialize_test.go, store_test.go, fixture_gen_test.go (regenerable sample-manifest.json)
+  - internal/progress/complete_node.go       # THE atomic protocol: idempotency check -> stage+verify artifacts -> one WithTx (node transition + artifact rows + checkpoint insert + ledger insert) -> publish events after commit
+  - internal/progress/stager.go              # FileStager: content-addressed evidence copy (real checksum recomputed, never trusts caller's claim), atomic temp+fsync+rename
+  - internal/progress/idempotency.go         # node_completions CRUD + checkIdempotency (replay/conflict) + recordIdempotency
+  - internal/progress/reconcile.go           # Reconciler: startup check for orphaned staged evidence + checkpoint integrity re-verification (ADD §18.9)
+  - internal/progress/complete_node*_test.go # complete_node_test.go, complete_node_idempotency_test.go, complete_node_crash_test.go, complete_node_race_test.go, complete_node_helpers_test.go
+  - schemas/state-checkpoint.schema.json     # wire schema for the State Checkpoint manifest (ADD Appendix B shape)
+  - testdata/checkpoints/state/sample-manifest.json  # generated from an ACTUAL Build+Seal+Marshal call, schema-conformant
+validation:
+  - "gofmt -l internal/progress internal/statecheckpoint internal/storage/sqlite -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/progress/... ./internal/statecheckpoint/... ./internal/storage/sqlite/... -> OK"
+  - "go test ./internal/progress/... -run CompleteNode -race -v -> PASS (22 tests: valid-section-completes-and-checkpoints, missing-heading/unbalanced-fence rejected, no-artifacts/missing-file/changed-artifact rejected, violated-dependency rejected + satisfied-dependency allowed, invalid-transition rejected, 100-sequential-nodes-produce-100-verifiable-checkpoints, same-idempotency-key-replays, conflicting-payload-same-key rejected, already-completed-different-key rejected, crash injection at all 5 named phases + full reconciliation-after-crash sweep, concurrent-completion race both same-key and different-key variants)"
+  - "go test ./internal/progress/... ./internal/statecheckpoint/... -race -count=3 -> PASS, stable across repeats (no flakiness)"
+  - "go test ./... -race -> green whole-repo, zero regressions"
+  - "golangci-lint run ./... -> 0 issues"
+commit: 7eff177
+next_action: checkpoint-a05 (State Checkpoint manifest — NOTE much of a05's nominal scope (manifest serialization/checksum) was ALREADY built here since CompleteNode structurally required it; a05 should verify what remains, likely just Snapshot/verify-API polish), checkpoint-a06/a07/a08/a09 — NOT started this wave per explicit assignment
+assumptions:
+  - "internal/app/ports.go has no EventPublisher/EventSink port yet (grepped: none exists anywhere in internal/app or pkg/protocol) — adding one is contract-integrator's call per Constitution §4, not this role's to make unilaterally. CompleteNode therefore declares its OWN narrow EventPublisher interface (internal/progress, satisfied trivially by NoopPublisher) rather than blocking on a contract change or reaching past the frozen ports.go; if a future contract freeze adds a matching app.EventPublisher port, this interface's method set is designed to be satisfied by it unchanged."
+  - "State Checkpoint manifest lives in a NEW package (internal/statecheckpoint, exclusive path already granted to this role in agents/checkpoint.md) rather than inside internal/progress — mirrors the existing internal/artifacts seam CompleteNode also calls into, keeping 'orchestration' (internal/progress) separate from 'the thing being orchestrated' (manifest assembly/serialization) as two independently testable packages, per this role's own established pattern from a02/a03."
+  - "Migrations 0023 (state_checkpoints, deferred from a01 by a01's own note) and 0024 (node_completions, new) both land in this node since CompleteNode cannot be built without either table — a01's deferral note anticipated exactly this."
+  - "Idempotency has two layers: CompleteNodeRequest.IdempotencyKey (frozen by CONTRACT_FREEZE.md, caller-supplied) is checked against a durable ledger keyed by node_id (a node can only complete once, ever — PRIMARY KEY node_id on 0024); a second payloadDigest (this protocol's own SHA-256 over node_id + sorted artifact URI/sha256 pairs) detects a caller reusing the SAME key with DIFFERENT evidence, which the frozen key alone cannot distinguish from a legitimate replay."
+  - "Concurrent-completion race resolution: NodeStore.TransitionStatus's existing optimistic-concurrency guard (checkpoint-a02, UPDATE...WHERE status=? AND version=?) is what actually arbitrates two concurrent Run() calls; CompleteNode adds a POST-conflict fallback (re-check the idempotency ledger before propagating a raw conflict) specifically for the same-key/same-payload case, so N concurrent identical requests all succeed (one does real work, the rest transparently replay) rather than N-1 of them failing with a conflict they did nothing wrong to deserve. Different-key concurrent attempts on the same node correctly resolve to exactly one winner and N-1 fail-closed losers."
+  - "A genuine data race was found (via `-race`) in this node's OWN test double, not in CompleteNode: the first version of the concurrent-race test's deterministic seqIDGenerator used a bare `g.n++`, which is not concurrency-safe, unlike the real production idgen.UUIDv7 (stateless). Fixed with sync/atomic. Recorded here explicitly because it is exactly the kind of finding `-race` exists to catch, and because a fake/test-double concurrency bug can otherwise be mistaken for (or mask) a real one."
+blockers: none
+```
+
+### checkpoint-b05: Binary-safe patch generation edge cases
+
+```yaml
+node: checkpoint-b05
+status: completed
+artifacts:
+  - internal/repocheckpoint/patch_test.go  # ONLY new file this node needed — no production code changes; gitx.Client.DiffPatch (checkpoint-b04) and repocheckpoint.Capture (checkpoint-b04) already implement binary-safe patch generation correctly, this node's job was proving it under real edge cases, not building new mechanism
+validation:
+  - "gofmt -l internal/repocheckpoint internal/gitx -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/repocheckpoint/... -> OK"
+  - "go test ./internal/repocheckpoint/... -run Patch -race -v -> PASS (6 tests: plain-text apply-round-trip, binary-file byte-exact apply-round-trip, mixed binary+text changeset both-survive-round-trip, large diff across 50 files x 200 lines each with all 50 spot-checked, large single-file diff of 5000 changed lines, full Capture-to-gzipped-manifest-artifact round-trip)"
+  - "go test ./internal/repocheckpoint/... ./internal/gitx/... -race -> PASS, zero regressions"
+  - "golangci-lint run ./internal/repocheckpoint/... ./internal/gitx/... -> 0 issues"
+commit: e571480
+next_action: checkpoint-b07 (atomic write -race hardening, cross-process crash-injection) — NOT started this wave per explicit assignment
+assumptions:
+  - "The required 'apply round-trip' test (generate a patch, apply it to a fresh checkout, verify the result matches) is proven by cloning the source repo (via argv-only `git clone`/`git apply`, never a shell string) into a separate temp directory checked out at the SAME base commit the patch was diffed against, then comparing file bytes — a filesystem COPY rather than a real clone would not exercise `git apply`'s actual blob-resolution logic (--full-index's whole point) the same way."
+  - "'Large diffs' is interpreted as two distinct shapes per this node's own brief ('very large binary diffs' implies large-content, and the DAG note separately says 'many files'): a many-files-many-lines changeset (50 files x 200 lines, patch header count asserted exactly) AND a single very-large-file diff (5000 changed lines) — both proven to apply cleanly, since a many-file bug (ordering/truncation across files) and a single-large-file bug (hunk-boundary miscalculation) are different failure modes."
+  - "No production code in internal/gitx or internal/repocheckpoint needed to change — DiffPatch's existing --binary --full-index --no-ext-diff flags (checkpoint-b04) were already exactly correct for every edge case this node tested; this is a genuine 'the hard part was proving it, not building it' node, unlike most of this role's other nodes."
+blockers: none
+```
+
+### checkpoint-b06: Untracked file policy secret filters + internal/redact
+
+```yaml
+node: checkpoint-b06
+status: completed
+artifacts:
+  - internal/redact/doc.go           # package-level scope statement: exactly what this package covers and does NOT cover, written explicitly for qa-05's benefit (this node's own DAG note: "Feeds qa-05 leakage scanner")
+  - internal/redact/filename.go      # MatchesSecretFilename: ADD §27.8's 11 name patterns verbatim, matched against base filename only
+  - internal/redact/patterns.go      # 6 content-detector classes verbatim (bearer token, PEM private-key header, GitHub/OpenAI/Anthropic token shapes, Azure storage keys, JWT-like, password/connection-string), each one fixed regexp
+  - internal/redact/scan.go          # ScanPath/ScanContent, 1 MiB per-file scan cap, Git's own NUL-byte binary heuristic to skip binary content
+  - internal/redact/*_test.go        # filename_test.go, patterns_test.go, scan_test.go — 25 tests total, one subtest per ADD §27.8 detector plus boundary cases (empty file, nonexistent file, content-beyond-cap, binary-content-not-scanned)
+  - internal/repocheckpoint/security.go   # +2 new SkipReason values: secret_filename, secret_content (distinct so an operator auditing skipped-files.json can tell which class fired)
+  - internal/repocheckpoint/archive.go    # buildUntrackedArchive now takes a scanSecrets bool and calls internal/redact after the existing size caps, before archiving; a match is skipped with the specific new SkipReason, feeding the SAME skip-ledger/partial-recoverability machinery checkpoint-b04 already built (no redesign)
+  - internal/repocheckpoint/capture.go     # CaptureOptions.DisableSecretScan: explicit, off-by-default opt-out (zero value = scanning ON)
+  - internal/repocheckpoint/untracked_test.go  # 7 new tests: secret-filename exclusion, secret-content exclusion, multiple detector shapes in one capture, no-secrets-full-recoverability negative case, opt-out honored, and an explicit test documenting the scope boundary (secret scan applies to the untracked archive only, NOT to already-tracked diff content captured via DiffPatch)
+validation:
+  - "gofmt -l internal/repocheckpoint internal/redact -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/repocheckpoint/... ./internal/redact/... -> OK"
+  - "go test ./internal/repocheckpoint/... ./internal/redact/... -run Untracked -v -> PASS (15 repocheckpoint tests incl. the 7 new secret-filter tests + all pre-existing path-safety tests; redact package reports 'no tests to run' for this exact filter since none of its own test names contain the literal substring \"Untracked\" — its full suite is exercised separately and is green)"
+  - "go test ./internal/repocheckpoint/... ./internal/redact/... -race -v -> PASS, zero regressions (46 tests total across both packages)"
+  - "go test ./... -race -> green whole-repo"
+  - "golangci-lint run ./... -> 0 issues"
+commit: ef59034
+next_action: checkpoint-b07/b08/b09 — NOT started this wave per explicit assignment. Nothing else deliberately deferred from this node's own scope: filename + content detection are both real (not stubbed), wired into the actual archive path (not just a standalone library nobody calls), and the documented boundary (doc.go) tells qa-05 exactly what this layer does and does not catch.
+assumptions:
+  - "internal/redact implements EXACTLY Preflight_ADD.md §27.8's two lists (name patterns, content detectors) — transcribed, not invented or extended, so there is a single source of truth for what 'the secret filter policy' means and no drift between this package and the ADD. Detector regexes were validated against realistic-length synthetic fixtures (e.g. an 88-char base64 Azure key, matching Azure's real key length) rather than hand-wavy short placeholders, after an initial manual sanity check caught a too-short test fixture silently under-testing the Azure detector."
+  - "Content scanning is capped at 1 MiB per file and skips content identified as binary via Git's own NUL-byte heuristic — both documented as explicit, non-silent boundaries in doc.go, not just implementation details; a secret past the cap or inside binary content is a known gap, not an unstated one."
+  - "The secret scan applies ONLY to the untracked-file archive (ADD §19.5's own scope for the 'secret scan' bullet) — NOT to tracked-file diff content captured via DiffPatch (checkpoint-b04/b05's scope). This boundary is deliberate (redacting already-committed history is a different problem than filtering what NEW untracked evidence a checkpoint captures) and is locked in by an explicit test (TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent) rather than left as an unstated implicit scope decision a later reader would have to infer."
+  - "CaptureOptions.DisableSecretScan is a bool (not *bool) with scanning-enabled as its zero value — chosen so a caller that never touches this field (every existing call site, and any future one that doesn't know this option exists) gets the safe default, matching this same struct's existing size-cap fields' zero-value-safe pattern from checkpoint-b04."
+blockers: none
+```
+
+Final validation after all three Wave 6 nodes together: `golangci-lint run
+./...` (whole repo) → 0 issues; `go build ./...` → OK; `go test ./... -race`
+→ green across every package, zero regressions from any of this wave's
+three nodes.

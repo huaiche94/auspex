@@ -391,3 +391,82 @@ contract file. Terminology is `completion_risk` throughout, matching ADR-041's e
 `execution_risk`/`completion_risk` naming fork. No other role's paths were touched; `internal/policy/**`
 and `internal/evaluation/**` remain untouched. `golangci-lint run ./...` reports 0 issues repository-wide
 as of this wave's final commit.
+
+---
+
+## Wave 6 (predictor-08)
+
+Branch: `day1/predictor`, continuing from `216c92b` (Wave 5, `predictor-07`). Per explicit instruction,
+`origin/main` was merged first (`git fetch origin && git merge origin/main`) — a clean fast-forward from
+`216c92b` to `abce1d0`, bringing in Wave 5's integrated state (`claude-provider-07`, `checkpoint-a02/a03/b04`,
+this role's own already-merged `predictor-07`, `runtime-a02/a06/b03/b04/b05/b08`, plus new packages
+`internal/artifacts`, `internal/orchestrator`, `internal/pause`, `internal/progress`, `internal/repocheckpoint`,
+`internal/scheduler`, `internal/gitx`, new CLI checkpoint/diagnostics commands, and expanded
+`internal/app/wiring`). Whole-repo `go build ./...` and `go test ./...` both passed cleanly immediately
+after the merge, before any new code was written. Re-read `CONSTITUTION.md`, `agents/predictor.md`,
+`docs/implementation/day1/EXECUTION_DAG.md` (`predictor-08`'s corrected entry — deps `predictor-07`,
+`predictor-06`, per ADR-041's "Policy consumes Runway directly" correction), `docs/implementation/day1/
+CONTRACT_FREEZE.md`'s "Predictor pipeline ports (ADR-041)" section, and `docs/adr/0041-predictor-forecast-
+layer.md` before starting, per instruction. Assigned exactly `predictor-08` (Policy) this wave.
+
+```yaml
+node: predictor-08
+status: completed
+artifacts:
+  - internal/policy/doc.go
+  - internal/policy/coldstart.go
+  - internal/policy/decide.go
+  - internal/policy/policy_test.go
+  - internal/policy/coldstart_test.go
+validation:
+  - "gofmt -l internal/policy  # clean"
+  - "go build ./internal/policy/...  # ok"
+  - "go vet ./internal/policy/...  # ok"
+  - "go test ./internal/policy/... -run ColdStart -v  # PASS (9 top-level tests: literal-contract-shape match, all 4 reachable risk bands with uncalibrated inputs, emergency-PAUSE-is-not-a-probability across 3 emergency trigger conditions, mandatory-checkpoint-boundary-is-not-a-probability, explicit-deny/integrity-failure never-probability, calibrated-runway-may-legitimately-report-probability control case, direct-construction check across all 8 frozen PolicyAction values, and a full-grid randomized sweep over risk score x runway score x all 4 boolean gates x prior-confirmed asserting Probability stays nil throughout)"
+  - "go test ./internal/policy/... -race  # PASS"
+  - "go test ./internal/policy/... -bench=. -benchmem -run '^$'  # BenchmarkDecide: 52.83 ns/op, 16 B/op, 1 allocs/op — well under ADD §29.11's <1ms policy target"
+  - "go build ./...  # ok, whole module"
+  - "go test ./... -race  # PASS, whole module, no regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide"
+commit: <see final report>
+next_action: none — predictor-08 is the sole assigned Wave 6 node; predictor-09 (Evaluation persistence) explicitly out of scope, not started, stubbed, or scaffolded
+assumptions:
+  - "internal/app/ports.go has no dedicated frozen `Policy` interface — the closest frozen policy-decision port is `EvaluationService.Decide(ctx, DecideRequest{EvaluationID}) (DecisionResult, error)`, which by itself carries no risk/runway payload. Rather than guessing a wider shape into ports.go (not this role's path — Constitution §4.3) or blocking, this node builds `policy.Decider`/`policy.Decision`/`policy.DecideRequest` as this package's own documented bridge type: `Decision.Action` is always one of the eight frozen `app.PolicyAction` values, and `Decision` itself carries the richer fields (RiskScore, Probability, Confidence, reason codes) a future evaluation-persistence node (predictor-09) can flatten into `app.Evaluation`/`app.DecisionResult` without this package inventing a competing frozen contract. Matches CONTRACT_FREEZE.md's own anticipation: 'owning roles MAY find they need additional fields; requests for additions go through the role's progress artifact ... not silent edits to internal/app/ports.go.'"
+  - "agents/predictor.md's deliverable-#10 action names (ALLOW, WARN, CHECKPOINT, SPLIT, PAUSE, ABORT) are mapped onto the frozen `app.PolicyAction` enum as: ALLOW->PolicyRun, WARN->PolicyWarn, CHECKPOINT->PolicyCheckpointAndRun, SPLIT->PolicySplit (unused this wave — no SPLIT trigger condition is named anywhere in agents/predictor.md's initial policy suggestion or ADD §17), PAUSE->PolicyPause, ABORT->PolicyBlock (matched to ADD §17.3 priority 1's 'explicit deny/security' and ADD §21.9's 'block' JSON decision literal — the frozen enum has no literal ABORT, and PolicyBlock is the closest semantic match for a hard-stop deny). `PolicyRequireConfirmation` and `PolicyPauseAndAutoResume` (two frozen actions this node's deliverable list does not separately name) are used for ADD §17.3's 'high risk -> require confirmation' priority tier and are available for a later role to layer auto-resume authorization onto a plain PAUSE, respectively — not invented, both already frozen in ports.go."
+  - "Decide's priority order implements ADD §17.3 verbatim (explicit deny/security > integrity failure > active graceful-pause trigger > mandatory state checkpoint boundary > risk bands), evaluating gates in that fixed order and returning on first match. ExplicitDeny/IntegrityFailure/MandatoryCheckpointBoundary are caller-supplied booleans, not detected by this package — detecting a security deny, a checkpoint checksum mismatch, or a Progress Tree node kind/transition all require capabilities this role's Boundary explicitly excludes ('No provider JSON parsing, Git commands, checkpoint creation, or process interruption')."
+  - "ADD §16.5's band table (<0.45 low/ALLOW, 0.45-0.65 medium/WARN, 0.65-0.85 high/REQUIRE_CONFIRMATION or CHECKPOINT, >=0.85 critical/CHECKPOINT) is implemented with '>=' at each lower boundary (score exactly at a threshold enters the higher band), verified by exact-boundary table tests at 0.45/0.65/0.85. Inside the 'high' band specifically, agents/predictor.md's own refinement ('predicted P90 exceeds available headroom or high blast radius: CHECKPOINT') is implemented as: prefer CHECKPOINT_AND_RUN over REQUIRE_CONFIRMATION when BlastRadiusRisk.Score alone is also >=0.85 — a documented, package-local threshold (blastRadiusHighThreshold) since the ADD names no blast-radius-specific checkpoint threshold distinct from the shared band table."
+  - "ADD §17.4's calibrated auto-pause rule (hit_probability >= 0.80) and §17.6's debounce (two consecutive qualifying observations, not one) are both implemented, but this package is stateless per call (matching runway.Scorer's own precedent) — the caller supplies DecideRequest.PriorRunwayHitConfirmed as the one bit of cross-call history needed for debounce. §17.6's other legs (min 5s apart, quota sample age <=30s, risk-must-fall-below-0.70-before-re-arming) are NOT separately re-implemented in this package: none of them require anything beyond what domain.RunwayForecast and PriorRunwayHitConfirmed already carry into a single Decide call, and re-deriving interval/staleness bookkeeping this package cannot itself observe (it never sees raw timestamps across calls) would mean either silently guessing or duplicating state the caller must own anyway — documented explicitly in coldstart.go rather than silently skipped."
+  - "ADD §17.6's emergency trigger (provider reports limit reached OR used>=98% OR estimated-time-to-limit-P50<=60s) is implemented as isRunwayEmergency, checking domain.RunwayForecast.CurrentUsedPercent and EstimatedTimeToLimitP50Seconds directly, plus treating RiskScore==1.0 with Confidence==high as the already-folded-in 'provider reports limit reached' signal (RunwayForecast has no separate boolean of its own for that condition — runway.Scorer's own Score implementation already collapses QuotaObservation.Reached into exactly that RiskScore/Confidence combination, one layer up, per runway.go's own Score doc comment). This emergency path always returns Probability=nil and PolicyReasonCodes containing the literal string 'emergency_threshold' (ReasonEmergencyThreshold), never a probability — the exact literal from agents/predictor.md's initial policy suggestion."
+  - "Decision.ReasonCodes carries only frozen domain.ReasonCode enum values (from CombineRiskResult component ReasonCodes); Decision.PolicyReasonCodes is a separate, package-local plain-string slice for this pipeline stage's own vocabulary (mirroring internal/predictor/runway's precedent of a plain-string reason-code namespace distinct from domain.ReasonCode) plus a home for runway-sourced reason strings, since domain.RunwayForecast.ReasonCodes is frozen as []string, not []domain.ReasonCode (runway/runway.go's own doc comment explains why: RunwayForecast predates ADR-041's typed ReasonCode introduction). This two-field split avoids fabricating new domain.ReasonCode enum values from either runway's plain strings or this package's own trigger-condition names, keeping the frozen enum closed per Constitution §1."
+  - "clamp01Risk mirrors internal/predictor/risk.clamp01 exactly (NaN clamps to 1.0, the most conservative/highest-risk value, never a placid low score) and is applied to every RiskScore this package ever returns, regardless of which upstream input (CombineRiskResult.OverallRisk.Score, RunwayForecast.RiskScore, or BlastRadiusRisk.Score for the high-band blast-radius check) it was read from — added after an initial implementation's fail-open/fail-closed test caught a live NaN/Inf-propagation gap (RiskScore was passed through unclamped in three of the four Decide paths); the fix and the test that caught it are both in this wave's commit, not deferred."
+  - "The dedicated ColdStart suite (coldstart_test.go) is written to prove the narrower, correct claim explicitly: 'uncalibrated never becomes a probability,' not the different (and wrong) claim 'probability is always nil' — TestColdStartArmedButNotYetConfirmedRunwayIsCalibratedAndMayReportProbability is a deliberate control case proving the suite would fail if Decide over-corrected into never populating Probability even when a genuinely calibrated runway input justifies it."
+blockers: []
+```
+
+## Wave 6 summary
+
+The single assigned node (`predictor-08`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `origin/main` was merged first per instruction (clean fast-forward,
+`216c92b` -> `abce1d0`), confirmed building/testing cleanly before any new code was written.
+`internal/policy` is a new, stateless package implementing ADD §17's Policy Engine (priority order §17.3,
+risk bands §16.5, debounce/emergency §17.6, calibrated-auto-pause §17.4) against the two direct
+ADR-041-frozen pipeline inputs (`app.CombineRiskResult` from `predictor-07`'s `RiskCombiner`,
+`domain.RunwayForecast` from `predictor-06`'s Runway Predictor, consumed directly per ADR-041's "Policy
+consumes Runway directly" correction — never through `RiskCombiner`). `internal/app/ports.go` has no
+dedicated frozen `Policy` interface yet; this node built `policy.Decider`/`Decision`/`DecideRequest` as its
+own documented bridge type expressed entirely in terms of the frozen `app.PolicyAction` enum, per
+CONTRACT_FREEZE.md's explicit anticipation that owning roles may need additional fields beyond the
+Bootstrap-era minimal DTOs. The single load-bearing invariant for this node (Constitution §6/§7: an
+uncalibrated score must never be labeled a probability) is enforced structurally — exactly two call sites
+in the whole package ever assign `Decision.Probability` a non-nil value, both gated by an explicit
+`rf.Calibrated &&` check immediately before the assignment — and is proven by a dedicated
+`coldstart_test.go` suite (9 top-level tests, `-run ColdStart` selects the whole file) covering every
+reachable risk band, the emergency-PAUSE path, the mandatory-checkpoint-boundary path, the explicit-
+deny/integrity-failure paths, a full-grid randomized sweep, and a deliberate control case proving
+calibrated runway input still legitimately produces a probability (so the invariant proven is "uncalibrated
+never becomes a probability," not the stronger and wrong "probability is always nil"). A real bug (RiskScore
+passed through without NaN/Inf clamping in three of four Decide paths) was caught by this wave's own
+fail-open/fail-closed test and fixed in the same commit, not deferred. `BenchmarkDecide` measured 52.83
+ns/op, 16 B/op, 1 allocs/op — far under ADD §29.11's <1ms policy target. No other role's paths were
+touched; `internal/evaluation/**` remains untouched. `golangci-lint run ./...` reports 0 issues
+repository-wide as of this wave's final commit.

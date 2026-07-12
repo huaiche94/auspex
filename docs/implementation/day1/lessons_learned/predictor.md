@@ -69,3 +69,41 @@ persistence layer). Both were still done sequentially per instruction, not in pa
   re-running the full `go test ./internal/storage/sqlite/...` suite repeatedly while guessing at fixes.
   Recommend this as a standard first move any time a migration-layer test failure's error message names a
   table that "should" exist per a REFERENCES clause but doesn't yet on the current branch.
+
+## Wave 6 (predictor-08)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| predictor-08 | L | L — matched estimate, heavier than predictor-07's "came in lighter than L" pattern because this node has no single frozen interface to implement against (see below) | 4-5 | 5 (doc.go, coldstart.go, decide.go, policy_test.go, coldstart_test.go) | 400 (DAG estimate) | one continuous pass, no wall-clock instrumentation in this environment | `internal/app/ports.go` has no dedicated frozen `Policy`/`Decider` interface at all — the closest thing, `EvaluationService.Decide(ctx, DecideRequest{EvaluationID})`, takes only an ID and returns a bare `{ID, Action}`, with no room for RiskScore/Probability/Confidence/reason codes. Every prior predictor-0N node (05/05b/05c/06/07) implemented directly against a named, frozen `app.XForecaster`/`app.RiskCombiner` interface; this node had to design its own bridge type (`policy.Decision`/`DecideRequest`) from ADD §17.2's `PolicyResult` shape instead, since no frozen port existed to implement against — a qualitatively different kind of node than any predictor-0N node so far | None beyond the bridge-type design itself (folded into decide.go, not a separate file) | A real bug caught by this node's own required fail-open/fail-closed test, not by a reviewer: `riskBandDecision`'s initial draft propagated `overall.Score`/`rf.RiskScore` into `Decision.RiskScore` unclamped, so a NaN/Inf upstream RiskComponent.Score (constructed directly in a test, bypassing risk.RuleRiskCombiner's own clamp01) leaked NaN/Inf straight through Decide. Fixed by adding a package-local `clamp01Risk` (deliberately mirroring internal/predictor/risk.clamp01's exact NaN-favors-highest-risk behavior) and applying it at all 6 RiskScore assignment sites, not just the one the failing test happened to exercise | This is the first predictor-0N node to consume two independent upstream pipeline outputs at once (CombineRiskResult AND RunwayForecast, per ADR-041's explicit correction) rather than one upstream stage's output — mapping "which of two inputs' Calibrated flag governs Probability" correctly (only Runway's, never Risk's, since RiskCombiner's Score is defined as never-a-probability regardless of Calibrated per risk/combiner.go's own doc comment) required rereading risk/combiner.go's "Score is not probability" comment and ADR-041's exact wording twice before writing riskBandDecision, to avoid the tempting-but-wrong shortcut of gating Probability on "is anything here calibrated" rather than "is Runway specifically calibrated" | Recommend the DAG's complexity/file-count estimate for "terminal-stage node with no frozen interface to implement against" (this node) be read as structurally different from "implement against a named frozen interface" nodes (predictor-05 through -07): the former requires designing and documenting a bridge type from prose (ADD §17.2's PolicyResult) before any decision logic can be written, which is real, non-mechanical design work with no formula or interface signature to anchor against — closer in kind to predictor-05's FeatureSource-abstraction tax than to predictor-07's "formula-verbatim, lighter than L" experience |
+
+### predictor-08 cold-start invariant verification approach
+
+The DAG's own risk note for this node ("High — must never label an uncalibrated score a probability")
+and the task instruction's explicit ask for "a dedicated, unambiguous test suite proving the
+cold-start/uncalibrated-never-becomes-probability invariant holds for every single policy action" drove a
+two-layer verification strategy, not just more test cases:
+
+1. **Structural**: exactly two call sites in the entire package (`decide.go`'s `runwayPauseDecision`, both
+   gated by an explicit `rf.Calibrated &&` check immediately before the assignment) ever construct a
+   non-nil `Decision.Probability`. Every other Decision literal in the package sets it to a literal `nil`.
+   This is verifiable by inspection/grep, not just by running tests — a future edit that tries to sneak a
+   probability in from a different code path is a one-line diff away from breaking a documented, named
+   invariant (`Decision.Probability`'s own doc comment names the exact guard), not a silent behavioral
+   drift.
+2. **Behavioral**: `coldstart_test.go` proves the *narrower and correct* claim ("uncalibrated never becomes
+   a probability") rather than the *broader and wrong* claim ("probability is always nil") by including a
+   deliberate control case
+   (`TestColdStartArmedButNotYetConfirmedRunwayIsCalibratedAndMayReportProbability`) where a genuinely
+   calibrated Runway input legitimately produces a non-nil Probability. Recommend this "prove the narrow
+   claim, include a control case for the broader wrong claim" pattern for any future Preflight invariant
+   test suite guarding a boolean-gated field — a suite that only ever asserts "field is nil" everywhere
+   would pass even if the gating logic were deleted entirely, silently making the invariant meaningless
+   while still green.
+
+## Wave 6 cross-node observation
+
+- This wave's fail-open/fail-closed required test (agents/predictor.md's "no divide-by-zero/NaN/Inf" test,
+  reused from predictor-04/-06/-07's own precedent) earned its keep immediately: it caught a real,
+  non-hypothetical clamping gap in the first draft rather than merely confirming an already-correct
+  implementation, reinforcing predictor-06/-07's lesson that this property-style sweep should be written
+  and run *before* declaring a High-risk node's decision logic finished, not as a final rubber-stamp pass.

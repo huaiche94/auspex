@@ -98,9 +98,9 @@ func TestCompleteNode_ConflictingPayload_SameKey_Rejected(t *testing.T) {
 	}
 }
 
-// --- Must-reject: duplicate completion with conflicting evidence, no ledger
+// --- Must-reject: duplicate completion with CONFLICTING evidence, no ledger
 
-func TestCompleteNode_AlreadyCompleted_DifferentKey_Rejected(t *testing.T) {
+func TestCompleteNode_AlreadyCompleted_DifferentKey_DifferentEvidence_Rejected(t *testing.T) {
 	clock := fixedClockAt(time.Now())
 	cn, db, taskID := newCompleteNodeHarness(t, clock)
 	ctx := context.Background()
@@ -118,16 +118,20 @@ func TestCompleteNode_AlreadyCompleted_DifferentKey_Rejected(t *testing.T) {
 		t.Fatalf("first Run: %v", err)
 	}
 
-	// A totally different idempotency key for the same, already-completed
-	// node: this is not a replay (different key), and the node is
-	// terminal — must reject as a conflict.
+	// A totally different idempotency key AND genuinely different evidence
+	// (a different file, so a different sha256) for the same,
+	// already-completed node: this is neither a same-key replay (a04) nor a
+	// duplicate-provider-event-with-identical-evidence (a07, see the
+	// sibling test below) — it is a real conflicting completion attempt and
+	// must reject (Constitution §6.6).
+	path2 := writeMarkdownFile(t, "section2.md", "# X\n\ncompletely different prose\n")
 	_, err := cn.Run(ctx, progress.CompleteNodeInput{
 		NodeID:         nodeID,
 		IdempotencyKey: "key-b-unrelated",
-		Artifacts:      []domain.ArtifactRef{fileArtifactRef("artifact-1", path)},
+		Artifacts:      []domain.ArtifactRef{fileArtifactRef("artifact-2", path2)},
 	})
 	if err == nil {
-		t.Fatalf("expected rejection for re-completing an already-completed node under a new key")
+		t.Fatalf("expected rejection for re-completing an already-completed node under a new key with different evidence")
 	}
 	var derr *domain.Error
 	ok := errors.As(err, &derr)

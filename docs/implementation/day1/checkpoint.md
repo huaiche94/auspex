@@ -418,3 +418,109 @@ Final validation after all three Wave 6 nodes together: `golangci-lint run
 ./...` (whole repo) → 0 issues; `go build ./...` → OK; `go test ./... -race`
 → green across every package, zero regressions from any of this wave's
 three nodes.
+
+---
+
+## Wave 7
+
+Assigned nodes this wave: `checkpoint-a05` (Part A: StateCheckpointService
+implementation), `checkpoint-a07` (Part A: duplicate/out-of-order provider
+event handling), `checkpoint-b07` (Part B: atomic-write cross-process crash
+injection + startup orphan-temp-dir scan) — done sequentially with an
+independent validate+commit after each, per explicit wave instruction.
+Pre-step: `git fetch origin && git merge origin/main` — clean fast-forward
+to `1440f4c` (Wave 6's integrated state, including predictor/runtime's
+pause/policy/scheduler work from other roles, nothing touching this role's
+paths); `go test ./...` was green immediately after the merge, before any
+new work started.
+
+### checkpoint-a05: StateCheckpointService implementation
+
+```yaml
+node: checkpoint-a05
+status: completed
+artifacts:
+  - internal/statecheckpoint/service.go       # Service implementing app.StateCheckpointService: Create/LoadLatest/Verify
+  - internal/statecheckpoint/service_test.go  # snapshot-current-tree-state, LoadLatest-returns-most-recent, Verify valid + tampered-manifest + not-found, empty-TaskID validation
+validation:
+  - "gofmt -l internal/statecheckpoint -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/statecheckpoint/... -> OK"
+  - "go test ./internal/statecheckpoint/... -race -v -> PASS (18 tests total: 8 pre-existing manifest/serialize/store + 10 new Service tests)"
+  - "golangci-lint run ./internal/statecheckpoint/... -> 0 issues"
+  - "go test ./... -race -> green whole-repo, zero regressions"
+commit: 26c6496
+next_action: checkpoint-a06/a08/a09 — NOT started this wave per explicit assignment
+assumptions:
+  - "checkpoint-a04's own lessons-learned note anticipated this exactly: 'much of a05's nominal scope (manifest serialization/checksum) was ALREADY built here since CompleteNode structurally required it; a05 should verify what remains, likely just Snapshot/verify-API polish.' Confirmed on inspection: manifest.go/serialize.go/build.go/store.go (a04) already fully implement the manifest shape, digest, and CRUD; this node's actual scope was exactly the frozen app.StateCheckpointService port implementation itself, which did not exist as a concrete type yet."
+  - "Create is a NEW, standalone ad hoc snapshot entry point (Service.Create), deliberately separate from CompleteNode's own inline checkpoint-on-completion transaction (complete_node.go, unchanged) — it exists for callers (e.g. a manual 'checkpoint now' request, or a future runtime persist-phase wiring) that need a checkpoint of the CURRENT Progress Tree state without also completing a node. Reuses the exact same Build/Seal/Marshal/Store primitives CompleteNode already proved correct."
+  - "TreeReader (new interface, NodeSnapshot/ArtifactSnapshot narrow view types) is Service's injected seam for reading current Progress Tree state, deliberately NOT importing internal/progress directly — internal/progress already imports internal/statecheckpoint (complete_node.go), so the reverse import would be a cycle. Production wiring (a later integration step, out of this node's scope) supplies a real adapter over *progress.NodeStore/*progress.ArtifactStore; this node's own tests use an in-memory fake. Same 'injected callback rather than reach into another sub-component's storage directly' discipline checkpoint-b04 established for Service.resolveWorktree."
+  - "Verify recomputes the manifest's digest from scratch and compares against the stored integrity_sha256 column, never trusting the stored value alone — mirrors internal/repocheckpoint's Service.Verify 'never trust a stored checksum alone' discipline (checkpoint-b04), applied here to Part A's manifest instead of Part B's artifacts. An unparseable manifest reports Valid:false (fail-closed) rather than propagating a plumbing error, matching this codebase's established fail-open-vs-fail-closed contract (CONTRACT_FREEZE.md: a state-integrity failure must fail closed, and Valid:false for an unparseable manifest IS the fail-closed answer)."
+  - "Compile-time assertion: var _ app.StateCheckpointService = (*Service)(nil) in service.go, plus service_test.go additionally exercises Service through the app.StateCheckpointService interface type directly (not just the concrete type), so a signature drift would fail to compile in the test file too."
+blockers: none
+```
+
+### checkpoint-a07: duplicate/out-of-order provider event handling
+
+```yaml
+node: checkpoint-a07
+status: completed
+artifacts:
+  - internal/progress/idempotency.go               # checkDuplicateProviderEvent (key-independent, evidence-digest-based duplicate detection) + loadReplayedResult (shared replay-result reconstruction, extracted from a04's checkIdempotency)
+  - internal/progress/complete_node.go              # checkParentOrdering + startedStatuses: rejects a completion signal for a child node whose parent has never reached a "started" status
+  - internal/progress/complete_node_idempotency_test.go  # renamed/corrected: TestCompleteNode_AlreadyCompleted_DifferentKey_DifferentEvidence_Rejected now uses genuinely different evidence (its old fixture used IDENTICAL evidence, which is the wrong fixture for what it was meant to prove — see assumptions)
+  - internal/progress/complete_node_provider_events_test.go  # NEW: duplicate-provider-event (different key, same evidence, triple-channel redelivery) + out-of-order (child-before-parent-started, parent-in-progress-allowed, parent-already-completed-allowed, root-node-no-parent-skipped)
+validation:
+  - "gofmt -l internal/progress -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/progress/... -> OK"
+  - "go test ./internal/progress/... -run Idempotency -v -> PASS (DAG's frozen validation command; 1 test name matches the literal substring, unchanged from a04)"
+  - "go test ./internal/progress/... -race -v -> PASS, full suite including all new a07 tests, zero regressions"
+  - "golangci-lint run ./internal/progress/... -> 0 issues"
+  - "go test ./... -race -> green whole-repo"
+commit: 49efd06
+next_action: feeds qa-04 (duplicate/out-of-order test) directly — public API is CompleteNode.Run itself (no new exported surface needed); qa-04 can drive the exact same scenarios (different-key-same-evidence redelivery, child-before-parent-started) through this same entry point. checkpoint-a06/a08/a09 NOT started this wave per explicit assignment.
+assumptions:
+  - "Scope boundary versus a04: a04 already fully proved idempotency-KEY matching (same key -> same result; conflicting payload under the same key -> rejected) — NOT re-tested here, per the wave brief's explicit instruction. a07's genuine increment is two things a04 did not cover: (1) duplicate detection independent of key (a provider redelivering the same event through a different channel that derives its own key), and (2) parent/child ordering (a04 only checked depends_on edges via checkDependencies, never parent_id)."
+  - "Constitution §6.6 says 'duplicate completion with CONFLICTING evidence is rejected' — read literally, this means duplicate completion with IDENTICAL evidence is NOT a conflict, regardless of which idempotency key arrived with it. checkDuplicateProviderEvent implements exactly this: a key mismatch alone no longer auto-rejects; the evidence digest is compared first, and only a genuine digest mismatch rejects as a conflict. This is a real, deliberate behavior change from a04's original always-reject-on-key-mismatch posture, not a bug — a04's own test asserting the old behavior (TestCompleteNode_AlreadyCompleted_DifferentKey_Rejected) used IDENTICAL evidence for both calls, which was actually the correct fixture for the NEW test's assertion (replay, not reject) rather than the old one; renamed and given genuinely different evidence so it still exercises the real conflict path it was meant to guard."
+  - "checkParentOrdering treats in_progress/checkpointing/completed/failed/paused as 'parent has started'; only pending/ready/blocked count as 'not started yet' and trigger the out-of-order rejection. Deliberately does NOT enforce strict start-then-finish ordering between parent and child (a parent legitimately completing slightly before a straggling child's own evidence finishes staging is an allowed race per the existing state machine, proven by TestCompleteNode_ChildCompletes_ParentAlreadyCompleted_Allowed) — the check is specifically about a parent that never started at all, matching the DAG's own framing ('before its parent's in-progress transition is recorded')."
+  - "Out-of-order rejection uses ErrCodeConflict with Retryable:true (unlike the dependency-policy and idempotency-conflict rejections elsewhere in this file, which are Retryable:false) — a genuinely out-of-order signal is expected to resolve itself once the parent's own in-progress event catches up, so a caller retrying later is the correct, expected recovery path, not a permanent failure."
+  - "No cross-role contract gap found; no ports.go change requested. Both changes are entirely internal to internal/progress's own orchestration logic, calling only stores/seams this role already owns."
+blockers: none
+```
+
+### checkpoint-b07: atomic-write cross-process crash injection + orphan scan
+
+```yaml
+node: checkpoint-b07
+status: completed
+artifacts:
+  - internal/repocheckpoint/atomicwrite.go        # writeArtifactDirWithHalt (crash-injection seam: phaseTempDirCreated/phaseFilesWritten/phaseRenamed + writeArtifactDirHaltError) added alongside the existing writeArtifactDir (now a thin wrapper calling the halt variant with ""); new tempDirPrefix constant shared with orphanscan.go
+  - internal/repocheckpoint/atomicwrite_crash_test.go  # white-box (package repocheckpoint): crash at each of the 3 phases proving finalDir is never partially visible, normal-completion regression guard, retry-after-crash succeeds despite the leftover orphan
+  - internal/repocheckpoint/orphanscan.go          # ScanOrphanedTempDirs/CleanOrphanedTempDirs: age-gated scan+cleanup of ".checkpoint-tmp-*" directories under a checkpoints root
+  - internal/repocheckpoint/orphanscan_test.go     # finds-old-orphan, ignores-real-checkpoint-dirs-and-non-dir-stray-files, skips-young-temp-dir, nonexistent-root-no-error, clean-removes-old-only, and the required -race concurrent-capture test (20 real live captures racing 20 concurrent scan/clean passes)
+  - internal/repocheckpoint/export_test.go         # standard Go export_test.go idiom: exposes writeArtifactDir under WriteArtifactDirForTest for the external test package's race test only; not part of the production API
+validation:
+  - "gofmt -l internal/repocheckpoint -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/repocheckpoint/... -> OK"
+  - "go test ./internal/repocheckpoint/... -run Atomic -race -v -> PASS (10 tests: 5 crash-injection + 5 orphan-scan, all matching the DAG's frozen -run Atomic filter)"
+  - "go test ./internal/repocheckpoint/... -race -v -> PASS, full suite (60 tests total), zero regressions"
+  - "golangci-lint run ./internal/repocheckpoint/... -> 0 issues"
+  - "go test ./... -race -> green whole-repo"
+commit: 5f853d9
+next_action: checkpoint-b08 (RestoreDryRun), checkpoint-b09 (path traversal/symlink security gate) — NOT started this wave per explicit assignment
+assumptions:
+  - "Crash injection follows internal/progress's CompleteNode.HaltAfter/HaltError pattern (checkpoint-a04) exactly, adapted from a struct field (CompleteNode is a long-lived service value) to a function parameter (writeArtifactDir is a free function with no receiver) — same 'named phase + halt hook as a first-class testing seam' philosophy, not a redesign."
+  - "The existing error-path cleanup in writeArtifactDir (the `defer os.RemoveAll(tempDir)` on a non-halt error) is explicitly NOT triggered by a halt — a writeArtifactDirHaltError is a SIMULATED crash (the point is that real production code never gets a chance to run its own cleanup when genuinely killed), so the halt path skips that defer's cleanup on purpose, leaving a real orphan on disk for orphanscan.go to find, exactly mirroring what a real kill -9 would leave behind."
+  - "ScanOrphanedTempDirs takes an explicit minAge + now(time.Time) rather than hardcoding a duration or using time.Now() internally, so (1) a startup check can use minAge=0 (nothing is in flight yet, process just started) while a long-running daemon integration can use a conservative minAge (e.g. a few minutes) to avoid racing a live capture, and (2) tests get deterministic, non-flaky age comparisons. This mirrors this role's own established Clock-injection discipline (domain.Clock everywhere else in this codebase) applied to a plain time.Time parameter here since this package doesn't thread domain.Clock through its free functions."
+  - "Every temp directory is unconditionally safe to remove once past minAge: by construction, nothing durable (no DB row via internal/repocheckpoint.Store, no manifest.json under a FINAL path) ever references a .checkpoint-tmp-* path — only the post-rename finalDir is ever recorded anywhere durable. This was verified by inspection of every writer of repository_checkpoints and every reader of ArtifactsRoot in this package, not merely assumed."
+  - "Retry-after-crash (TestAtomicWrite_RetryAfterCrash_SucceedsCleanly) confirms writeArtifactDir's existing finalDir-collision guard (checkpoint-b04) does not also block on a stale sibling temp dir — each call gets its own os.MkdirTemp-randomized name, so an orphan from a prior crash never prevents a fresh, correct retry for the same checkpoint ID. This is a load-bearing property orphanscan.go's cleanup depends on: retries must keep working even before a cleanup sweep ever runs."
+  - "Out of this node's explicit scope, confirmed by re-reading capture.go's own doc comment: the retry-ONCE-on-race-detected POLICY (distinct from this node's crash/orphan scope) that an earlier draft of capture.go's comment also attributed to checkpoint-b07 is NOT built here — this wave's assignment prompt scoped b07 explicitly to 'atomic-write cross-process crash-injection and startup orphan-temp-dir scanning' only, matching checkpoint-b04's own lessons-learned note precisely. Flagging this for whichever later node (b08/b09, or a follow-up) is meant to own the race-retry-policy, since capture.go's in-code comment currently points at a b07 that did not build it."
+blockers: none
+```
+
+Final validation after all three Wave 7 nodes together: `golangci-lint run
+./...` (whole repo) → 0 issues; `go build ./...` → OK; `go vet ./...` → OK;
+`go test ./... -race` → green across every package, zero regressions from
+any of this wave's three nodes.

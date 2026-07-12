@@ -298,6 +298,14 @@ func (c *CompleteNode) Run(ctx context.Context, in CompleteNodeInput) (CompleteN
 		return CompleteNodeResult{}, err
 	}
 
+	// Parent ordering (checkpoint-a07): reject an out-of-order provider
+	// signal for a child node whose parent's own in-progress transition was
+	// never recorded — see checkParentOrdering's doc comment for the full
+	// rationale.
+	if err := c.checkParentOrdering(ctx, node); err != nil {
+		return CompleteNodeResult{}, err
+	}
+
 	// --- Phase: stage + verify artifact evidence (outside the DB tx) ------
 	if len(in.Artifacts) == 0 {
 		return CompleteNodeResult{}, &domain.Error{
@@ -505,6 +513,66 @@ func (c *CompleteNode) checkDependencies(ctx context.Context, node Node) error {
 					"dep_status": string(dep.Status),
 				},
 			}
+		}
+	}
+	return nil
+}
+
+// startedStatuses is the set of domain.ProgressNodeStatus values that mean
+// "this node's own in_progress transition (or something further along) has
+// already been durably recorded" — i.e. the node has genuinely started
+// from the Progress Tree's point of view, as opposed to still sitting in
+// pending/ready (never started) or blocked (found unreachable before ever
+// starting). checkParentOrdering uses this to decide whether a parent has
+// "started" for the purpose of accepting a child's completion.
+var startedStatuses = map[domain.ProgressNodeStatus]bool{
+	domain.NodeInProgress:    true,
+	domain.NodeCheckpointing: true,
+	domain.NodeCompleted:     true,
+	domain.NodeFailed:        true,
+	domain.NodePaused:        true,
+}
+
+// checkParentOrdering enforces checkpoint-a07's out-of-order provider event
+// scope: a completion signal for a child node must not be accepted before
+// its parent's own in-progress transition has been durably recorded. A
+// provider integration that emits lifecycle events over multiple channels
+// (or that redelivers events after a transient failure) can genuinely
+// deliver a child's "completed" signal ahead of its parent's "started"
+// signal even though the real-world execution order was correct — Preflight
+// must not let the Progress Tree's canonical state (Constitution §6.1)
+// silently become internally incoherent (a completed node whose parent
+// never started) just because two normalized events raced on delivery.
+//
+// A node with no parent (a root node) has nothing to check here. A node
+// whose parent is itself still pending/ready (never started) or blocked
+// (found unreachable) fails this check; every other parent status
+// (in_progress, checkpointing, completed, failed, paused) counts as
+// "started" and is accepted, since ADD's state machine already allows a
+// parent to reach any of those states before every one of its children
+// finishes (e.g. a parent legitimately completing slightly before a
+// straggling child's own evidence is staged is a real, allowed race this
+// check must not block — see the DAG's own child-before-parent framing,
+// which is specifically about the parent never having started at all, not
+// about strict start-then-finish ordering between parent and child).
+func (c *CompleteNode) checkParentOrdering(ctx context.Context, node Node) error {
+	if node.ParentID == nil {
+		return nil
+	}
+	parent, err := c.Nodes.Get(ctx, *node.ParentID)
+	if err != nil {
+		return err
+	}
+	if !startedStatuses[parent.Status] {
+		return &domain.Error{
+			Code:      domain.ErrCodeConflict,
+			Message:   fmt.Sprintf("progress: node %s cannot complete out of order: parent %s has not started yet (status=%s)", node.ID, parent.ID, parent.Status),
+			Retryable: true,
+			Details: map[string]string{
+				"node_id":       string(node.ID),
+				"parent_id":     string(parent.ID),
+				"parent_status": string(parent.Status),
+			},
 		}
 	}
 	return nil

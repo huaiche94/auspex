@@ -61,10 +61,10 @@ func assertScopeMonotonic(t *testing.T, label string, est domain.ScopeEstimate) 
 		if p50 == nil || p80 == nil || p90 == nil {
 			t.Fatalf("%s: %s: expected all three quantiles populated, got p50=%v p80=%v p90=%v", label, name, p50, p80, p90)
 		}
-		if !(*p50 <= *p80) {
+		if *p50 > *p80 {
 			t.Fatalf("%s: %s: monotonicity violated: P50=%d > P80=%d", label, name, *p50, *p80)
 		}
-		if !(*p80 <= *p90) {
+		if *p80 > *p90 {
 			t.Fatalf("%s: %s: monotonicity violated: P80=%d > P90=%d", label, name, *p80, *p90)
 		}
 	}

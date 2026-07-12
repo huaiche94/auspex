@@ -158,3 +158,31 @@ despite `predictor-05b` nominally depending on `predictor-05` which is now done.
 or `RuleQuotaForecaster` (or anything satisfying the `TokenForecaster`/`QuotaForecaster` interfaces) was
 written. No other role's paths were touched. No merge/rebase onto `main` was performed this wave (branch
 was already up to date at `4f96d7f` from the lead's fast-forward merge before this wave began).
+
+---
+
+## Lint correction (post-Wave 2, cross-role integration pass)
+
+A cross-role integration validation pass (`golangci-lint run` against the full merged Wave 2 tree)
+surfaced 3 findings in files owned by this role. This is a corrective commit responding to those
+findings, not a new DAG node — no `predictor-05b`/`predictor-05c`/`predictor-07` or other work was
+started.
+
+- `internal/predictor/runway/runway.go:120` — gocritic `appendAssign` (append result assigned to a
+  different slice than the one appended to: `forecast.ReasonCodes = append(reasons, ...)`). Investigated
+  whether `reasons` was reused afterward: it is declared fresh (`nil`) immediately above this branch and
+  the branch returns right after this line, so there was no aliasing with later code — **cosmetic only,
+  not a real bug**. Fixed by appending directly to `forecast.ReasonCodes` instead of the local `reasons`
+  variable, preserving identical behavior.
+- `internal/predictor/scope/estimator_test.go:64,67` — staticcheck QF1001 (De Morgan's law
+  simplification). Rewrote `if !(*p50 <= *p80) {` as `if *p50 > *p80 {` and
+  `if !(*p80 <= *p90) {` as `if *p80 > *p90 {`, logically identical.
+
+validation:
+  - "gofmt -l internal/predictor  # clean"
+  - "go build ./internal/predictor/...  # ok"
+  - "go vet ./internal/predictor/...  # ok"
+  - "go test ./internal/predictor/... -race  # PASS, all packages"
+  - "golangci-lint not installed in this environment; underlying gocritic/staticcheck patterns fixed per their documented rules"
+
+Only the two named files were touched; no other role's paths were touched.

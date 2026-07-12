@@ -117,7 +117,7 @@ func (s *Scorer) Score(req ScoreRequest) domain.RunwayForecast {
 	if currentUsed == nil {
 		forecast.RiskScore = 0
 		forecast.Confidence = domain.ConfidenceUnavailable
-		forecast.ReasonCodes = append(reasons, ReasonCurrentUsageUnknown, ReasonColdStart)
+		forecast.ReasonCodes = append(forecast.ReasonCodes, ReasonCurrentUsageUnknown, ReasonColdStart)
 		return forecast
 	}
 	forecast.CurrentUsedPercent = currentUsed

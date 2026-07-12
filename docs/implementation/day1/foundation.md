@@ -827,3 +827,119 @@ assumptions:
     entry already recommended for this kind of investigation."
 blockers: []
 ```
+
+### Corrective fix (post foundation-07): migrate_test.go migration-count brittleness
+
+Not a new DAG node — a corrective fix to foundation's own `migrate_test.go`,
+requested directly (not via the normal DAG) after being independently
+confirmed by five separate sources in the same wave: the lead (twice, via
+direct verification) and three sibling Wave 4 roles (claude-provider,
+checkpoint, predictor, runtime), each of whom hit the identical failure
+while building their own Wave 4 migrations and filed it as a change request
+against foundation rather than editing a file outside their own exclusive
+paths.
+
+Root cause: three tests in `migrate_test.go` (`TestCoreMigrations_FromEmptyDatabase`,
+`TestCoreMigrations_ReopenFromFile_AppliesOnce`,
+`TestMigration_ConcurrentReopen_SerializesAndConverges`) asserted
+`CurrentVersion == 4` (hardcoded), and one (`TestAllMigrations_LoadsCoreSchemaFiles`)
+asserted `len(migrations) == 4` (hardcoded), against `sqlite.AllMigrations()` —
+the real `embed.FS`-backed loader that, by design (see `migrate.go`'s own doc
+comment), automatically picks up every other role's migration files the
+moment they land under `internal/storage/sqlite/migrations/`
+(claude-provider 0010-0019, checkpoint 0020-0039, predictor 0040-0049,
+runtime 0050-0059, per `CONTRACT_FREEZE.md`). "Exactly 4" was only ever true
+while foundation's own 0001-0004 were the sole files on disk — true for
+foundation-05 through foundation-07's own branch, but false the instant any
+one sibling branch's migration merges into the same tree, which is exactly
+what Wave 4 integration does across four branches simultaneously.
+
+Fix applied (all four via the "assert at-least, not exactly" path — no
+test's actual intent, per its name/comments, was "verify 0001-0004 apply
+with nothing else ever present"; that isolation already exists implicitly
+in the earlier `TestMigrate_*` tests, which use hand-built synthetic
+`[]sqlite.Migration{}` slices rather than `AllMigrations()`, so a
+scoped-to-own-range rewrite would have been redundant):
+
+- `TestAllMigrations_LoadsCoreSchemaFiles`: `len(migrations) != len(want)`
+  (exactly 4) changed to `len(migrations) < len(want)` (at least 4); still
+  asserts the first four entries are exactly `{1,repositories}`,
+  `{2,worktrees}`, `{3,provider_sessions}`, `{4,tasks}` in that order —
+  unchanged, since that part of the test's intent (foundation's own
+  migrations load correctly and sort first) is still correct and still
+  worth enforcing.
+- `TestCoreMigrations_FromEmptyDatabase`: `version != 4` changed to
+  `version < 4`. Table-existence assertions for the 4 foundation tables
+  (`repositories`, `worktrees`, `provider_sessions`, `tasks`) are unchanged
+  — this test's real intent per its name ("core tables were created
+  correctly") never required that no other tables exist.
+- `TestCoreMigrations_ReopenFromFile_AppliesOnce`: `version != 4` changed to
+  `version < 4`. Test's intent (reopen + re-`Migrate()` is idempotent) is
+  independent of how many total migrations exist.
+- `TestMigration_ConcurrentReopen_SerializesAndConverges`: `version != 4`
+  changed to `version < 4`. Test's intent (concurrent `Migrate()` callers
+  converge instead of racing) is independent of the total migration count.
+- `TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows` (checked,
+  not changed): already compared against `len(migrations)` dynamically, not
+  a hardcoded literal — already correct, not part of this fix.
+
+```yaml
+node: foundation-07-correction
+status: completed
+type: corrective_fix
+reason: "Cross-role-confirmed (5 independent reports this wave: lead x2,
+  claude-provider, checkpoint, predictor, runtime) test brittleness in
+  migrate_test.go — three tests hardcoded CurrentVersion/len(migrations) ==
+  4, which only held while foundation's own migrations were the only files
+  under internal/storage/sqlite/migrations/. Breaks the instant any sibling
+  role's Wave 4 migration lands in the same tree, blocking Wave 4
+  integration entirely since every role's tests run against the same
+  merged migrations/ directory."
+artifacts:
+  - internal/storage/sqlite/migrate_test.go (4 assertions relaxed from
+    exact-match to at-least-match against sqlite.AllMigrations()'s real
+    embedded migration count/version:
+    TestAllMigrations_LoadsCoreSchemaFiles's len(migrations) check,
+    TestCoreMigrations_FromEmptyDatabase's CurrentVersion check,
+    TestCoreMigrations_ReopenFromFile_AppliesOnce's CurrentVersion check,
+    TestMigration_ConcurrentReopen_SerializesAndConverges's CurrentVersion
+    check; no other file touched, no new DAG node started)
+validation:
+  - "gofmt -l internal/storage/sqlite -> empty output"
+  - "go build ./internal/storage/sqlite/... -> clean"
+  - "go vet ./internal/storage/sqlite/... -> clean"
+  - "go test ./internal/storage/sqlite/... -race -v -> PASS, all 36 tests"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+  - "Manual sanity check: temporarily added a throwaway
+    migrations/0099_scratch_test.sql (trivial CREATE TABLE, version 99,
+    outside foundation's 0001-0009 range) to prove the fixed tests
+    tolerate 'more than 4 migrations exist' for real, not just
+    theoretically — ran the full package suite (-race) with it present,
+    confirmed all tests still PASS (CurrentVersion correctly read as 5,
+    every relaxed assertion held), then deleted the throwaway file before
+    committing; it is not part of this fix's commit."
+commit: <pending — recorded in a follow-up commit per this artifact's own
+  established convention (see foundation-09's commit 940c5cb, which did the
+  same for the Bootstrap node)>
+next_action: none — this was a scoped corrective fix to an existing file,
+  not a new node; STOP once validated and committed, per task instruction.
+assumptions:
+  - "All four fixes used the 'assert at-least-4' approach rather than the
+    task's alternative 'scope to foundation's own 0001-0009 range' option,
+    because no flagged test's stated name/intent was actually 'verify
+    migrations apply in isolation with nothing else present' — that
+    scenario is already covered by the earlier synthetic-migration
+    TestMigrate_* tests (foundation-05), which never call AllMigrations()
+    at all. Rewriting the AllMigrations()-based tests to filter down to a
+    synthetic 0001-0009-only fs.FS would have duplicated that existing
+    coverage while making the AllMigrations()-based tests worse at their
+    actual job: proving the real embedded loader and a real multi-role
+    schema converge correctly, which is precisely the integration-time
+    behavior Wave 4 needs verified now that sibling migrations exist."
+  - "TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows was
+    inspected and left unchanged: its row-count assertion already compares
+    against len(migrations) (the dynamic slice returned by AllMigrations()
+    in that same test), not a hardcoded literal, so it was never affected
+    by this bug and needed no fix."
+blockers: []
+```

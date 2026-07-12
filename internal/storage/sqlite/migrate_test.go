@@ -358,6 +358,15 @@ func TestAllMigrations_LoadsCoreSchemaFiles(t *testing.T) {
 		t.Fatalf("AllMigrations: %v", err)
 	}
 
+	// AllMigrations() loads the real embedded migrations/ directory, which
+	// by design also picks up every other role's migration files as they
+	// land there (claude-provider 0010-0019, checkpoint 0020-0039,
+	// predictor 0040-0049, runtime 0050-0059 — see CONTRACT_FREEZE.md and
+	// migrate.go's AllMigrations doc comment). This test only owns
+	// asserting that foundation's own four migrations are present, sorted
+	// first, and correctly named — not that they are the ONLY migrations
+	// that exist, since that stops being true the moment any sibling
+	// role's migration lands in the same tree.
 	want := []struct {
 		version int
 		name    string
@@ -367,8 +376,8 @@ func TestAllMigrations_LoadsCoreSchemaFiles(t *testing.T) {
 		{3, "provider_sessions"},
 		{4, "tasks"},
 	}
-	if len(migrations) != len(want) {
-		t.Fatalf("len(migrations) = %d, want %d (%+v)", len(migrations), len(want), migrations)
+	if len(migrations) < len(want) {
+		t.Fatalf("len(migrations) = %d, want at least %d (%+v)", len(migrations), len(want), migrations)
 	}
 	for i, w := range want {
 		if migrations[i].Version != w.version || migrations[i].Name != w.name {
@@ -394,8 +403,17 @@ func TestCoreMigrations_FromEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("CurrentVersion = %d, want 4 (tasks, the highest foundation-06 migration)", version)
+	// >= 4, not == 4: AllMigrations() loads the real embedded migrations/
+	// directory, which also picks up every other role's migration files as
+	// they land (0010-0019 claude-provider, 0020-0039 checkpoint, 0040-0049
+	// predictor, 0050-0059 runtime, per CONTRACT_FREEZE.md). Those always
+	// sort after foundation's own 0001-0004 range and only raise
+	// CurrentVersion, never lower it, so this test's actual intent — "the
+	// core foundation tables were created correctly" (verified below) —
+	// only requires that foundation's migrations applied, not that they
+	// were the only ones present.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4 (tasks, the highest foundation-06 migration)", version)
 	}
 
 	for _, table := range []string{"repositories", "worktrees", "provider_sessions", "tasks"} {
@@ -600,8 +618,12 @@ func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("CurrentVersion = %d, want 4", version)
+	// >= 4, not == 4: see TestCoreMigrations_FromEmptyDatabase above — this
+	// test's intent is "reopening a migrated DB and re-running Migrate is
+	// idempotent," which holds regardless of how many additional sibling-
+	// role migrations AllMigrations() also loaded.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4", version)
 	}
 }
 
@@ -682,8 +704,12 @@ func TestMigration_ConcurrentReopen_SerializesAndConverges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion: %v", err)
 	}
-	if version != 4 {
-		t.Errorf("CurrentVersion = %d, want 4 (converged despite concurrent callers)", version)
+	// >= 4, not == 4: see TestCoreMigrations_FromEmptyDatabase above — this
+	// test's intent is "concurrent Migrate callers converge on the same
+	// applied version instead of racing," which holds regardless of how
+	// many additional sibling-role migrations AllMigrations() also loaded.
+	if version < 4 {
+		t.Errorf("CurrentVersion = %d, want at least 4 (converged despite concurrent callers)", version)
 	}
 
 	// Re-running Migrate once more against the now-converged database must

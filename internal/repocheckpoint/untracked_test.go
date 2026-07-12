@@ -210,15 +210,19 @@ func TestCapture_Untracked_DisableSecretScan_OptOutHonored(t *testing.T) {
 	}
 }
 
-// TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent proves
-// the scope boundary this integration deliberately draws: the secret scan
-// applies to the UNTRACKED archive only (ADD §19.5's own untracked policy
-// section) — a secret-shaped string already committed/staged and captured
-// via DiffPatch is out of this node's scope (a git diff of already-tracked
-// content is a different problem; redacting committed history is not
-// this checkpoint mechanism's job). This test documents that boundary
-// explicitly rather than leaving it implicit.
-func TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent(t *testing.T) {
+// TestCapture_Untracked_SecretScan_AlsoAppliesToTrackedDiffContent used to
+// document a deliberate scope boundary ("the secret scan applies to the
+// UNTRACKED archive only") — that boundary was in fact a real gap,
+// independently confirmed by this file's own former note and qa-05's
+// leakage-scanner integration test
+// (internal/integrationtest/leakage_scanner_test.go,
+// TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered). The
+// corrective fix (patchredact.go) extends the secret scan to staged/
+// unstaged patch content: a secret-shaped string staged into an
+// already-tracked file must no longer survive verbatim into
+// staged.patch.gz. This test now proves the closed gap instead of the open
+// one.
+func TestCapture_Untracked_SecretScan_AlsoAppliesToTrackedDiffContent(t *testing.T) {
 	rb := newRepoBuilder(t)
 	rb.write("tracked-secret.txt", "placeholder\n")
 	rb.git("add", "tracked-secret.txt")
@@ -234,16 +238,23 @@ func TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent(t *testin
 		t.Fatalf("Capture: %v", err)
 	}
 
-	// The staged patch DOES carry the secret-shaped content - documented
-	// and expected, not a bug this node introduces: patches capture
-	// tracked-file diffs verbatim (checkpoint-b04/b05's scope), and a
-	// secret already committed to a tracked file is a problem for the
-	// user's own Git hygiene / a future qa-05-style scan of patch
-	// content, not for the untracked-archive secret filter this node
-	// implements.
-	patchGz := filepath.Join(artifactsRoot, "cp-1", "staged.patch.gz")
-	if _, err := os.Stat(patchGz); err != nil {
+	// staged.patch.gz must still exist (the changeset's evidence is not
+	// discarded) but must NOT carry the secret-shaped content verbatim —
+	// the corrective fix redacts the offending added-line body in place
+	// rather than dropping the whole patch.
+	patchGzPath := filepath.Join(artifactsRoot, "cp-1", "staged.patch.gz")
+	if _, err := os.Stat(patchGzPath); err != nil {
 		t.Fatalf("expected staged.patch.gz to exist: %v", err)
+	}
+	patch := readGzip(t, patchGzPath)
+	if strings.Contains(patch, "ghp_1234567890abcdefghijklmnopqrstuvwxyz12") {
+		t.Fatalf("expected the secret-shaped token to be redacted from staged.patch.gz, got: %s", patch)
+	}
+	if !strings.Contains(patch, "tracked-secret.txt") {
+		t.Fatalf("expected the patch to still reference the changed file, got: %s", patch)
+	}
+	if !strings.Contains(patch, "REDACTED") {
+		t.Fatalf("expected a redaction placeholder in the patch, got: %s", patch)
 	}
 }
 

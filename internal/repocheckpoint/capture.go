@@ -122,14 +122,27 @@ func Capture(ctx context.Context, gitClient *gitx.Client, clock domain.Clock, re
 		return CaptureResult{}, fmt.Errorf("repocheckpoint: initial fingerprint: %w", err)
 	}
 
-	stagedPatch, err := gitClient.DiffPatch(ctx, initial.WorktreeRoot, true)
+	stagedPatchRaw, err := gitClient.DiffPatch(ctx, initial.WorktreeRoot, true)
 	if err != nil {
 		return CaptureResult{}, fmt.Errorf("repocheckpoint: staged patch: %w", err)
 	}
-	unstagedPatch, err := gitClient.DiffPatch(ctx, initial.WorktreeRoot, false)
+	unstagedPatchRaw, err := gitClient.DiffPatch(ctx, initial.WorktreeRoot, false)
 	if err != nil {
 		return CaptureResult{}, fmt.Errorf("repocheckpoint: unstaged patch: %w", err)
 	}
+
+	// ADD §19.3 step 8 ("secret/size/symlink filters") applies to ALL
+	// captured content, not only the untracked archive (§19.5's own
+	// "Untracked policy" section states the secret-scan bullet there
+	// separately and narrowly; §19.3's general placement between diff
+	// generation and archival is broader). A secret staged/unstaged into
+	// an already-tracked file must not survive into the patch artifacts
+	// unredacted — see patchredact.go for the full design rationale
+	// (redact-in-place, not skip-with-annotation) and the exact scope of
+	// what gets rewritten (added/removed line bodies only, never context
+	// or header lines, so the patch remains structurally applicable).
+	stagedPatch, stagedHadSecret := redactPatchSecrets(stagedPatchRaw)
+	unstagedPatch, unstagedHadSecret := redactPatchSecrets(unstagedPatchRaw)
 
 	archiveResult, err := buildUntrackedArchive(ctx, gitClient, initial.WorktreeRoot,
 		opts.MaxUntrackedFileBytes, opts.MaxUntrackedTotalBytes, opts.MaxUntrackedFileCount, !opts.DisableSecretScan)
@@ -185,9 +198,21 @@ func Capture(ctx context.Context, gitClient *gitx.Client, clock domain.Clock, re
 		recoverabilityLevel = RecoverabilityPartial
 	}
 
-	warnings := make([]string, 0, len(archiveResult.Skipped))
+	warnings := make([]string, 0, len(archiveResult.Skipped)+1)
 	for _, sk := range archiveResult.Skipped {
 		warnings = append(warnings, fmt.Sprintf("%s: %s", sk.Path, sk.Reason))
+	}
+	// Disclosed the same way an untracked skip is disclosed ("skipped
+	// reasons recorded" per ADD §19.5), even though nothing here was
+	// skipped: the patch artifact was altered from Git's raw output before
+	// archiving. Recoverability stays Complete — unlike a skipped
+	// untracked file, a redacted patch line is still fully present and
+	// applicable, just with the secret-shaped span replaced.
+	if stagedHadSecret {
+		warnings = append(warnings, "staged.patch.gz: secret-shaped content detected and redacted in one or more added/removed lines ("+string(SkipSecretContent)+")")
+	}
+	if unstagedHadSecret {
+		warnings = append(warnings, "unstaged.patch.gz: secret-shaped content detected and redacted in one or more added/removed lines ("+string(SkipSecretContent)+")")
 	}
 
 	staged, unstaged, untracked := classifyCounts(final.Entries)

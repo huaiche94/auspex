@@ -45,6 +45,18 @@ const (
 	SkipTotalCapped   SkipReason = "total_size_capped"
 	SkipFileCountCap  SkipReason = "file_count_capped"
 	SkipUnreadable    SkipReason = "unreadable"
+	// SkipSecretFilename and SkipSecretContent are checkpoint-b06's
+	// extension of this ledger (internal/redact): a candidate untracked
+	// file whose name matches Preflight_ADD.md §27.8's exact name-pattern
+	// list, or whose content matches one of internal/redact's content
+	// detectors, is never archived by default. Two distinct reasons (not
+	// one generic "secret") so a caller/operator can tell "we recognized
+	// this AS a secrets file by name" from "we found a secret-shaped
+	// string inside an otherwise ordinary file" — the two have different
+	// false-positive profiles and a user auditing skipped-files.json
+	// benefits from knowing which happened.
+	SkipSecretFilename SkipReason = "secret_filename"
+	SkipSecretContent  SkipReason = "secret_content"
 )
 
 // validateUntrackedPath applies the path-safety checks every untracked

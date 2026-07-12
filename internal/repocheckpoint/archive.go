@@ -1,9 +1,9 @@
 // archive.go: builds the untracked-file archive (ADD §19.2's
-// `untracked.zip`) applying the safe untracked archive policy (Part B
-// deliverable #6's minimal working slice: size/path/symlink filters this
-// node needs for "create and verify" to be meaningful; the fuller policy —
-// secret scanning, richer skip-reason reporting for qa's leakage scanner —
-// is checkpoint-b06's scope, per this wave's brief).
+// `untracked.zip`) applying the safe untracked archive policy. checkpoint-
+// b04 shipped the structural half (size/path/symlink filters); this file
+// now also applies the "secret scan" bullet of ADD §19.5's default policy
+// via internal/redact (checkpoint-b06), the fuller policy + richer
+// skip-reason reporting qa-05's leakage scanner consumes downstream.
 package repocheckpoint
 
 import (
@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 
 	"github.com/huaiche94/preflight/internal/gitx"
+	"github.com/huaiche94/preflight/internal/redact"
 )
 
 // UntrackedArchiveResult reports what buildUntrackedArchive actually did:
@@ -42,10 +43,18 @@ type SkippedFile struct {
 
 // buildUntrackedArchive lists untracked files via gitx, validates each
 // path through validateUntrackedPath, enforces the per-file/total-size/
-// file-count caps, and zips the survivors. Every path decision (included
-// or skipped, and why) is recorded — this function never silently drops a
-// file without a reason ending up in the returned Skipped slice.
-func buildUntrackedArchive(ctx context.Context, gitClient *gitx.Client, worktreeRoot string, maxFileBytes, maxTotalBytes int64, maxFileCount int) (UntrackedArchiveResult, error) {
+// file-count caps, applies internal/redact's secret scan (unless
+// scanSecrets is false), and zips the survivors. Every path decision
+// (included or skipped, and why) is recorded — this function never
+// silently drops a file without a reason ending up in the returned
+// Skipped slice.
+//
+// The secret scan runs AFTER the size caps (a candidate that is already
+// going to be skipped as oversize has no reason to also pay for a content
+// read) but BEFORE the file is added to the archive — a secret-shaped
+// file is skipped and reported the same as any other policy rejection,
+// never partially archived first and filtered after the fact.
+func buildUntrackedArchive(ctx context.Context, gitClient *gitx.Client, worktreeRoot string, maxFileBytes, maxTotalBytes int64, maxFileCount int, scanSecrets bool) (UntrackedArchiveResult, error) {
 	paths, err := gitClient.ListUntracked(ctx, worktreeRoot)
 	if err != nil {
 		return UntrackedArchiveResult{}, fmt.Errorf("repocheckpoint: list untracked files: %w", err)
@@ -83,6 +92,13 @@ func buildUntrackedArchive(ctx context.Context, gitClient *gitx.Client, worktree
 			continue
 		}
 
+		if scanSecrets {
+			if skipReason, skip := scanForSecrets(abs); skip {
+				result.Skipped = append(result.Skipped, SkippedFile{Path: rel, Reason: skipReason})
+				continue
+			}
+		}
+
 		if err := addFileToZip(zw, abs, rel, info.Mode()); err != nil {
 			return UntrackedArchiveResult{}, fmt.Errorf("repocheckpoint: archive %s: %w", rel, err)
 		}
@@ -97,6 +113,29 @@ func buildUntrackedArchive(ctx context.Context, gitClient *gitx.Client, worktree
 		result.Data = buf.Bytes()
 	}
 	return result, nil
+}
+
+// scanForSecrets applies internal/redact to one already-size-validated
+// candidate file, returning the specific SkipReason (filename vs. content)
+// and true if it should be excluded from the archive. A scan I/O error is
+// treated as "skip, unreadable" rather than aborting the whole capture —
+// consistent with this function's existing os.Stat error handling above:
+// an untracked file this package cannot safely read is omitted, not a
+// reason to fail the entire checkpoint.
+func scanForSecrets(abs string) (SkipReason, bool) {
+	result, err := redact.ScanPath(abs)
+	if err != nil {
+		return SkipUnreadable, true
+	}
+	if !result.Matched() {
+		return "", false
+	}
+	for _, f := range result.Findings {
+		if f.Detector == "filename" {
+			return SkipSecretFilename, true
+		}
+	}
+	return SkipSecretContent, true
 }
 
 // addFileToZip streams one file's content into the zip writer under its

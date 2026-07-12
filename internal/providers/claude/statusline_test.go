@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,8 +140,8 @@ func TestParseStatusLine(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error, got nil")
 				}
-				derr, ok := err.(*domain.Error)
-				if !ok {
+				var derr *domain.Error
+				if !errors.As(err, &derr) {
 					t.Fatalf("expected *domain.Error, got %T: %v", err, err)
 				}
 				if derr.Code != tt.wantErrCode {
@@ -161,8 +162,8 @@ func TestParseStatusLine_EmptySessionID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty session_id")
 	}
-	derr, ok := err.(*domain.Error)
-	if !ok || derr.Code != domain.ErrCodeValidation {
+	var derr *domain.Error
+	if !errors.As(err, &derr) || derr.Code != domain.ErrCodeValidation {
 		t.Fatalf("expected ErrCodeValidation, got %v", err)
 	}
 }

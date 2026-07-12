@@ -167,3 +167,33 @@ findings in place:
 This was a corrective fix to existing Wave 2 deliverables, not a new DAG node.
 No test behavior/intent changed; `gofmt`, `go build`, `go vet`, and
 `go test ./internal/hooks/claude/... -race` all pass after the fix.
+
+## Corrective note (post-Wave-2 lint pass, round 2)
+
+A second golangci-lint pass against the fully-integrated Wave 2 tree found 3
+more errorlint findings in this role's files, the same pattern as the round-1
+fix (direct `err.(*domain.Error)` type assertion instead of `errors.As`), at
+locations not covered by round 1:
+
+- `internal/hooks/claude/userpromptsubmit_test.go:106`: replaced the
+  `derr, ok := err.(*domain.Error)` assertion in `TestParseUserPromptSubmit`'s
+  `wantErr` branch with `var derr *domain.Error; errors.As(...)`. Added
+  `"errors"` to this file's import block (not actually present despite round
+  1 touching this file for an unrelated govet fix).
+- `internal/providers/claude/statusline_test.go:142` and `:164`: replaced
+  both `derr, ok := err.(*domain.Error)` assertions (in
+  `TestParseStatusLine`'s `wantErr` branch and in
+  `TestParseStatusLine_EmptySessionID`) with `errors.As` equivalents. Added
+  `"errors"` to this file's import block (was not previously present).
+
+Per the correction instructions, `golangci-lint run
+./internal/hooks/claude/... ./internal/providers/claude/...` was run after
+the fix (not just spot-checked at the 3 listed lines) and reports 0 issues
+for both packages — no further findings of the same or a different pattern
+were found in this role's files.
+
+This was a corrective fix to existing Wave 2 deliverables, not a new DAG
+node. No test behavior/intent changed; `gofmt`, `go build`, `go vet`,
+`go test ./internal/hooks/claude/... ./internal/providers/claude/... -race`,
+and `golangci-lint run ./internal/hooks/claude/... ./internal/providers/claude/...`
+(0 issues) all pass after the fix.

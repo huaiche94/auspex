@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://preflight.dev/schemas/progress-tree.schema.json",
+  "title": "Preflight Progress Tree",
+  "description": "Wire/export shape of a Progress Tree (Preflight_ADD.md Appendix A, §18). Mirrors internal/progress's Node/Edge Go types and the progress_nodes/progress_edges tables (migrations/0020-0021). schema_version pins this document to preflight.progress-tree.v1 (CONTRACT_FREEZE.md).",
+  "type": "object",
+  "required": ["schema_version", "task", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "preflight.progress-tree.v1"
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "status", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "objective": { "type": "string" },
+        "status": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 },
+        "active_node_id": { "type": ["string", "null"] },
+        "auto_resume_enabled": { "type": "boolean" }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "nodeStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "ready",
+        "in_progress",
+        "checkpointing",
+        "paused",
+        "completed",
+        "failed",
+        "skipped",
+        "blocked"
+      ],
+      "description": "domain.ProgressNodeStatus frozen enum (internal/domain/status.go; Constitution §6.4). Exhaustive — no ad hoc status values."
+    },
+    "nodeKind": {
+      "type": "string",
+      "enum": [
+        "document_section",
+        "code_change",
+        "test",
+        "migration",
+        "investigation",
+        "decision",
+        "composite"
+      ],
+      "description": "domain.ProgressNodeKind frozen enum."
+    },
+    "acceptanceCriterion": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "e.g. heading_exists, minimum_bytes, required_subheadings, markdown_fences_balanced, file_exists, checksum_matches (internal/artifacts vocabulary, checkpoint-a03)."
+        },
+        "value": { "type": "string" }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": ["uri", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "uri": { "type": "string" },
+        "selector": { "type": "string" },
+        "media_type": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "validation_status": {
+          "type": "string",
+          "enum": ["pending", "passed", "failed"]
+        }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "required": ["description"],
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "node_id": { "type": ["string", "null"] },
+        "artifact_uri": { "type": "string" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "parent_id", "ordinal", "kind", "title", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "parent_id": { "type": ["string", "null"] },
+        "ordinal": { "type": "integer" },
+        "kind": { "$ref": "#/$defs/nodeKind" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "$ref": "#/$defs/nodeStatus" },
+        "acceptance": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/acceptanceCriterion" }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactRef" }
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Node IDs this node depends_on (progress_edges, edge_kind=depends_on)."
+        },
+        "next_action": { "$ref": "#/$defs/nextAction" },
+        "state_checkpoint_id": { "type": "string" },
+        "provider_node_id": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from_node_id", "to_node_id", "edge_kind"],
+      "additionalProperties": false,
+      "properties": {
+        "from_node_id": { "type": "string" },
+        "to_node_id": { "type": "string" },
+        "edge_kind": {
+          "type": "string",
+          "enum": ["depends_on", "relates_to"]
+        }
+      }
+    }
+  }
+}

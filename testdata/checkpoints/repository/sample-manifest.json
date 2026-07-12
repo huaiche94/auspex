@@ -1,0 +1,43 @@
+{
+  "schema_version": "preflight.repository-checkpoint.v1",
+  "checkpoint_id": "0198f5d9-repo-checkpoint-fixture",
+  "created_at": "2026-07-12T18:01:05Z",
+  "status": "complete",
+  "repository": {
+    "repository_id": "0198f5d8-repo-fixture",
+    "worktree_id": "0198f5d8-worktree-fixture",
+    "git_head": "9f45d9d599e9e834f3ae5060ec68e5517f3672e8",
+    "branch": "main"
+  },
+  "snapshot": {
+    "index_diff_hash": "3a28ce529d31fd318499aa8fa59dd30a8bdc58804faeee5fa79eaf3b31d1d802",
+    "worktree_diff_hash": "4d50b054851463ab89eb2ea3fb86b90e403a030ecaf5c31f0cd80fb200fcd960",
+    "staged_files": 1,
+    "unstaged_files": 1,
+    "untracked_files": 1,
+    "lines_added": 5,
+    "lines_deleted": 0
+  },
+  "artifacts": [
+    {
+      "path": "staged.patch.gz",
+      "sha256": "fc736b06380d1081fcc8377641fa3b615756e9cb8aa8947c4ceb2262aef0bbb2",
+      "bytes": 172
+    },
+    {
+      "path": "unstaged.patch.gz",
+      "sha256": "7358f7395c1d87c30deddb1176158fe7b2f291c7b8c36378136fa16c21a310c2",
+      "bytes": 230
+    },
+    {
+      "path": "untracked.zip",
+      "sha256": "c6668d1f94d7a20ea7c42495d6ca2b774b7558160c53154254336a039c7503e6",
+      "bytes": 162
+    }
+  ],
+  "recoverability": {
+    "level": "complete",
+    "skipped_file_count": 0,
+    "warnings": []
+  }
+}

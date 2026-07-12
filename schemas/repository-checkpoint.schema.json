@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://preflight.dev/schemas/repository-checkpoint.schema.json",
+  "title": "Preflight Repository Checkpoint Manifest",
+  "description": "Wire shape of a Repository Checkpoint's manifest.json (Preflight_ADD.md §19, Appendix D). Mirrors internal/repocheckpoint.Manifest. schema_version pins this document to preflight.repository-checkpoint.v1 (CONTRACT_FREEZE.md).",
+  "type": "object",
+  "required": ["schema_version", "checkpoint_id", "created_at", "status", "repository", "snapshot", "artifacts", "recoverability"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "preflight.repository-checkpoint.v1"
+    },
+    "checkpoint_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["capturing", "complete", "partial", "failed"],
+      "description": "repocheckpoint.Status — repository_checkpoints.status wire values (migrations/0030)."
+    },
+    "repository": {
+      "type": "object",
+      "required": ["repository_id", "worktree_id", "git_head", "branch"],
+      "additionalProperties": false,
+      "properties": {
+        "repository_id": { "type": "string" },
+        "worktree_id": { "type": "string" },
+        "git_head": { "type": "string" },
+        "branch": { "type": "string" },
+        "remote_fingerprint": { "type": "string" }
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "required": ["index_diff_hash", "worktree_diff_hash", "staged_files", "unstaged_files", "untracked_files", "lines_added", "lines_deleted"],
+      "additionalProperties": false,
+      "properties": {
+        "index_diff_hash": { "type": "string" },
+        "worktree_diff_hash": { "type": "string" },
+        "staged_files": { "type": "integer", "minimum": 0 },
+        "unstaged_files": { "type": "integer", "minimum": 0 },
+        "untracked_files": { "type": "integer", "minimum": 0 },
+        "lines_added": { "type": "integer", "minimum": 0 },
+        "lines_deleted": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "recoverability": {
+      "type": "object",
+      "required": ["level", "skipped_file_count", "warnings"],
+      "additionalProperties": false,
+      "properties": {
+        "level": { "type": "string", "enum": ["complete", "partial", "none"] },
+        "skipped_file_count": { "type": "integer", "minimum": 0 },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -12,7 +12,10 @@ import (
 var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func TestNewReturnsDomainIDGenerator(t *testing.T) {
-	var _ domain.IDGenerator = idgen.New()
+	// The explicit domain.IDGenerator type is the point of this test (it
+	// documents/asserts New() satisfies the domain contract); keep it
+	// even though staticcheck can infer the type from New()'s signature.
+	var _ domain.IDGenerator = idgen.New() //nolint:staticcheck // explicit interface assertion is intentional
 }
 
 func TestNewIDIsNonEmptyAndUUIDShaped(t *testing.T) {

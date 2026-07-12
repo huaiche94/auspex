@@ -100,7 +100,7 @@ func LoadMigrationsFS(fsys fs.FS, root string) ([]Migration, error) {
 		if err != nil {
 			// Unreachable given the regex's \d+ capture, but handled
 			// explicitly rather than ignored.
-			return nil, fmt.Errorf("%w: %s: %v", ErrInvalidMigrationFilename, name, err)
+			return nil, fmt.Errorf("%w: %s: %w", ErrInvalidMigrationFilename, name, err)
 		}
 		if existing, dup := seen[version]; dup {
 			return nil, fmt.Errorf("%w: version %d in both %s and %s", ErrDuplicateMigrationVersion, version, existing, name)

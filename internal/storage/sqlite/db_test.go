@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +19,7 @@ func TestOpen_CreatesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected database file to exist: %v", err)
@@ -108,13 +109,13 @@ func TestPragmas_ApplyAcrossMultipleConnections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open db1: %v", err)
 	}
-	defer db1.Close()
+	defer func() { _ = db1.Close() }()
 
 	db2, err := sqlite.Open(ctx, path)
 	if err != nil {
 		t.Fatalf("Open db2: %v", err)
 	}
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 
 	for i, db := range []*sqlite.DB{db1, db2} {
 		var mode string
@@ -150,12 +151,12 @@ func TestBusyTimeout_ConcurrentWriteWaitsInsteadOfFailingImmediately(t *testing.
 	if err != nil {
 		t.Fatalf("Open db1: %v", err)
 	}
-	defer db1.Close()
+	defer func() { _ = db1.Close() }()
 	db2, err := sqlite.Open(ctx, path)
 	if err != nil {
 		t.Fatalf("Open db2: %v", err)
 	}
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 
 	if _, err := db1.Conn().ExecContext(ctx, `CREATE TABLE t (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatalf("create table: %v", err)
@@ -239,7 +240,7 @@ func TestWithTx_RollsBackOnError(t *testing.T) {
 		}
 		return sentinel
 	})
-	if err != sentinel {
+	if !errors.Is(err, sentinel) {
 		t.Fatalf("WithTx error = %v, want sentinel", err)
 	}
 

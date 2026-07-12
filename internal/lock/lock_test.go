@@ -82,7 +82,7 @@ func TestAcquire_StaleLock_FromDeadProcess_IsReclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire over stale lock: %v", err)
 	}
-	defer l.Release()
+	defer func() { _ = l.Release() }()
 
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -104,7 +104,7 @@ func TestAcquire_CorruptLockFile_IsReclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire over corrupt lock file: %v", err)
 	}
-	defer l.Release()
+	defer func() { _ = l.Release() }()
 }
 
 func TestAcquire_EmptyLockFile_IsReclaimed(t *testing.T) {
@@ -118,7 +118,7 @@ func TestAcquire_EmptyLockFile_IsReclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire over empty lock file: %v", err)
 	}
-	defer l.Release()
+	defer func() { _ = l.Release() }()
 }
 
 func TestAcquire_ReacquireAfterRelease_Succeeds(t *testing.T) {
@@ -136,7 +136,7 @@ func TestAcquire_ReacquireAfterRelease_Succeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Acquire after Release: %v", err)
 	}
-	defer l2.Release()
+	defer func() { _ = l2.Release() }()
 }
 
 func TestAcquire_MissingParentDir_Errors(t *testing.T) {

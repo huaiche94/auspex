@@ -106,7 +106,7 @@ func TestMigrate_Reopen_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open (second): %v", err)
 	}
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 
 	// Reapplying the same migration set against the already-migrated
 	// database must succeed without re-running migration 1's CREATE
@@ -147,7 +147,7 @@ func TestMigrate_Reopen_AppliesOnlyNewMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open (second): %v", err)
 	}
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 
 	// The binary now knows about a newer migration 2 in addition to the
 	// already-applied migration 1.
@@ -195,7 +195,7 @@ func TestMigrate_DatabaseNewerThanBinary_RejectsSafely(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open (second): %v", err)
 	}
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 
 	err = db2.Migrate(ctx, []sqlite.Migration{
 		{Version: 1, Name: "one", SQL: `CREATE TABLE one (id INTEGER PRIMARY KEY)`},

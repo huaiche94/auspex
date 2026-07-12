@@ -182,7 +182,7 @@ func (d *DB) WithTx(ctx context.Context, fn app.TxFunc) error {
 
 	if err := fn(txCtx); err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			return fmt.Errorf("sqlite: rollback after error %v: %w", err, rbErr)
+			return fmt.Errorf("sqlite: rollback after error %w: %w", err, rbErr)
 		}
 		return err
 	}

@@ -9,7 +9,10 @@ import (
 )
 
 func TestNewReturnsDomainClock(t *testing.T) {
-	var _ domain.Clock = clock.New()
+	// The explicit domain.Clock type is the point of this test (it
+	// documents/asserts New() satisfies the domain contract); keep it
+	// even though staticcheck can infer the type from New()'s signature.
+	var _ domain.Clock = clock.New() //nolint:staticcheck // explicit interface assertion is intentional
 }
 
 func TestNowReturnsSaneRecentTime(t *testing.T) {

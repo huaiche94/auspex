@@ -133,7 +133,9 @@ func isStale(path string) (bool, error) {
 
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil {
-		// Unparseable contents can never represent a live PID.
+		// Unparseable contents can never represent a live PID, so this is
+		// staleness, not an error to propagate.
+		//nolint:nilerr // deliberate: a parse failure means "stale", not "propagate this error"
 		return true, nil
 	}
 

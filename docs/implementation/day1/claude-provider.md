@@ -114,7 +114,7 @@ validation:
   - "go test ./internal/telemetry/claude/... -v  -> PASS (9 tests, incl. 5 StopFailure fixture subtests, idempotency-determinism test, duplicate-snapshot idempotency test, 2 privacy-assertion tests)"
   - "go build ./...  -> ok (no cross-package regressions)"
   - "go test ./internal/providers/claude/... ./internal/hooks/claude/... ./internal/telemetry/claude/...  -> ok (Wave-1 packages unaffected)"
-commit: PENDING_FILL_AFTER_COMMIT
+commit: d4d2869c96fdcda49fb81cf5a927c7c3eb7c7f8e
 next_action: claude-provider-06 (this wave; claude-provider-05/-07 out of scope for this wave per instructions)
 assumptions:
   - "pkg/protocol/v1.EventType's frozen taxonomy (verified by reading pkg/protocol/v1/event.go directly, commit ac99215 base) already contains every event type this node needs: EventProviderContextObserved, EventProviderUsageObserved, EventProviderQuotaObserved (from StatusLineSnapshot), EventProviderTurnStarted (from UserPromptSubmitEvent), EventProviderTurnCompleted (from StopEvent), EventProviderTurnFailed + EventProviderRateLimitHit (from StopFailureEvent, the latter only when FailureClass == domain.FailureProviderRateLimit). No contract gap was found; no new EventType was added by this role."

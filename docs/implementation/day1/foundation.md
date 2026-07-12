@@ -918,9 +918,7 @@ validation:
     confirmed all tests still PASS (CurrentVersion correctly read as 5,
     every relaxed assertion held), then deleted the throwaway file before
     committing; it is not part of this fix's commit."
-commit: <pending — recorded in a follow-up commit per this artifact's own
-  established convention (see foundation-09's commit 940c5cb, which did the
-  same for the Bootstrap node)>
+commit: dc8d2a1
 next_action: none — this was a scoped corrective fix to an existing file,
   not a new node; STOP once validated and committed, per task instruction.
 assumptions:

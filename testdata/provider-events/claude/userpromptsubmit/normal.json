@@ -1,0 +1,7 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0W",
+  "transcript_path": "/Users/dev/.claude/projects/preflight/sess_01H9X8K7QZ3M4N5P6R7S8T9V0W.jsonl",
+  "cwd": "/Users/dev/projects/preflight",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Refactor the checkpoint manifest writer to use atomic rename."
+}

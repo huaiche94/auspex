@@ -1,0 +1,1 @@
+{"decision":"block","reason":"Preflight evaluation eval_123 requires a checkpoint or explicit override before this task starts.","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Use the durable Preflight Progress Tree and checkpoint policy."}}

@@ -1,0 +1,43 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z",
+  "model": {
+    "id": "claude-opus-4-1-20250805",
+    "display_name": "Opus 4.1",
+    "future_field": "unexpected-value"
+  },
+  "workspace": {
+    "current_dir": "/Users/dev/projects/preflight",
+    "project_dir": "/Users/dev/projects/preflight",
+    "git_branch": "main"
+  },
+  "context_window": {
+    "total_input_tokens": 15000,
+    "total_output_tokens": 900,
+    "context_window_size": 200000,
+    "used_percentage": 7.95
+  },
+  "cost": {
+    "total_cost_usd": 0.42,
+    "total_duration_ms": 61200,
+    "total_api_duration_ms": 30400,
+    "total_lines_added": 12,
+    "total_lines_removed": 2
+  },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 5.1,
+      "resets_at": "2026-07-12T20:00:00Z"
+    },
+    "seven_day": {
+      "used_percentage": 2.0,
+      "resets_at": "2026-07-18T00:00:00Z"
+    }
+  },
+  "some_future_top_level_field": {
+    "nested": true,
+    "value": 123
+  },
+  "output_style": {
+    "name": "default"
+  }
+}

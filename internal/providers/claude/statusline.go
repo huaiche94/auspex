@@ -1,0 +1,243 @@
+// Package claude implements fixture-backed parsing of Claude Code's
+// provider-native payloads (status-line snapshots, hook payloads) into
+// intermediate Go structs. This package does not normalize into the frozen
+// pkg/protocol/v1.Event envelope — that is claude-provider-04's job. This
+// wave (claude-provider-01/02/03) only covers the parsing step (Constitution
+// §7 rule 10: implement one wave at a time).
+package claude
+
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/huaiche94/preflight/internal/domain"
+)
+
+// StatusLineSnapshot is the parsed, unknown-field-tolerant representation of
+// a single Claude Code status-line JSON payload (ADD §22.5). All
+// optional/measured fields use Go pointer types: nil means "unknown", never
+// a substituted zero (Constitution §7 / ADD principle 1, CONTRACT_FREEZE.md
+// "Unknown/null semantics").
+type StatusLineSnapshot struct {
+	SessionID domain.SessionID
+
+	ModelID          *string
+	ModelDisplayName *string
+
+	CurrentDir *string
+	ProjectDir *string
+
+	// Context window usage.
+	ContextInputTokens  *int64
+	ContextOutputTokens *int64
+	ContextWindowSize   *int64
+	ContextUsedPercent  *float64
+
+	// Cumulative cost/duration/LOC.
+	TotalCostUSD       *float64
+	TotalDurationMs    *int64
+	TotalAPIDurationMs *int64
+	TotalLinesAdded    *int64
+	TotalLinesRemoved  *int64
+
+	// Five-hour rolling quota window.
+	FiveHourUsedPercent *float64
+	FiveHourResetsAt    *time.Time
+
+	// Seven-day rolling quota window.
+	SevenDayUsedPercent *float64
+	SevenDayResetsAt    *time.Time
+}
+
+// rawStatusLine mirrors the on-wire JSON shape. Using `any`/pointer leaves
+// for every optional field lets json.Unmarshal distinguish "absent",
+// "null", and "present" without ever defaulting to a zero value. Unknown
+// top-level and nested fields are tolerated automatically because we only
+// decode the fields we recognize; encoding/json ignores the rest.
+type rawStatusLine struct {
+	SessionID string `json:"session_id"`
+
+	Model *struct {
+		ID          *string `json:"id"`
+		DisplayName *string `json:"display_name"`
+	} `json:"model"`
+
+	Workspace *struct {
+		CurrentDir *string `json:"current_dir"`
+		ProjectDir *string `json:"project_dir"`
+	} `json:"workspace"`
+
+	ContextWindow *struct {
+		TotalInputTokens  *int64   `json:"total_input_tokens"`
+		TotalOutputTokens *int64   `json:"total_output_tokens"`
+		ContextWindowSize *int64   `json:"context_window_size"`
+		UsedPercentage    *float64 `json:"used_percentage"`
+	} `json:"context_window"`
+
+	Cost *struct {
+		TotalCostUSD       *float64 `json:"total_cost_usd"`
+		TotalDurationMs    *int64   `json:"total_duration_ms"`
+		TotalAPIDurationMs *int64   `json:"total_api_duration_ms"`
+		TotalLinesAdded    *int64   `json:"total_lines_added"`
+		TotalLinesRemoved  *int64   `json:"total_lines_removed"`
+	} `json:"cost"`
+
+	RateLimits *struct {
+		FiveHour *rawRateWindow `json:"five_hour"`
+		SevenDay *rawRateWindow `json:"seven_day"`
+	} `json:"rate_limits"`
+}
+
+type rawRateWindow struct {
+	UsedPercentage *float64   `json:"used_percentage"`
+	ResetsAt       *time.Time `json:"resets_at"`
+}
+
+// ParseStatusLine parses a single Claude Code status-line JSON snapshot
+// (read from stdin per ADD §22.5). It tolerates unknown fields at any
+// nesting level and never substitutes a zero value for a field that was
+// null or absent in the source payload.
+//
+// A malformed (syntactically invalid) payload returns a *domain.Error with
+// Code ErrCodeValidation so callers (the hook wrapper) can fall back to a
+// safe default response rather than crash.
+func ParseStatusLine(raw []byte) (StatusLineSnapshot, error) {
+	var r rawStatusLine
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return StatusLineSnapshot{}, &domain.Error{
+			Code:      domain.ErrCodeValidation,
+			Message:   fmt.Sprintf("claude statusline: invalid JSON: %v", err),
+			Retryable: false,
+		}
+	}
+
+	if r.SessionID == "" {
+		return StatusLineSnapshot{}, &domain.Error{
+			Code:      domain.ErrCodeValidation,
+			Message:   "claude statusline: missing session_id",
+			Retryable: false,
+		}
+	}
+
+	snap := StatusLineSnapshot{
+		SessionID: domain.SessionID(r.SessionID),
+	}
+
+	if r.Model != nil {
+		snap.ModelID = r.Model.ID
+		snap.ModelDisplayName = r.Model.DisplayName
+	}
+
+	if r.Workspace != nil {
+		snap.CurrentDir = r.Workspace.CurrentDir
+		snap.ProjectDir = r.Workspace.ProjectDir
+	}
+
+	if r.ContextWindow != nil {
+		snap.ContextInputTokens = r.ContextWindow.TotalInputTokens
+		snap.ContextOutputTokens = r.ContextWindow.TotalOutputTokens
+		snap.ContextWindowSize = r.ContextWindow.ContextWindowSize
+		snap.ContextUsedPercent = r.ContextWindow.UsedPercentage
+	}
+
+	if r.Cost != nil {
+		snap.TotalCostUSD = r.Cost.TotalCostUSD
+		snap.TotalDurationMs = r.Cost.TotalDurationMs
+		snap.TotalAPIDurationMs = r.Cost.TotalAPIDurationMs
+		snap.TotalLinesAdded = r.Cost.TotalLinesAdded
+		snap.TotalLinesRemoved = r.Cost.TotalLinesRemoved
+	}
+
+	if r.RateLimits != nil {
+		if r.RateLimits.FiveHour != nil {
+			snap.FiveHourUsedPercent = r.RateLimits.FiveHour.UsedPercentage
+			snap.FiveHourResetsAt = r.RateLimits.FiveHour.ResetsAt
+		}
+		if r.RateLimits.SevenDay != nil {
+			snap.SevenDayUsedPercent = r.RateLimits.SevenDay.UsedPercentage
+			snap.SevenDayResetsAt = r.RateLimits.SevenDay.ResetsAt
+		}
+	}
+
+	return snap, nil
+}
+
+// ContextObservation projects the parsed snapshot into the frozen
+// domain.ContextObservation shape (internal/domain/usage.go). Source is
+// always domain.SourceStatusLine. Confidence is domain.ConfidenceExact
+// when both used tokens and window size are present, else
+// domain.ConfidenceUnavailable — callers must not guess.
+func (s StatusLineSnapshot) ContextObservation(observedAt time.Time) domain.ContextObservation {
+	confidence := domain.ConfidenceUnavailable
+	if s.ContextInputTokens != nil && s.ContextWindowSize != nil {
+		confidence = domain.ConfidenceExact
+	}
+
+	var usedTokens *int64
+	if s.ContextInputTokens != nil {
+		total := *s.ContextInputTokens
+		if s.ContextOutputTokens != nil {
+			total += *s.ContextOutputTokens
+		}
+		usedTokens = &total
+	}
+
+	return domain.ContextObservation{
+		SessionID:    s.SessionID,
+		UsedTokens:   usedTokens,
+		WindowTokens: s.ContextWindowSize,
+		UsedPercent:  s.ContextUsedPercent,
+		Source:       domain.SourceStatusLine,
+		Confidence:   confidence,
+		ObservedAt:   observedAt,
+	}
+}
+
+// FiveHourQuotaObservation projects the five-hour rolling quota window into
+// the frozen domain.QuotaObservation shape. Returns nil when neither
+// percentage nor reset timestamp was observed (ADD §22.10: absence means
+// unknown, not zero usage).
+func (s StatusLineSnapshot) FiveHourQuotaObservation(observedAt time.Time) *domain.QuotaObservation {
+	if s.FiveHourUsedPercent == nil && s.FiveHourResetsAt == nil {
+		return nil
+	}
+	confidence := domain.ConfidenceHigh
+	if s.FiveHourUsedPercent == nil || s.FiveHourResetsAt == nil {
+		confidence = domain.ConfidenceMedium
+	}
+	return &domain.QuotaObservation{
+		SessionID:   s.SessionID,
+		Provider:    "claude",
+		LimitID:     "five_hour",
+		LimitName:   "5h rolling usage",
+		UsedPercent: s.FiveHourUsedPercent,
+		ResetsAt:    s.FiveHourResetsAt,
+		Source:      domain.SourceStatusLine,
+		Confidence:  confidence,
+		ObservedAt:  observedAt,
+	}
+}
+
+// SevenDayQuotaObservation is the seven-day analogue of
+// FiveHourQuotaObservation.
+func (s StatusLineSnapshot) SevenDayQuotaObservation(observedAt time.Time) *domain.QuotaObservation {
+	if s.SevenDayUsedPercent == nil && s.SevenDayResetsAt == nil {
+		return nil
+	}
+	confidence := domain.ConfidenceHigh
+	if s.SevenDayUsedPercent == nil || s.SevenDayResetsAt == nil {
+		confidence = domain.ConfidenceMedium
+	}
+	return &domain.QuotaObservation{
+		SessionID:   s.SessionID,
+		Provider:    "claude",
+		LimitID:     "seven_day",
+		LimitName:   "7d rolling usage",
+		UsedPercent: s.SevenDayUsedPercent,
+		ResetsAt:    s.SevenDayResetsAt,
+		Source:      domain.SourceStatusLine,
+		Confidence:  confidence,
+		ObservedAt:  observedAt,
+	}
+}

@@ -1,0 +1,11 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V1A",
+  "transcript_path": "/Users/dev/.claude/projects/preflight/sess_01H9X8K7QZ3M4N5P6R7S8T9V1A.jsonl",
+  "cwd": "/Users/dev/projects/preflight",
+  "hook_event_name": "StopFailure",
+  "error": {
+    "type": "some_future_error_type",
+    "message": "an error Preflight has never seen before"
+  },
+  "future_field": "unexpected"
+}

@@ -1,0 +1,25 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0X",
+  "model": {
+    "id": "claude-sonnet-4-5-20250929",
+    "display_name": "Sonnet 4.5"
+  },
+  "workspace": {
+    "current_dir": "/Users/dev/projects/preflight",
+    "project_dir": "/Users/dev/projects/preflight"
+  },
+  "context_window": {
+    "total_input_tokens": null,
+    "total_output_tokens": null,
+    "context_window_size": 200000,
+    "used_percentage": null
+  },
+  "cost": {
+    "total_cost_usd": null,
+    "total_duration_ms": null,
+    "total_api_duration_ms": null,
+    "total_lines_added": null,
+    "total_lines_removed": null
+  },
+  "rate_limits": {}
+}

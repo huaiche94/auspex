@@ -1,0 +1,11 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0X",
+  "transcript_path": "/Users/dev/.claude/projects/preflight/sess_01H9X8K7QZ3M4N5P6R7S8T9V0X.jsonl",
+  "cwd": "/Users/dev/projects/preflight",
+  "hook_event_name": "StopFailure",
+  "error": {
+    "type": "overloaded_error",
+    "message": "Anthropic's API is temporarily overloaded.",
+    "status_code": 529
+  }
+}

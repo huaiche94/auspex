@@ -1,0 +1,8 @@
+{
+  "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z",
+  "transcript_path": "/Users/dev/.claude/projects/preflight/sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z.jsonl",
+  "cwd": "/Users/dev/projects/preflight",
+  "hook_event_name": "Stop",
+  "stop_hook_active": true,
+  "future_field": "unexpected"
+}

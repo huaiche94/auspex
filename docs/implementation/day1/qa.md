@@ -45,6 +45,111 @@
 ## Node log
 
 ```yaml
+node: qa-04
+status: completed
+artifacts:
+  - internal/integrationtest/duplicate_outoforder_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run 'Duplicate|OutOfOrder' -v   # 5/5 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./... -race   # whole repo, all packages PASS, zero regressions"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: <recorded below>
+next_action: none — qa-04 was this wave's full qa assignment; STOP per task instruction; report findings to lead for routing
+assumptions:
+  - "Before writing any test, did a repo-wide investigation (grep for any
+    file importing both internal/telemetry/claude and internal/progress,
+    or pkg/protocol/v1 and internal/progress; grep for
+    adapter/bridge/consumer/dispatcher; read internal/orchestrator/hooks.go,
+    internal/app/wiring/wiring.go, internal/app/ports.go in full) to
+    confirm exactly how (if at all) a persisted claude-provider v1.Event
+    currently drives internal/progress.CompleteNode.Run in production
+    code. Finding: it does not, anywhere. See the findings section below
+    and this file's own package doc comment
+    (internal/integrationtest/duplicate_outoforder_test.go) for the full
+    evidence trail. This determined the test design: real components
+    driven together as far as the frozen contract (v1.Event,
+    CompleteNodeInput, CompleteNodeRequest) actually allows, plus a
+    clearly-labeled TEST-ONLY `deriveCompleteNodeInput` glue function
+    standing in for the missing production adapter — never added as
+    production code, per agents/qa.md's 'do not alter feature production
+    code' rule."
+  - "Scenario 1 (duplicate provider event, end-to-end): real
+    claudehooks.ParseStop + claudetelemetry.Normalizer.NormalizeStop against
+    the real testdata/provider-events/claude/stop/normal.json fixture,
+    persisted via the real claudetelemetry.EventStore into a REAL on-disk
+    (temp-file, not :memory:) SQLite database that also holds
+    checkpoint-a07's progress_nodes/node_completions/state_checkpoints
+    tables (the same DB a real process would use) — not two separate
+    in-memory fakes. Verified EventStore-layer dedup
+    (CountByIdempotencyKey==1, GetByEventID unchanged, the redelivered
+    event's own EventID never separately stored) AND, using the derived
+    CompleteNodeInput, that a second completion attempt keyed off the same
+    real event's IdempotencyKey replays (Replayed=true, same checkpoint ID)
+    rather than erroring or double-completing. A second test
+    (DifferentChannel_DifferentKey_SameEvidence_Replayed) repeats this
+    using a real StopFailure fixture and an independently-chosen second
+    key, exercising checkpoint-a07's evidence-digest-based (not
+    key-based) duplicate detection specifically."
+  - "Scenario 2 (out-of-order delivery, end-to-end): a REAL Stop fixture
+    event, parsed/normalized/persisted through the real pipeline exactly as
+    internal/orchestrator/hooks.go's HandleStop does in production, used
+    (via the same derive helper) as the trigger for a CHILD node's
+    completion while its PARENT node was deliberately left at `pending`
+    (never transitioned to in_progress) — modeling the parent's own
+    in-progress signal having been delayed/lost relative to the child's
+    completion signal. Confirmed: rejection with domain.ErrCodeConflict,
+    Retryable=true (matching checkpoint-a07's documented semantics exactly,
+    not merely 'some error'); the real persisted provider event remains
+    durably stored despite the rejected completion (proving the two
+    integrity boundaries — event persistence and node completion — are
+    correctly independent); the child node remains in_progress, not
+    corrupted; and a retry of the identical input succeeds once the parent
+    is (realistically) moved to in_progress, proving the rejection was
+    genuinely about ordering and not some other defect in the derived
+    input. A companion test independently verifies the EventStore layer's
+    own documented ordering-agnostic behavior (store.go: 'no mutable
+    current-state row... persists correctly either way') by persisting a
+    real turn.completed event before a real turn.started event and
+    confirming both land as independent, correctly stored rows — proving
+    the storage layer's permissiveness and CompleteNode's strictness about
+    ordering are two deliberately different, non-contradictory behaviors
+    at two different layers."
+  - "All fixtures are real: testdata/provider-events/claude/{stop,
+    stopfailure,userpromptsubmit}/*.json, read directly off disk and run
+    through the real claudehooks.Parse*/claudetelemetry.Normalizer
+    pipeline — no hand-built v1.Event values anywhere in this file except
+    where explicitly and separately confirming the storage layer's
+    ordering-agnostic contract."
+  - "Test-double patterns (fixedClock/seqIDs-style, openTestDB, seedTask,
+    newDocumentNode, newCompleteNodeHarness, moveNodeToInProgress) are
+    small duplicates of the exact same helpers internal/progress's own
+    test suite and qa-05's leakage_scanner_test.go already established —
+    both are unexported to their own test packages, so re-declaring the
+    same minimal shape here (prefixed qa04* to avoid collisions with
+    qa-05's own same-named helpers in this package) follows the same
+    precedent those files' own doc comments already documented for this
+    kind of cross-file duplication."
+blockers: []
+findings:
+  - severity: P1
+    title: "No production code path connects a persisted claude-provider v1.Event to internal/progress.CompleteNode.Run — the two components qa-04 was asked to integrate-test are wired together only inside this test file's own TEST-ONLY glue, not in production"
+    file: "internal/orchestrator/hooks.go (HandleStop/HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize+persist and stop there — HandleStop's own doc comment: 'Full Progress Tree/Git/artifact reconciliation... is outcome labeling depth beyond this node's scope'); internal/telemetry/claude/normalizer.go (no producer ever assigns Event.TaskID or Event.ProgressNodeID — every event's envelope() helper sets only SessionID); internal/progress/complete_node.go's CompleteNodeInput and internal/app/ports.go's CompleteNodeRequest (both frozen to exactly {NodeID, IdempotencyKey, Artifacts[, RepositoryCheckpointID]} — no v1.Event/EventID/EventType field anywhere); internal/progress/node_store.go's Node.ProviderNodeID field (stored and read back, confirmed via grep, but no code anywhere looks a node up BY ProviderNodeID); internal/app/wiring/wiring.go (wires no bridge between internal/telemetry/claude and internal/progress; Services.ProgressTree is still just the bare frozen interface, unimplemented, per that package's own doc comment)."
+    reproduction: "go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v — parses+normalizes a real Stop fixture and asserts ev.TaskID==\"\" and ev.ProgressNodeID==\"\" (both true today); combined with a repo-wide grep (documented in this file's own package doc comment) for any file importing both internal/telemetry/claude and internal/progress (zero matches) or pkg/protocol/v1 and internal/progress (zero matches), and for any adapter/bridge/consumer/dispatcher file (none exist)."
+    expected_invariant: "Preflight_ADD.md's Progress Tree is meant to be driven forward by real provider observations (a provider.turn.completed signal is exactly the kind of real-world event that should be able to trigger a node's completion) — Constitution §6.1 ('Progress Tree is the canonical durable task state... never an agent's own claim of done') implies SOME real signal must be able to drive a real completion, not just a test harness hand-constructing a CompleteNodeInput. Today, nothing does: the event pipeline (claude-provider) and the completion pipeline (checkpoint/progress) are both individually correct and individually well-tested, but there is a genuine missing middle layer between them. This is exactly the kind of integration-only gap qa-04 was chartered to find, per its own task brief ('an event type or field mapping mismatch, a case where claude-provider's real events don't actually carry information checkpoint's ordering-check logic expects')."
+    owning_role: "contract-integrator (a new cross-component port/field is needed on the frozen v1.Event/CompleteNodeRequest contract, or a documented decision that TaskID/ProgressNodeID resolution happens via a different, not-yet-built lookup path — Constitution §4.2 reserves pkg/protocol/v1/** and internal/app/ports.go exclusively to this role) in coordination with claude-provider (would need to populate TaskID/ProgressNodeID on produced events once a resolution mechanism exists) and checkpoint (whichever role builds the actual consumer/adapter). Not routed as P0: every individual component this gap spans is itself correct and passes its own tests, no existing invariant is violated, and Day-1's frozen DAG never assigned any node the explicit job of building this adapter this wave — it is a forward-looking integration gap this node exists to surface, not a regression."
+  - severity: P2
+    title: "checkpoint-a07's duplicate/out-of-order semantics hold correctly when driven by REAL claude-provider events end-to-end, not just hand-built CompleteNodeInput values — no defect found in either component's own logic"
+    file: "internal/telemetry/claude/store.go (claude-provider-05); internal/progress/idempotency.go, internal/progress/complete_node.go (checkpoint-a07)"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run 'Duplicate|OutOfOrder' -v (this node's own suite, 5/5 passing) is the closure evidence: TestDuplicateProviderEvent_EndToEnd_StoredOnceAndCompletionReplayed and TestDuplicateProviderEvent_DifferentChannel_DifferentKey_SameEvidence_Replayed prove the duplicate case; TestOutOfOrderDelivery_EndToEnd_ChildCompletionBeforeParentStarted_Rejected and TestOutOfOrderDelivery_EndToEnd_EventStoreAcceptsEitherArrivalOrder prove the out-of-order case, including the retry-succeeds-once-parent-starts positive path and the EventStore-layer/CompleteNode-layer non-contradiction."
+    expected_invariant: "Both upstream nodes' own unit tests already proved their own logic correct in isolation; qa-04's own DAG row exists specifically to prove they remain correct when the actual field flowing between them (a real, deterministically-digested IdempotencyKey derived from a real fixture, not a string literal) is used. Recorded per agents/qa.md's instruction to record 'any findings, even non-blocking ones.'"
+    owning_role: "qa (this node) — informational; no action needed from claude-provider or checkpoint for this specific behavior."
+```
+
+```yaml
 node: qa-05
 status: completed
 artifacts:

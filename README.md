@@ -119,6 +119,65 @@ preflight hook claude <event>    the four hook entrypoints Claude Code calls
   ([#11](https://github.com/huaiche94/preflight/issues/11),
   [#12](https://github.com/huaiche94/preflight/issues/12)).
 
+## How to use this repo
+
+### Build and run
+
+```bash
+go build -o preflight ./cmd/preflight
+./preflight version
+./preflight doctor      # verifies DB connectivity + migration state
+./preflight --help      # full command tree
+```
+
+Requires Go 1.26.x (see [Tech stack](#tech-stack)); no CGO, no external
+services. The first run creates and migrates a SQLite database under the
+OS user data directory (macOS: `~/Library/Application Support/preflight/`,
+Linux: `$XDG_DATA_HOME/preflight/`), so `doctor` is a meaningful check
+immediately after building.
+
+### Wire it into Claude Code
+
+Follow [`integrations/claude/`](integrations/claude/) — it ships the
+`hooks.json`/`plugin.json` examples that route Claude Code's
+UserPromptSubmit / Stop / StopFailure / statusline events through
+`preflight hook claude <event>`. The [Signals](#signals) and
+[Actions](#actions) sections above describe what you get once wired.
+
+### Validate a change
+
+Every wave of this repo's own build was gated on exactly these, and they
+are the expected local pre-commit bar:
+
+```bash
+gofmt -l . && go build ./... && go vet ./...
+go test ./... -race
+golangci-lint run ./...
+```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the same
+across Ubuntu/macOS/Windows.
+
+### Find your way around the docs
+
+- **Contributing or running an agent against this repo:** read
+  [`CONSTITUTION.md`](CONSTITUTION.md) (process rules), then
+  [`Preflight_ADD.md`](Preflight_ADD.md) (architecture), then
+  [`AGENTS.md`](AGENTS.md) (quick reference) — in that order, per the
+  [Source of truth](#source-of-truth) table.
+- **Understanding how the slice was built:** the
+  [Wave roadmap](#wave-roadmap) below links every task group to its
+  role's progress artifact and every wave to its integration commit;
+  [`docs/implementation/vertical-slice/EXECUTION_DAG.md`](docs/implementation/vertical-slice/EXECUTION_DAG.md)
+  is the task-level plan it executed.
+- **Reusing the process on another project:**
+  [`docs/methodology/Preflight_Development_Methodology.md`](docs/methodology/Preflight_Development_Methodology.md)
+  distills the multi-agent, evidence-based process this repo was built
+  with into a standalone, citable methodology.
+- **What's next:** the [issue tracker](https://github.com/huaiche94/preflight/issues)
+  holds the groomed post-slice backlog (open P1, security follow-ups,
+  ADR-needed items, and roadmap milestones M6-M13).
+
 ## Wave roadmap
 
 The vertical slice is 84 tasks + 1 final integration across 7 roles
@@ -130,22 +189,26 @@ each wave is re-planned by the lead before it starts (see
 `docs/implementation/vertical-slice/wave2-analysis/` for the inputs to Wave 3
 planning) and must respect the DAG's stage and dependency order.
 
+Each task-ID group below links to the owning role's progress artifact
+(per-node status/artifact/validation logs); each commit hash links to the
+integration commit on GitHub.
+
 | Wave | Scope (task IDs) | Status |
 |---|---|---|
-| Bootstrap | contract-integrator-01…07 — contract freeze (Stage 0) | ✅ Integrated (`940c5cb`) |
-| Wave 1 | foundation-01 · claude-provider-01/02/03 · checkpoint-b02 · predictor-02/03/04 | ✅ Integrated (`3fb37ce`) |
-| Wave 2 | foundation-02/03/04(reduced)/05/09 · claude-provider-04/06 · checkpoint-b03 · predictor-05/06 | ✅ Integrated (`528b6ad`) |
-| Wave 3 | foundation-06/08 · predictor-05b · runtime-b01 · qa-01/08 (ADR-041 Token Forecaster; first-ever nodes for **runtime** and **qa**, unassigned since Wave 1/Bootstrap respectively) | ✅ Integrated (`ca7062f`) |
-| Wave 4 | foundation-07 · claude-provider-05 · checkpoint-a01/b01 · predictor-01/05c · runtime-a01/b02 | ✅ Integrated (`a0b10f2`) — includes a corrective fix to `migrate_test.go`'s hardcoded migration-count assertions, confirmed necessary by 5 independent cross-role reports before any sibling role's migrations could coexist with foundation's in one tree |
-| Wave 5 | claude-provider-07 · checkpoint-a02/a03/b04 · predictor-07 · runtime-a02/a06/b03/b04/b05/b08 | ✅ Integrated (`dabaa9f`) — the DAG's real unlocked frontier after Wave 4 was larger than originally guessed (six runtime nodes unlocked at once, no `predictor-05d` ever existed); `b03`/`b04`/`b05` still run against fakes for `predictor-08`/`predictor-09`/`checkpoint-a04`, swapped to real implementations at a later integration |
-| Wave 6 | checkpoint-a04/b05/b06 · predictor-08 · runtime-a03/a04/a07 | ✅ Integrated (`f5f0f28`) — checkpoint-a04 (CompleteNode atomic protocol) is now real, with crash-injection and concurrent-completion-race proofs independently re-verified; predictor-08's cold-start "probability: null" invariant independently traced to exactly two gated call sites |
-| Wave 7 | checkpoint-a05/a07/b07 · predictor-09 · runtime-a05/b07 · qa-05 | ✅ Integrated (`25e3d40`) — qa's first Stage-4 node since Wave 3; found one real P1 (secret filtering doesn't cover tracked-file diffs, only untracked-file archives), not fixed here per qa's file-don't-fix boundary, routed to checkpoint |
-| Wave 8 | checkpoint-a06/a08/b08 · predictor-10 · runtime-a08 · qa-04 | ✅ Integrated (`b5a1937`) — includes a corrective fix extending secret redaction to tracked-file diffs (closing Wave 7's P1), and predictor-10's adversarial audit found and fixed a real authorization prompt-binding bypass |
-| Wave 9 | checkpoint-a09/b09 · predictor-11 · runtime-a09/a10/b06 | ✅ Integrated (`192e4b9`) — completes **checkpoint** (a01-a09/b01-b09) and **predictor** (01-11) entirely; found and fixed a real path-traversal vulnerability (checkpoint) and a real TOCTOU race (runtime) |
-| Wave 10 | runtime-a11 · runtime-b09 | ✅ Integrated (`a249ca2`) — closed two genuine gaps: a missing TurnInterrupter-to-PauseRecord wiring path, and no CLI command ever serialized its typed error to JSON (Cobra's default printer flattened it to plain text) |
-| Wave 11 | runtime-b10 | ✅ Integrated (`2fbc0c8`) — completes **runtime** entirely (a01-a11/b01-b10, 21 nodes across 9 waves); proved in-process restart on the same SQLite file, including a real OS-process SIGKILL crash test |
-| Wave 12 | qa-02/03/06/07/09 | ✅ Integrated (`a91c239`) — completes **qa** entirely; the literal vertical-slice E2E demo runs real code end-to-end. Final report: no P0s, one open P1 (provider-event-to-node-completion wiring), fully documented |
-| Final | contract-integrator-final (Stage 5) | ✅ Integrated (`3b6cfcb` + doc commit) — found and closed the composition gap the gate exists to catch: `cmd/preflight/main.go` was never wired to real services. See `contract-integrator.md`'s Stage 5 section |
+| Bootstrap | [contract-integrator-01…07](docs/implementation/vertical-slice/contract-integrator.md) — contract freeze (Stage 0) | ✅ Integrated ([`940c5cb`](https://github.com/huaiche94/preflight/commit/940c5cb)) |
+| Wave 1 | [foundation-01](docs/implementation/vertical-slice/foundation.md) · [claude-provider-01/02/03](docs/implementation/vertical-slice/claude-provider.md) · [checkpoint-b02](docs/implementation/vertical-slice/checkpoint.md) · [predictor-02/03/04](docs/implementation/vertical-slice/predictor.md) | ✅ Integrated ([`3fb37ce`](https://github.com/huaiche94/preflight/commit/3fb37ce)) |
+| Wave 2 | [foundation-02/03/04(reduced)/05/09](docs/implementation/vertical-slice/foundation.md) · [claude-provider-04/06](docs/implementation/vertical-slice/claude-provider.md) · [checkpoint-b03](docs/implementation/vertical-slice/checkpoint.md) · [predictor-05/06](docs/implementation/vertical-slice/predictor.md) | ✅ Integrated ([`528b6ad`](https://github.com/huaiche94/preflight/commit/528b6ad)) |
+| Wave 3 | [foundation-06/08](docs/implementation/vertical-slice/foundation.md) · [predictor-05b](docs/implementation/vertical-slice/predictor.md) · [runtime-b01](docs/implementation/vertical-slice/runtime.md) · [qa-01/08](docs/implementation/vertical-slice/qa.md) (ADR-041 Token Forecaster; first-ever nodes for **runtime** and **qa**, unassigned since Wave 1/Bootstrap respectively) | ✅ Integrated ([`ca7062f`](https://github.com/huaiche94/preflight/commit/ca7062f)) |
+| Wave 4 | [foundation-07](docs/implementation/vertical-slice/foundation.md) · [claude-provider-05](docs/implementation/vertical-slice/claude-provider.md) · [checkpoint-a01/b01](docs/implementation/vertical-slice/checkpoint.md) · [predictor-01/05c](docs/implementation/vertical-slice/predictor.md) · [runtime-a01/b02](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`a0b10f2`](https://github.com/huaiche94/preflight/commit/a0b10f2)) — includes a corrective fix to `migrate_test.go`'s hardcoded migration-count assertions, confirmed necessary by 5 independent cross-role reports before any sibling role's migrations could coexist with foundation's in one tree |
+| Wave 5 | [claude-provider-07](docs/implementation/vertical-slice/claude-provider.md) · [checkpoint-a02/a03/b04](docs/implementation/vertical-slice/checkpoint.md) · [predictor-07](docs/implementation/vertical-slice/predictor.md) · [runtime-a02/a06/b03/b04/b05/b08](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`dabaa9f`](https://github.com/huaiche94/preflight/commit/dabaa9f)) — the DAG's real unlocked frontier after Wave 4 was larger than originally guessed (six runtime nodes unlocked at once, no `predictor-05d` ever existed); `b03`/`b04`/`b05` still run against fakes for `predictor-08`/`predictor-09`/`checkpoint-a04`, swapped to real implementations at a later integration |
+| Wave 6 | [checkpoint-a04/b05/b06](docs/implementation/vertical-slice/checkpoint.md) · [predictor-08](docs/implementation/vertical-slice/predictor.md) · [runtime-a03/a04/a07](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`f5f0f28`](https://github.com/huaiche94/preflight/commit/f5f0f28)) — checkpoint-a04 (CompleteNode atomic protocol) is now real, with crash-injection and concurrent-completion-race proofs independently re-verified; predictor-08's cold-start "probability: null" invariant independently traced to exactly two gated call sites |
+| Wave 7 | [checkpoint-a05/a07/b07](docs/implementation/vertical-slice/checkpoint.md) · [predictor-09](docs/implementation/vertical-slice/predictor.md) · [runtime-a05/b07](docs/implementation/vertical-slice/runtime.md) · [qa-05](docs/implementation/vertical-slice/qa.md) | ✅ Integrated ([`25e3d40`](https://github.com/huaiche94/preflight/commit/25e3d40)) — qa's first Stage-4 node since Wave 3; found one real P1 (secret filtering doesn't cover tracked-file diffs, only untracked-file archives), not fixed here per qa's file-don't-fix boundary, routed to checkpoint |
+| Wave 8 | [checkpoint-a06/a08/b08](docs/implementation/vertical-slice/checkpoint.md) · [predictor-10](docs/implementation/vertical-slice/predictor.md) · [runtime-a08](docs/implementation/vertical-slice/runtime.md) · [qa-04](docs/implementation/vertical-slice/qa.md) | ✅ Integrated ([`b5a1937`](https://github.com/huaiche94/preflight/commit/b5a1937)) — includes a corrective fix extending secret redaction to tracked-file diffs (closing Wave 7's P1), and predictor-10's adversarial audit found and fixed a real authorization prompt-binding bypass |
+| Wave 9 | [checkpoint-a09/b09](docs/implementation/vertical-slice/checkpoint.md) · [predictor-11](docs/implementation/vertical-slice/predictor.md) · [runtime-a09/a10/b06](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`192e4b9`](https://github.com/huaiche94/preflight/commit/192e4b9)) — completes **checkpoint** (a01-a09/b01-b09) and **predictor** (01-11) entirely; found and fixed a real path-traversal vulnerability (checkpoint) and a real TOCTOU race (runtime) |
+| Wave 10 | [runtime-a11 · runtime-b09](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`a249ca2`](https://github.com/huaiche94/preflight/commit/a249ca2)) — closed two genuine gaps: a missing TurnInterrupter-to-PauseRecord wiring path, and no CLI command ever serialized its typed error to JSON (Cobra's default printer flattened it to plain text) |
+| Wave 11 | [runtime-b10](docs/implementation/vertical-slice/runtime.md) | ✅ Integrated ([`2fbc0c8`](https://github.com/huaiche94/preflight/commit/2fbc0c8)) — completes **runtime** entirely (a01-a11/b01-b10, 21 nodes across 9 waves); proved in-process restart on the same SQLite file, including a real OS-process SIGKILL crash test |
+| Wave 12 | [qa-02/03/06/07/09](docs/implementation/vertical-slice/qa.md) | ✅ Integrated ([`a91c239`](https://github.com/huaiche94/preflight/commit/a91c239)) — completes **qa** entirely; the literal vertical-slice E2E demo runs real code end-to-end. Final report: no P0s, one open P1 (provider-event-to-node-completion wiring), fully documented |
+| Final | [contract-integrator-final](docs/implementation/vertical-slice/contract-integrator.md) (Stage 5) | ✅ Integrated ([`3b6cfcb`](https://github.com/huaiche94/preflight/commit/3b6cfcb) + [`faca171`](https://github.com/huaiche94/preflight/commit/faca171)) — found and closed the composition gap the gate exists to catch: `cmd/preflight/main.go` was never wired to real services. See [`contract-integrator.md`](docs/implementation/vertical-slice/contract-integrator.md)'s Stage 5 section |
 
 Wave 5 onward is intentionally not fixed in detail — each wave is
 re-derived from the DAG's actual dependency edges once the prior wave

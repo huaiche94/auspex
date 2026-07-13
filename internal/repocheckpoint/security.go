@@ -135,6 +135,97 @@ func validateUntrackedPath(worktreeRoot, rel string) (string, SkipReason, bool) 
 	return cleanAbs, "", true
 }
 
+// safeArtifactPath resolves rel (a path FIELD READ FROM A MANIFEST FILE,
+// e.g. Manifest.Artifacts[].Path or the fixed literal names Capture itself
+// writes) against root (a checkpoint's own ArtifactRoot directory),
+// rejecting anything that would resolve outside root — the same defense in
+// depth validateUntrackedPath applies to git-reported untracked paths,
+// applied here to manifest-declared artifact paths, which this package
+// reads back from disk on every Verify/RestoreDryRun call and must
+// therefore treat as untrusted input, not as "data we ourselves once wrote
+// and can trust unconditionally." A manifest.json is an ordinary file on
+// disk for as long as a checkpoint directory exists; nothing prevents it
+// from later being hand-edited, corrupted, or restored from an untrusted
+// source, so every reader of it re-validates rather than assuming the
+// writer-side invariant (Capture only ever uses a small fixed set of
+// literal names) still holds by the time it is read.
+//
+// Unlike validateUntrackedPath (which also rejects a bare ".git" segment,
+// meaningful for paths inside a live Git worktree), this check is scoped to
+// what matters for a path relative to an ArtifactRoot: no ".." segment, no
+// absolute path, the resolved path must stay under root, and neither the
+// resolved leaf nor any ancestor directory up to root may be a symlink
+// (the same escape vector validateUntrackedPath defends against, applied
+// here since a checkpoint's own artifact directory is not expected to ever
+// legitimately contain a symlink).
+func safeArtifactPath(root, rel string) (string, bool) {
+	if rel == "" {
+		return "", false
+	}
+	slashRel := filepath.ToSlash(rel)
+	if filepath.IsAbs(rel) || strings.HasPrefix(slashRel, "/") {
+		return "", false
+	}
+	for _, seg := range strings.Split(slashRel, "/") {
+		if seg == ".." {
+			return "", false
+		}
+	}
+
+	cleanRoot := filepath.Clean(root)
+	abs := filepath.Join(cleanRoot, filepath.FromSlash(rel))
+	cleanAbs := filepath.Clean(abs)
+	if cleanAbs != cleanRoot && !strings.HasPrefix(cleanAbs, cleanRoot+string(filepath.Separator)) {
+		return "", false
+	}
+
+	// Symlink check on whatever already exists: an artifact file itself
+	// being a symlink, or reached through a symlinked ancestor directory,
+	// is rejected the same way validateUntrackedPath rejects both shapes.
+	// A path component that does not exist yet (Lstat returns
+	// IsNotExist) is not itself a traversal — the caller's own
+	// os.Stat/os.ReadFile immediately after this call reports "missing"
+	// exactly as it already does for any other absent artifact.
+	if info, err := os.Lstat(cleanAbs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", false
+	}
+	dir := filepath.Dir(cleanAbs)
+	for dir != cleanRoot && len(dir) >= len(cleanRoot) {
+		if info, err := os.Lstat(dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", false
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+
+	return cleanAbs, true
+}
+
+// safeRelativeName reports whether rel is safe to join onto a destination
+// directory without escaping it: non-empty, not absolute, and containing no
+// ".." segment. Used by writeArtifactDir as defense in depth over the
+// files map keys it writes (see its call site's doc comment for why this
+// matters even though every current production caller only ever supplies
+// fixed literal names).
+func safeRelativeName(rel string) bool {
+	if rel == "" || filepath.IsAbs(rel) {
+		return false
+	}
+	slashRel := filepath.ToSlash(rel)
+	if strings.HasPrefix(slashRel, "/") {
+		return false
+	}
+	for _, seg := range strings.Split(slashRel, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // errIntegrity is a small constructor for the ErrCodeIntegrity shape this
 // package returns whenever a state-integrity invariant (as opposed to an
 // ordinary operational failure) is violated — per CONTRACT_FREEZE.md's

@@ -12,7 +12,6 @@ package repocheckpoint
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // VerifyResult is the outcome of verifying one Repository Checkpoint.
@@ -67,7 +66,26 @@ func Verify(row Row) (VerifyResult, error) {
 	}
 
 	for _, artifact := range manifest.Artifacts {
-		path := filepath.Join(row.ArtifactRoot, filepath.FromSlash(artifact.Path))
+		path, safe := safeArtifactPath(row.ArtifactRoot, artifact.Path)
+		if !safe {
+			// checkpoint-b09 security gate: a manifest — read fresh from
+			// disk on every Verify call, never assumed trustworthy just
+			// because it lives under a checkpoint directory this package
+			// itself once wrote — listing an artifact path that escapes
+			// ArtifactRoot (a literal "../" traversal, an absolute path, or
+			// a symlink hop) must never be joined onto ArtifactRoot and
+			// read: doing so would let a tampered or maliciously
+			// constructed manifest.json make Verify (and therefore
+			// RestoreDryRun's checksum step, which calls Verify first) read
+			// and hash arbitrary files on disk outside the checkpoint's own
+			// evidence directory. Reported as a normal integrity problem
+			// (fail-closed Valid:false), not a panic or a silently-skipped
+			// artifact — mirrors validateUntrackedPath's identical
+			// traversal/symlink posture in security.go, applied here to
+			// manifest-declared paths instead of git-reported ones.
+			problems = append(problems, fmt.Sprintf("artifact %s: path escapes checkpoint artifact root %s (rejected, not read)", artifact.Path, row.ArtifactRoot))
+			continue
+		}
 		info, statErr := os.Stat(path)
 		if statErr != nil {
 			problems = append(problems, fmt.Sprintf("artifact %s missing on disk: %v", artifact.Path, statErr))

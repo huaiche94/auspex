@@ -9,13 +9,15 @@ gracefully pause, or block that turn.
 It answers a different question than checkpoint/resume/memory tools do:
 not "how do we continue?" but **"should we even start this turn?"**
 
-> **Project status: Day-1 vertical slice in progress (Wave 11 of 12+, integrated).**
-> Bootstrap (Stage-0 contract freeze) and Waves 1-11 are integrated on
-> `main`. **`foundation`, `claude-provider`, `checkpoint`, `predictor`,
-> and `runtime` have all completed their entire DAG scope** — every
-> feature role is done. Only `qa`'s remaining Stage-4 work (E2E demo,
-> security tests, final P0/P1/P2 report) and the Final integration gate
-> remain. See the [Day-1 wave roadmap](#day-1-wave-roadmap) below and
+> **Project status: Day-1 vertical slice feature-complete (Wave 12 of 12, integrated).**
+> Bootstrap (Stage-0 contract freeze) and Waves 1-12 are integrated on
+> `main`. **Every feature role — `foundation`, `claude-provider`,
+> `checkpoint`, `predictor`, `runtime`, and `qa` — has completed its
+> entire Day-1 DAG scope.** qa's final severity report found no P0s;
+> one P1 remains open (no production adapter yet connects a persisted
+> provider event to Progress Tree node completion). Only the Final
+> integration gate (`contract-integrator-final`, Stage 5) remains. See
+> the [Day-1 wave roadmap](#day-1-wave-roadmap) below and
 > `docs/implementation/day1/EXECUTION_DAG.md` for task-level status.
 > Milestone gating per `Preflight_ADD.md` §31 still applies.
 
@@ -75,8 +77,8 @@ planning) and must respect the DAG's stage and dependency order.
 | Wave 9 | checkpoint-a09/b09 · predictor-11 · runtime-a09/a10/b06 | ✅ Integrated (`192e4b9`) — completes **checkpoint** (a01-a09/b01-b09) and **predictor** (01-11) entirely; found and fixed a real path-traversal vulnerability (checkpoint) and a real TOCTOU race (runtime) |
 | Wave 10 | runtime-a11 · runtime-b09 | ✅ Integrated (`a249ca2`) — closed two genuine gaps: a missing TurnInterrupter-to-PauseRecord wiring path, and no CLI command ever serialized its typed error to JSON (Cobra's default printer flattened it to plain text) |
 | Wave 11 | runtime-b10 | ✅ Integrated (`2fbc0c8`) — completes **runtime** entirely (a01-a11/b01-b10, 21 nodes across 9 waves); proved in-process restart on the same SQLite file, including a real OS-process SIGKILL crash test |
-| Wave 12 | qa-02/03/06/07/09 | Planned — E2E demo, security tests, final P0/P1/P2 report; re-derived from the DAG once Wave 11 lands |
-| Final | contract-integrator-final (Stage 5) | Planned — `go test ./... -race` + cross-role contradiction review; last gate |
+| Wave 12 | qa-02/03/06/07/09 | ✅ Integrated (`a91c239`) — completes **qa** entirely; the literal Day-1 E2E demo runs real code end-to-end. Final report: no P0s, one open P1 (provider-event-to-node-completion wiring), fully documented |
+| Final | contract-integrator-final (Stage 5) | 🔄 In progress — `go test ./... -race` + cross-role contradiction review; last gate |
 
 Wave 5 onward is intentionally not fixed in detail — each wave is
 re-derived from the DAG's actual dependency edges once the prior wave

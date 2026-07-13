@@ -529,3 +529,541 @@ findings:
     expected_invariant: "Once integrated, no secret-shaped content staged/unstaged into a tracked file survives unredacted into a Repository Checkpoint's patch artifacts, and the redacted patch remains structurally valid (git-apply-able) — closing this wave's qa-05 P1 finding."
     owning_role: "qa (this node) for the test; checkpoint (already delivered, per f981bde) for the fix; lead for final integration and re-validation."
 ```
+
+## Wave (Stage 4 completion) — qa-02, qa-03, qa-06, qa-07, qa-09
+
+This wave assigned qa its ENTIRE remaining DAG scope: qa-02 (the Day-1
+demo), qa-03 (restart-same-DB, multi-role), qa-06 (independent malicious
+fixtures), qa-07 (scheduler double-worker race, integration scope), and
+qa-09 (this final report). Merged `origin/main` first (fast-forward,
+clean) — Waves 8-11 integrated, meaning claude-provider, checkpoint,
+predictor, and runtime had ALL completed their entire DAG scope by the
+time this wave began, so every dependency qa-02 named ("ALL NOW
+INTEGRATED") was genuinely real, nothing needed to be faked. Each node
+below was validated and committed independently, per the explicit task
+instruction — no batching.
+
+```yaml
+node: qa-02
+status: completed
+artifacts:
+  - internal/integrationtest/e2e_highrisk_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run E2EHighRisk -v   # 1/1 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: abad4d9
+next_action: qa-03 (this wave's next assigned node)
+assumptions:
+  - "Designed ONE coherent 'risky turn' narrative rather than six
+    disconnected sub-tests, per the task brief's explicit preference: a
+    single simulated session whose status-line shows real quota/context
+    pressure (testdata/provider-events/claude/statusline/high_usage.json —
+    98.85% context used, 97.3% five-hour quota used) plausibly motivates
+    the SAME session's next prompt being evaluated as high-risk, needing a
+    checkpoint, a one-time allow, a Stop outcome, and then (since the
+    quota pressure never actually improved) a Graceful Pause with full
+    wake recovery — six steps that tell one story, not six independent
+    fixtures stapled together."
+  - "Step 2 (prompt preflight block) reuses runtime-b06's own documented
+    technique (internal/orchestrator/decision_realauth_test.go's
+    newHighRiskDataSource) for reliably driving the REAL predictor
+    pipeline (scope/token/quota/risk/policy, all real) into the critical
+    risk band: large changed-file/line quantiles plus every completion/
+    blast-radius flag internal/predictor/risk/combiner.go actually reads
+    (security-sensitive, migration-likely, cross-layer, open-ended scope).
+    Verified this lands on PolicyCheckpointAndRun (as it did in this run)
+    or PolicyRequireConfirmation, either accepted as 'high-risk enough' per
+    that same precedent's own test."
+  - "Step 3 uses BOTH of checkpoint's real completion paths, not just one:
+    (a) internal/progress.CompleteNode for a real Progress Tree node
+    (Constitution Sec6.3's atomic node-completion + State Checkpoint), and
+    (b) a real orchestrator.CheckpointCreate call (statecheckpoint.Service
+    + repocheckpoint.Service against a real scratch Git repo) for the
+    STANDALONE current-state checkpoint a PolicyCheckpointAndRun decision
+    actually requires immediately before allowing the turn to proceed —
+    these are two deliberately different checkpoint entry points
+    (statecheckpoint's own package doc comment: Create is 'a STANDALONE,
+    ad hoc snapshot entry point,' not a wrapper around CompleteNode's
+    path), and this scenario exercises both for real rather than
+    conflating them."
+  - "No production ProgressTreeService/GracefulPauseService adapter exists
+    yet (confirmed via the same grep runtime-b10's own restart_test.go doc
+    comment already documents: only internal/testutil/fakes implements
+    either full port) — this scenario therefore drives Progress Tree node
+    completion via the real internal/progress.CompleteNode directly (the
+    same, real, already-integrated component qa-04's own test file
+    exercises) and the pause lifecycle via the real internal/pause free
+    functions directly (Apply/CompareAndSwapStatus/InterruptAndSleep/Wake/
+    ValidateResume/Resume, the same technique
+    internal/pause/fulllifecycle_test.go's own runFullLifecycleToSleeping
+    helper uses), rather than waiting on a port adapter that is not this
+    wave's scope to build. This is real production code throughout, not a
+    fake standing in for a gap — it is simply reached one layer below the
+    not-yet-existing unified port, exactly as runtime-b10's own restart
+    test does for the same two services."
+  - "The one-time allow flow (step 4) and the resume flow (step 6) both
+    issue and consume a REAL, storage-backed Authorization via the SAME
+    real evaluation.Service and orchestrator.DecisionAllowCmd runtime-b06
+    built — replay-rejected proven twice in this file (once for the
+    original turn's authorization, implicitly proven again by the resume
+    flow's own fresh issue-then-ValidateResume-consume sequence)."
+  - "Pause/wake recovery (step 6) uses the REAL SQLite-backed
+    pause.SQLiteStore (runtime-b10), not pause.NewMemStore() — this is
+    the same durability guarantee qa-03 separately stress-tests across an
+    actual restart; this node's own point is proving the FULL lifecycle
+    composes in one realistic flow, which it does."
+blockers: []
+findings:
+  - severity: informational
+    title: "The Day-1 demo composes cleanly end to end across every real
+      role's work — no defect found in this pass."
+    file: "internal/integrationtest/e2e_highrisk_test.go"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run E2EHighRisk -v is the closure evidence."
+    expected_invariant: "The literal Day-1 demo scenario (status-line -> preflight block -> checkpoint -> one-time allow -> Stop -> pause/wake recovery) works end-to-end against real implementations throughout."
+    owning_role: "qa (this node) — informational; no action needed from another role."
+```
+
+```yaml
+node: qa-03
+status: completed
+artifacts:
+  - internal/integrationtest/restart_sameDB_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run RestartSameDB -v   # 1/1 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: a1d376a
+next_action: qa-06 (this wave's next assigned node)
+assumptions:
+  - "Built on runtime-b10's own in-process-restart-same-SQLite-file
+    technique (internal/app/wiring/restart_test.go: open a real on-disk,
+    temp-file-not-:memory: DB; drive real work through it; discard EVERY
+    in-process Go value including the *sqlite.DB itself; open a BRAND NEW
+    *sqlite.DB against the SAME file path; re-migrate and confirm
+    idempotence; prove state survived AND remains writable) rather than
+    duplicating it from scratch, per the task's explicit instruction —
+    but scoped this node's OWN independence at the fixture level: distinct
+    task/session/worktree/repo IDs, a dedicated qa03-prefixed ID
+    generator and Git scratch repo, and a distinct low-risk DataSource
+    literal, so this is a genuinely separate exercise of the guarantee."
+  - "This node's INCREMENT over runtime-b10's own proof (which already
+    covers claude-provider-04's normalizer output indirectly via hook
+    commands, checkpoint's State/Repository services, predictor's
+    evaluation service, and this role's own pause/scheduler stores,
+    driven through the wiring.App/cobra CLI layer) is proving the SAME
+    multi-role coexistence WITHOUT the wiring/CLI layer at all — every
+    role's own real constructor (claudetelemetry.NewEventStore,
+    progress.NewNodeStore/CompleteNode, statecheckpoint.NewService,
+    repocheckpoint.NewService, evaluation.New, pause.NewSQLiteStore,
+    scheduler.NewStore) called directly against the same shared file,
+    confirming the multi-role-coexistence guarantee does not depend on
+    wiring.App's own specific composition order or any CLI-layer behavior
+    — a genuinely different (lower) integration layer than runtime-b10's
+    own top-to-bottom command-driven proof."
+  - "Verified BOTH halves of restart-safety for every role's storage: (a)
+    pre-restart state is READABLE post-restart through a brand-new
+    Service/Store instance (event GetByEventID, node Get, state
+    checkpoint Snapshot+Verify, repository checkpoint Verify, pause
+    GetByID, wake job Claim-of-the-pre-existing-job), and (b) the write
+    path is fully LIVE post-restart, not just reads of old rows (a fresh
+    CheckpointCreate, a fresh EvaluateTurn/Decide/IssueAuthorization/
+    ConsumeAuthorization cycle, a fresh RequestPause+Schedule+Claim) —
+    proving no orphaned lock survives the restart on any of the five
+    roles' own tables sharing this one file."
+  - "The Authorization issued pre-restart (issued, not yet consumed,
+    before the restart in this scenario) has its exactly-once guarantee
+    (predictor-10's hardened ConsumeAuthorization) explicitly proven
+    DURABLE across the restart: consumed successfully post-restart via a
+    brand-new *evaluation.Service instance, then a replay attempt against
+    the SAME authorization (still post-restart) is rejected — proving the
+    exactly-once state itself (not just the service instance enforcing
+    it) survived the restart."
+blockers: []
+findings:
+  - severity: informational
+    title: "Multi-role state coexistence across a restart holds cleanly —
+      no defect found in this pass."
+    file: "internal/integrationtest/restart_sameDB_test.go"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run RestartSameDB -v is the closure evidence."
+    expected_invariant: "claude-provider's events, checkpoint's Progress Tree/State/Repository checkpoints, predictor's evaluations/authorizations, and runtime's pause/scheduler records all survive a genuine process restart when they coexist in the same SQLite file, and every role's real service can still both read old state and write fresh state afterward."
+    owning_role: "qa (this node) — informational; no action needed from another role."
+```
+
+```yaml
+node: qa-06
+status: completed
+artifacts:
+  - internal/integrationtest/malicious_fixture_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run 'PathTraversal|Symlink|MaliciousFixture' -v   # 3/3 PASS (one with 2 sub-tests)"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: 4d81590
+next_action: qa-07 (this wave's next assigned node)
+assumptions:
+  - "Read checkpoint-b09's own final report in docs/implementation/day1/checkpoint.md
+    in full before writing anything, to identify EXACTLY what that node's
+    own adversarial audit already covered (its own genuine finding: Verify
+    joined manifest.Artifacts[].Path directly onto ArtifactRoot with no
+    traversal/symlink guard at all, fixed via a new safeArtifactPath check;
+    plus two proactive hardenings: writeArtifactDir's files-map-key
+    validation, and Capture's own CheckpointID validation) so this node's
+    own fixtures target genuinely different attack shapes rather than
+    re-deriving the same three findings under a new file name."
+  - "Every scenario in this file calls ONLY the real, frozen
+    app.RepositoryCheckpointService port (repocheckpoint.NewService) —
+    never internal/repocheckpoint's own package-internal free functions
+    (Capture/Verify/RestoreDryRun) directly, which is exactly what
+    checkpoint-b09's OWN adversarial tests call (white-box, package
+    repocheckpoint/repocheckpoint_test). This is the genuinely different,
+    external, black-box vantage point the task brief asked for: the same
+    surface a real caller (runtime's orchestrator.CheckpointCreate, or
+    qa-02's own E2E scenario) actually sees."
+  - "Scenario 1 (chained double-symlink escape): a two-hop symlink chain
+    (evidence.txt -> sub/hop1 -> an outside secret file), as opposed to
+    checkpoint-b09's own single-hop symlink and symlinked-PARENT-directory
+    cases (both already covered by that node's own suite) — confirmed the
+    escape never appears in the archive AND a legitimate untracked sibling
+    file DOES appear, proving this is a real, working capture rather than
+    a vacuous 'everything got skipped' pass."
+  - "Scenario 2 (tampered-manifest path traversal): targets the
+    staged.patch.gz artifact specifically, not the untracked.zip entry
+    checkpoint-b09's own regression test (TestVerify_ManifestArtifactPathTraversal_Rejected)
+    targets — proving the safeArtifactPath fix generalizes across artifact
+    KINDS, not merely the one entry b09 happened to test. Additionally
+    drives it through the real Service.Restore port (dry-run), one layer
+    further than b09's own Verify-only regression test, confirming the fix
+    holds through the full capture -> archive -> verify -> restore-dry-run
+    pipeline as this node's own task brief explicitly names. Confirmed
+    Restore returns ErrCodeConflict with a traversal-specific problem in
+    Details, and the secret file's content never leaks into either
+    Details or Message."
+  - "Scenario 3 (malicious CheckpointID): reached through a MALICIOUS
+    domain.IDGenerator via the real Service.Create seam (modeling a
+    compromised/buggy ID-generation dependency), rather than
+    checkpoint-b09's own test, which hand-supplies a literal CheckpointID
+    string directly to the free Capture function — a different attack
+    surface (a caller-supplied dependency misbehaving, vs. a
+    directly-malicious literal argument). Two distinct traversal shapes
+    tried (a './..'-prefixed nested traversal, and a nested traversal
+    buried after an ordinary-looking prefix segment), neither identical to
+    b09's own two cases ('../../escape-checkpoint-id' and a bare absolute
+    path)."
+  - "No new defect found — every scenario confirms checkpoint-b09's fixes
+    hold from this external vantage point and against these independently-
+    designed attack shapes. This is the expected, successful outcome of an
+    independent-verification node, not a rubber stamp: three genuinely
+    different attack constructions were built and run, not merely
+    re-imported."
+blockers: []
+findings:
+  - severity: informational
+    title: "checkpoint-b09's path-traversal/symlink fixes hold from an
+      independent, external, black-box vantage point using genuinely
+      different attack fixtures — no new defect found."
+    file: "internal/integrationtest/malicious_fixture_test.go; internal/repocheckpoint/security.go, verify.go, capture.go, atomicwrite.go (checkpoint, read-only reference only)"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run 'PathTraversal|Symlink|MaliciousFixture' -v (3/3 passing) is the closure evidence."
+    expected_invariant: "Path traversal, symlink escape, and malicious-input guards in the repository checkpoint pipeline hold when exercised independently, through the real service port, with fixtures qa itself designed rather than reused from checkpoint's own suite."
+    owning_role: "qa (this node) — informational; no action needed from another role."
+```
+
+```yaml
+node: qa-07
+status: completed
+artifacts:
+  - internal/integrationtest/scheduler_doubleworker_test.go
+validation:
+  - "gofmt -l internal/integrationtest   # clean, no output"
+  - "go build ./internal/integrationtest/...   # PASS"
+  - "go vet ./internal/integrationtest/...   # PASS"
+  - "go test ./internal/integrationtest/... -run DoubleWorkerRace -v   # 2/2 PASS"
+  - "go test ./internal/integrationtest/... -race   # PASS"
+  - "go test ./internal/integrationtest/... -run DoubleWorkerRace -race -count=20   # PASS, stable, ~90s, no flakiness across 20 outer repetitions (each containing its own internal 20-attempt loop for the single-job scenario — effectively 400 race trials for that scenario alone)"
+  - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
+  - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
+commit: 09b2be8
+next_action: qa-09 (this wave's final node — the report you are reading)
+assumptions:
+  - "The DAG's own validation command for this row
+    (`go test ./internal/scheduler/... -run DoubleWorkerRace -race
+    -count=20`) targets internal/scheduler/..., which is runtime's
+    EXCLUSIVE path, not qa's — qa cannot edit anything under
+    internal/scheduler/** or internal/pause/** (agents/qa.md's own
+    exclusive-paths list does not include either). Per this wave's
+    explicit routing instruction, built an INDEPENDENT test in
+    internal/integrationtest instead, calling only runtime's real,
+    already-exported APIs (scheduler.NewStore/Schedule/Claim/Get,
+    pause.NewSQLiteStore, pause.Wake) — zero edits to either excluded
+    package."
+  - "runtime-a09 already proved this exact race at the package level twice
+    over: internal/scheduler/lease_test.go's own
+    TestLease_ConcurrentWorkersYieldOneClaim (real on-disk SQLite, but
+    scheduler-layer only) and internal/pause/wake_test.go's own
+    TestDuplicateWake_WorkersYieldOneResume (state-machine layer only,
+    explicitly against pause.NewMemStore() by that file's own documented
+    design choice, not the real SQLite-backed store). This node's genuine
+    increment is COMPOSING both real, on-disk-SQLite-backed layers into
+    ONE race: N workers each attempt the full realistic sequence a
+    production scheduler worker performs — Claim, then (only if won)
+    Wake against the claimed job's own real PauseID — proving the SEAM
+    between two independently-proven exactly-once guarantees introduces
+    no new race window, a question neither upstream test actually answers
+    on its own."
+  - "Extended to a second scenario (many independent jobs raced by many
+    workers concurrently, mirroring lease_test.go's own
+    TestLease_ConcurrentWorkersAcrossManyJobsEachClaimedOnce pattern but
+    with the Wake step composed in), confirming the per-job/per-pause
+    exactly-once guarantee holds under CROSS-contention (workers racing
+    for ANY of several due jobs, not just one shared job), not merely as
+    an artifact of a single point of contention."
+  - "Per the DAG's own risk callout ('flaky-by-nature; needs repeated
+    runs'), ran BOTH an internal repeated-race loop (an explicit 20-
+    attempt loop inside the single-job test, mirroring wake_test.go's own
+    documented 'qa-07's own -count=20 repeated-race discipline' 50-attempt
+    precedent) AND the outer `go test -count=20` the DAG names literally
+    — stable across all repetitions, no flakiness observed."
+  - "Every worker goroutine's panic is caught and reported explicitly
+    (recover() + t.Errorf, not a silent goroutine crash that could hang
+    wg.Wait() forever or mask a real failure as a test timeout instead of
+    an actionable error)."
+blockers: []
+findings:
+  - severity: informational
+    title: "The composed scheduler-claim + pause-wake double-worker race
+      holds correctly — no new race window at the seam between the two
+      independently-proven exactly-once guarantees."
+    file: "internal/integrationtest/scheduler_doubleworker_test.go; internal/scheduler/lease.go, internal/pause/wake.go (runtime, read-only reference only)"
+    reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run DoubleWorkerRace -race -count=20 (stable across 20 repetitions) is the closure evidence."
+    expected_invariant: "Exactly one worker's full Claim-then-Wake sequence succeeds per due job, under concurrent contention, whether racing for a single shared job or many independent jobs at once, using the real on-disk SQLite-backed stores for both the scheduler and pause layers together."
+    owning_role: "qa (this node) — informational; no action needed from another role."
+```
+
+## qa-09: Final report (severity-ranked, full role scope)
+
+This is qa's final assigned DAG node. Per `agents/qa.md`'s "Final report"
+section and this wave's own task instructions, this report is
+comprehensive across the ENTIRE qa role's Day-1 scope — qa-01 through
+qa-09 — not just this wave's four nodes. `go test ./... -race` was
+re-run as this node's own required validation (see "Full-repo test
+health" below); `golangci-lint run ./...` (whole repo) was re-run and is
+clean.
+
+### Full-repo test health (qa-09's own validation)
+
+```text
+go build ./...                 -> OK, no errors
+golangci-lint run ./...        -> 0 issues
+go test ./... -race            -> ALL 34 packages PASS (32 with real
+                                   tests, 2 no-test-files packages:
+                                   internal/app, internal/buildinfo)
+```
+
+Full per-package `go test ./... -race` output (this run):
+
+```text
+ok  	github.com/huaiche94/preflight/cmd/preflight	1.449s
+?   	github.com/huaiche94/preflight/internal/app	[no test files]
+ok  	github.com/huaiche94/preflight/internal/app/wiring	11.339s
+ok  	github.com/huaiche94/preflight/internal/artifacts	1.968s
+?   	github.com/huaiche94/preflight/internal/buildinfo	[no test files]
+ok  	github.com/huaiche94/preflight/internal/cli	3.271s
+ok  	github.com/huaiche94/preflight/internal/clock	2.010s
+ok  	github.com/huaiche94/preflight/internal/config	2.547s
+ok  	github.com/huaiche94/preflight/internal/domain	1.422s
+ok  	github.com/huaiche94/preflight/internal/evaluation	127.047s
+ok  	github.com/huaiche94/preflight/internal/features	1.542s
+ok  	github.com/huaiche94/preflight/internal/gitx	26.602s
+ok  	github.com/huaiche94/preflight/internal/hooks/claude	1.719s
+ok  	github.com/huaiche94/preflight/internal/idgen	1.904s
+ok  	github.com/huaiche94/preflight/internal/integrationtest	(cached)
+ok  	github.com/huaiche94/preflight/internal/lock	2.823s
+ok  	github.com/huaiche94/preflight/internal/orchestrator	10.818s
+ok  	github.com/huaiche94/preflight/internal/paths	1.901s
+ok  	github.com/huaiche94/preflight/internal/pause	39.852s
+ok  	github.com/huaiche94/preflight/internal/policy	1.658s
+ok  	github.com/huaiche94/preflight/internal/predictor	1.969s
+ok  	github.com/huaiche94/preflight/internal/predictor/quota	1.498s
+ok  	github.com/huaiche94/preflight/internal/predictor/risk	1.608s
+ok  	github.com/huaiche94/preflight/internal/predictor/runway	1.403s
+ok  	github.com/huaiche94/preflight/internal/predictor/scope	1.455s
+ok  	github.com/huaiche94/preflight/internal/predictor/token	1.471s
+ok  	github.com/huaiche94/preflight/internal/progress	43.714s
+ok  	github.com/huaiche94/preflight/internal/providers/claude	1.335s
+ok  	github.com/huaiche94/preflight/internal/redact	37.609s
+ok  	github.com/huaiche94/preflight/internal/repocheckpoint	46.425s
+ok  	github.com/huaiche94/preflight/internal/scheduler	26.277s
+ok  	github.com/huaiche94/preflight/internal/statecheckpoint	25.590s
+ok  	github.com/huaiche94/preflight/internal/storage/sqlite	16.658s
+ok  	github.com/huaiche94/preflight/internal/telemetry/claude	9.739s
+ok  	github.com/huaiche94/preflight/internal/testutil/fakes	1.283s
+ok  	github.com/huaiche94/preflight/pkg/protocol/v1	1.269s
+```
+
+Zero regressions, zero flaky failures observed across this run or the
+dedicated `-count=20` stress run for qa-07's own scheduler race (above).
+
+### Severity-ranked findings (P0 / P1 / P2)
+
+Per `agents/qa.md`: `P0 blocks merge`, `P1 must fix before demo`, `P2
+documented follow-up`. Each entry names exact file, reproduction,
+expected invariant, and owning role, per that same section's
+requirement.
+
+**P0 — blocks merge: none.**
+
+No P0 finding exists anywhere in qa's Day-1 scope as of this report. No
+invariant this role is chartered to verify (idempotency, restart safety,
+path-traversal/symlink safety, secret/raw-prompt leakage, race safety,
+governance-doc presence, CI green) is currently violated by a real,
+reproducible defect that would make merging the current `day1/qa` branch
+unsafe.
+
+**P1 — must fix before demo:**
+
+1. **No production code path connects a persisted claude-provider
+   `v1.Event` to `internal/progress.CompleteNode.Run`** (originally found
+   by qa-04, still unresolved as of this report).
+   - File: `internal/orchestrator/hooks.go` (HandleStop/
+     HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize
+     and persist a provider event and stop there); `internal/telemetry/claude/normalizer.go`
+     (no producer ever assigns `Event.TaskID`/`Event.ProgressNodeID` —
+     confirmed unchanged this wave: both fields remain plain `string`
+     fields on `pkg/protocol/v1.Event`, unset by every real normalizer
+     call path); `internal/progress/complete_node.go`'s
+     `CompleteNodeInput` and `internal/app/ports.go`'s
+     `CompleteNodeRequest` (still frozen to exactly `{NodeID,
+     IdempotencyKey, Artifacts[, RepositoryCheckpointID]}` — no
+     `v1.Event`/`EventID`/`EventType` field anywhere, confirmed by
+     re-reading `internal/app/ports.go` this wave); `internal/app/wiring/wiring.go`
+     (still wires no bridge between `internal/telemetry/claude` and
+     `internal/progress`/a real `app.ProgressTreeService` — confirmed via
+     runtime-b10's own `restart_test.go` package doc comment, which
+     independently reconfirms this exact gap: "ProgressTree is
+     checkpoint's Part A gap... no single type implementing the full
+     7-method `app.ProgressTreeService` port").
+   - Reproduction: `go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v`
+     — still passes, i.e. the gap is still real (a real normalized Stop
+     event's `TaskID`/`ProgressNodeID` are still empty strings). Also
+     reconfirmed this wave via qa-02's own end-to-end scenario: driving
+     the literal Day-1 demo required this test's own file to complete a
+     Progress Tree node via `internal/progress.CompleteNode` directly,
+     using a hand-built `CompleteNodeInput` rather than any real event-
+     driven trigger — the exact same gap, now also visibly load-bearing
+     in the highest-stakes demo scenario, not just an abstract finding.
+   - Expected invariant: some real provider observation should be able to
+     drive a real Progress Tree node completion end-to-end (Constitution
+     Sec6.1's "Progress Tree is the canonical durable task state... never
+     an agent's own claim of done" implies a real signal must be able to
+     drive it forward) — today nothing does; the event pipeline and the
+     completion pipeline are each individually correct and individually
+     well-tested, but the middle connecting them does not exist in
+     production code.
+   - Owning role: `contract-integrator` (a new cross-component port/field
+     is needed on the frozen `v1.Event`/`CompleteNodeRequest` contract, or
+     a documented decision that this resolution happens via a different,
+     not-yet-built lookup path — Constitution Sec4.2 reserves
+     `pkg/protocol/v1/**` and `internal/app/ports.go` exclusively to this
+     role) in coordination with `claude-provider` (would need to populate
+     `TaskID`/`ProgressNodeID` once a resolution mechanism exists) and
+     `checkpoint`/`runtime` (whichever role builds the actual consumer/
+     adapter, and the still-missing unified `app.ProgressTreeService`/
+     `app.GracefulPauseService` adapters runtime-b10's own doc comment
+     independently flags as real, still-open gaps in this same area).
+   - Why P1, not P0: every individual component this gap spans (claude-
+     provider's normalizer, checkpoint's CompleteNode, runtime's hook
+     handlers) is itself correct and passes its own tests; no existing
+     invariant is violated; Day-1's frozen DAG never assigned any node the
+     explicit job of building this adapter this wave. It is a real,
+     forward-looking integration gap, not a regression — but it is
+     squarely in the path of "the literal Day-1 demo" (qa-02) actually
+     working end-to-end in a REAL deployed system (as opposed to this
+     test suite's own test-only glue standing in for it), so it should be
+     resolved before any live demo, not merely tracked as a someday
+     nice-to-have.
+
+**P2 — documented follow-up:**
+
+1. **LICENSE/NOTICE files do not exist in the repository root** (originally
+   flagged by qa-08, re-confirmed still absent this wave).
+   - File: repository root (no `LICENSE`/`NOTICE` file exists;
+     `foundation`'s own exclusive-paths list names them, and
+     `foundation-09`'s own progress artifact already flagged this gap
+     independently).
+   - Reproduction: `ls LICENSE NOTICE 2>&1` at the repository root — both
+     report "No such file or directory."
+   - Expected invariant: `Preflight_ADD.md` §30.1's "Required files" list
+     and `CONTRIBUTING.md`/`GOVERNANCE.md` (both qa-08's own deliverables)
+     name Apache-2.0 as the project license by name, consistent with
+     `README.md`'s Tech stack table — but no actual `LICENSE` file backs
+     that claim yet.
+   - Owning role: `foundation` (path ownership) / `contract-integrator`
+     (final sign-off) — out of qa's own exclusive paths entirely, filed
+     here as a re-flag per Constitution Sec4.4, not a new discovery.
+   - Not P1: this is a documentation/compliance completeness gap, not a
+     safety, correctness, or security defect in the running system; it
+     does not block a functional demo, only final OSS release hygiene.
+
+2. **checkpoint's Repository Checkpoint patch capture only redacts
+   secret-shaped content on `+`/`-` line bodies, never on `.git`-tracked
+   binary-diff headers or filenames themselves** (a scope note, not a
+   regression — recorded for traceability).
+   - File: `internal/repocheckpoint/patchredact.go` (redacts only
+     "+"/"-"-prefixed line bodies of staged/unstaged patches, by design,
+     per that file's own doc comment, so `git apply --check` keeps
+     working against the rest of the patch).
+   - Reproduction: N/A — no test in this suite constructs a secret-shaped
+     FILENAME or a secret-shaped binary-diff header; this is a
+     theoretical residual surface, not a confirmed leak.
+   - Expected invariant: Constitution Sec7 rule 2's "raw prompts and
+     sensitive content are not persisted by default" applied maximally
+     would also cover a secret-shaped filename appearing in a patch
+     header — currently out of scope for the redaction pass, which is a
+     defensible, deliberate design choice (documented at the fix site)
+     rather than an oversight.
+   - Owning role: `checkpoint` (if this is ever judged worth closing) /
+     `qa` (a future dedicated test, if the lead decides this residual
+     surface warrants one). Recorded here as a documented follow-up per
+     this report's own instruction to be "comprehensive... not a rubber
+     stamp," not because a concrete exploit was demonstrated.
+
+### Summary of all nine qa nodes' own outcomes, for one-stop reference
+
+| Node | Deliverable | Outcome |
+|---|---|---|
+| qa-01 | Cross-platform CI | Completed; documented, deliberate Windows-race-detector platform split; no defect |
+| qa-02 | E2E high-risk Claude fixture flow (Day-1 demo) | Completed; one coherent real end-to-end scenario passes; surfaces the qa-04 P1 gap as load-bearing (see above) |
+| qa-03 | Restart same-DB test | Completed; multi-role state (5 roles' storage) survives a real restart in one shared file; no defect |
+| qa-04 | Duplicate/out-of-order event test | Completed; found and routed the **P1** finding above (still open) |
+| qa-05 | Raw-prompt/secret leakage scanner | Completed; found a **P1** (secret-shaped content in tracked-file diffs unfiltered), **routed and FIXED** by checkpoint (`f981bde`), re-verified passing this wave |
+| qa-06 | Path traversal/symlink/malicious fixture tests | Completed; independent adversarial fixtures confirm checkpoint-b09's own fix (a real P1/security finding THAT node found and fixed itself) holds from an external vantage point; no new defect |
+| qa-07 | Scheduler double-worker/lease race test | Completed; independent integration-scope composition of the race across both real SQLite-backed layers; no defect |
+| qa-08 | Support-bundle/doctor privacy baseline (via governance docs) | Completed; flagged the **P2** LICENSE/NOTICE gap above (still open, not qa-owned) |
+| qa-09 | Final report + `go test ./...` evidence | This report |
+
+### Closing statement
+
+This completes the qa role's **entire Day-1 DAG scope** —
+`docs/implementation/day1/EXECUTION_DAG.md`'s qa-01 through qa-09, all
+nine nodes, are now `status: completed`. No further qa-owned DAG node
+remains. The one open **P1** (the missing provider-event-to-node-
+completion adapter) and one open **P2** (LICENSE/NOTICE) above are both
+already correctly routed to their owning roles per Constitution Sec4.4 —
+neither is a qa-owned fix, and per `agents/qa.md`'s hard rule this report
+does not attempt to fix either. The lead's own Final integration gate
+(`contract-integrator-final`) is the only remaining node for the whole
+project; this report is intended to give it a precise, honest punch list
+rather than a rubber stamp.
+

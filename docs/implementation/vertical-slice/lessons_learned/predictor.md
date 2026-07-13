@@ -277,3 +277,40 @@ is now `completed`, closing out the role's full scope (`internal/features/**`, `
   redundant coverage, it is coverage of the hand-offs themselves, which are by construction invisible to any
   single stage's own test suite, and this wave's zero-new-bugs result is itself only meaningful because that
   distinct node existed and was held to the same evidentiary standard as a bug-finding wave.
+
+## Final-integration-gate correction (`SQLDataSource`)
+
+| task_id | estimated_complexity | actual_complexity | files_changed | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|
+| predictor-final-datasource | not DAG-estimated (lead-identified finding) | M/L — nine methods each needed independent, evidence-based real-vs-cold-start judgment, not a single formula to transcribe | 2 (datasource_sql.go, datasource_sql_test.go — both new) | None blocking; the main cost was reading enough of six other roles' schemas/exported types (foundation's four core tables, claude-provider's events+normalizer, checkpoint's progress store, this package's own four migrations) before writing a single query, to avoid guessing a payload field name or a table's real column set | The single most valuable move was grepping `internal/telemetry/claude/normalizer.go` for the EXACT payload key strings (`prompt_sha256`, `used_percent`, `total_tokens` absence, etc.) before writing any SQL against `events.payload_json` — a plausible-sounding guessed key name (e.g. `"total_token_count"` instead of the actually-absent `"total_tokens"`) would have silently compiled and silently always returned nothing, with no test able to catch the mismatch unless the test itself independently re-derived the same wrong guess | This task's finding (a frozen interface with zero production implementations, satisfied only by test fakes, six waves after the interface itself was designed) is a class of gap that `grep -rn "var _ <Interface> = "` across a whole repo makes cheap to detect systematically — recommend Preflight's own integration-gate checklist include this exact grep pattern for every frozen or package-local interface as a standing, repeatable check, not a one-off manual finding, since it would have caught this gap at any of the six intervening waves rather than only at the Final gate |
+
+### Real-vs-cold-start judgment calls were the actual work, not the SQL
+
+Unlike a typical predictor-0N node (implement one formula against one frozen interface), this correction's
+nine methods each required an independent judgment call — read the interface's own doc comment and the
+actual schema, then decide honestly whether a real query exists or whether the honest answer is
+`ok=false` — with no single precedent to mechanically apply across all nine. Two decisions turned out to
+be genuinely different in kind from the other seven:
+
+- `RecentSimilarTurnTokens` and `RunwayForecast` are both "real query, honestly empty/absent in practice
+  today" — the query is correct and will activate automatically the moment upstream data exists (a future
+  claude-provider payload field, a future `internal/pause` persistence wave respectively), mirroring
+  predictor-05b's own ">=8-sample branch is real but unreachable this wave" precedent exactly.
+- `Repository` and `Session` are "no query would help" — every field those two DTOs promise describes a
+  signal category (repository file/language census, empirical session-turn quantiles) that literally has
+  no persisted representation anywhere in the schema this correction was scoped to work within, and
+  synthesizing one (e.g. guessing a "retry" definition from `turn.failed`/`turn.started` counts) would have
+  been inventing a new, undocumented modeling decision under the guise of "implementing an interface" —
+  recommend future roles facing a similar "the interface promises N fields, only some have real backing
+  data" situation explicitly distinguish these two cases in the write-up (as this correction did), since
+  conflating them either overclaims coverage or underclaims effort.
+
+### Reading other roles' migration-file comments as load-bearing documentation, again
+
+Consistent with predictor-09's own Wave 7 lesson ("migration files ... double as load-bearing design
+documentation"), this correction's `RunwayForecast`/`PriorRunwayHitConfirmed` implementations depended on
+`0042_runway_forecasts.sql`'s and `0043_policy_decisions.sql`'s own header comments (documenting the
+turn_id-not-session-id scoping, and cross-referencing which downstream role/method consumes each table) as
+much as the column list itself — recommend continuing to write migration headers this way project-wide, as
+this is now the second independent instance where a migration's own prose, not just its DDL, was the
+correct primary source for a downstream implementer's design decision.

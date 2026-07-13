@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/huaiche94/preflight/internal/app"
 	"github.com/huaiche94/preflight/internal/domain"
 	"github.com/huaiche94/preflight/internal/evaluation"
 	"github.com/huaiche94/preflight/internal/features"
@@ -110,6 +111,22 @@ type fakeDataSource struct {
 	// resolveErr, when non-nil, is returned by Resolve to exercise the
 	// pipeline's error propagation path.
 	resolveErr error
+
+	// The remaining err fields, when non-nil, are returned by their
+	// corresponding method, in place of a successful result — used by
+	// predictor-11's adversarial fail-open/fail-closed suite
+	// (pipeline_e2e_test.go) to simulate a failure at every possible
+	// DataSource hand-off, not just Resolve (predictor-09's original
+	// scope).
+	classificationErr          error
+	repositoryErr              error
+	sessionErr                 error
+	progressErr                error
+	recentSimilarTurnTokensErr error
+	quotaErr                   error
+	contextErr                 error
+	runwayForecastErr          error
+	priorRunwayHitConfirmedErr error
 }
 
 func newFakeDataSource() *fakeDataSource {
@@ -131,38 +148,65 @@ func (f *fakeDataSource) Resolve(_ context.Context, _ domain.SessionID) (evaluat
 }
 
 func (f *fakeDataSource) Classification(_ context.Context, _ domain.SessionID, _ *domain.TaskID) (features.Classification, features.PromptFeatures, error) {
+	if f.classificationErr != nil {
+		return features.Classification{}, features.PromptFeatures{}, f.classificationErr
+	}
 	return f.classification, f.promptFeatures, nil
 }
 
 func (f *fakeDataSource) Repository(_ context.Context, _ domain.RepositoryID) (features.RepositoryFeatures, bool, error) {
+	if f.repositoryErr != nil {
+		return features.RepositoryFeatures{}, false, f.repositoryErr
+	}
 	return f.repoFeatures, f.repoOK, nil
 }
 
 func (f *fakeDataSource) Session(_ context.Context, _ domain.SessionID) (features.SessionFeatures, bool, error) {
+	if f.sessionErr != nil {
+		return features.SessionFeatures{}, false, f.sessionErr
+	}
 	return f.sessFeatures, f.sessOK, nil
 }
 
 func (f *fakeDataSource) Progress(_ context.Context, _ *domain.TaskID) (features.ProgressFeatures, bool, error) {
+	if f.progressErr != nil {
+		return features.ProgressFeatures{}, false, f.progressErr
+	}
 	return f.progFeatures, f.progOK, nil
 }
 
 func (f *fakeDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) ([]float64, error) {
+	if f.recentSimilarTurnTokensErr != nil {
+		return nil, f.recentSimilarTurnTokensErr
+	}
 	return f.similarTokens, nil
 }
 
 func (f *fakeDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
+	if f.quotaErr != nil {
+		return nil, f.quotaErr
+	}
 	return f.quotaObs, nil
 }
 
 func (f *fakeDataSource) Context(_ context.Context, _ domain.SessionID) (domain.ContextObservation, error) {
+	if f.contextErr != nil {
+		return domain.ContextObservation{}, f.contextErr
+	}
 	return f.contextObs, nil
 }
 
 func (f *fakeDataSource) RunwayForecast(_ context.Context, _ domain.SessionID) (domain.RunwayForecast, bool, error) {
+	if f.runwayForecastErr != nil {
+		return domain.RunwayForecast{}, false, f.runwayForecastErr
+	}
 	return f.runway, f.hasRunway, nil
 }
 
 func (f *fakeDataSource) PriorRunwayHitConfirmed(_ context.Context, _ domain.SessionID) (bool, error) {
+	if f.priorRunwayHitConfirmedErr != nil {
+		return false, f.priorRunwayHitConfirmedErr
+	}
 	return f.priorConfirmed, nil
 }
 
@@ -231,4 +275,128 @@ func (a tokenSourceAdapter) Progress(ctx context.Context, sessionID domain.Sessi
 }
 func (a tokenSourceAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
 	return a.src.RecentSimilarTurnTokens(ctx, sessionID, class)
+}
+
+// --- predictor-11: error-injecting pipeline-stage wrappers -----------------
+//
+// Each of the four ADR-041 pipeline stages (ScopeEstimator, TokenForecaster,
+// QuotaForecaster, RiskCombiner) is a narrow, swappable app interface. To
+// adversarially test "what happens when ANY single upstream stage fails"
+// (this node's highest-risk required test — fail-open/fail-closed, per
+// EXECUTION_DAG.md's predictor-11 risk callout), each stage is wrapped here
+// so a test can force that one stage to return an error while every other
+// stage runs for real — proving the failure is handled at exactly the
+// hand-off it's injected at, not merely "some error happened somewhere."
+
+type errInjectingScopeEstimator struct {
+	inner app.ScopeEstimator
+	err   error
+}
+
+func (e errInjectingScopeEstimator) EstimateScope(ctx context.Context, req app.EstimateScopeRequest) (domain.ScopeEstimate, error) {
+	if e.err != nil {
+		return domain.ScopeEstimate{}, e.err
+	}
+	return e.inner.EstimateScope(ctx, req)
+}
+
+type errInjectingTokenForecaster struct {
+	inner app.TokenForecaster
+	err   error
+	// nilResult, when true, returns a zero-value (all-nil-equivalent)
+	// domain.TokenForecast with a nil error — simulates a degraded stage
+	// that fails open with an empty/unknown result rather than erroring,
+	// per this node's "TokenForecaster returns all-nil" scenario.
+	nilResult bool
+}
+
+func (e errInjectingTokenForecaster) ForecastTokens(ctx context.Context, req app.ForecastTokensRequest) (domain.TokenForecast, error) {
+	if e.err != nil {
+		return domain.TokenForecast{}, e.err
+	}
+	if e.nilResult {
+		return domain.TokenForecast{}, nil
+	}
+	return e.inner.ForecastTokens(ctx, req)
+}
+
+type errInjectingQuotaForecaster struct {
+	inner app.QuotaForecaster
+	err   error
+	// timeout, when true, returns a context.DeadlineExceeded-flavored
+	// domain.Error to simulate this node's "QuotaForecaster times out"
+	// scenario specifically (distinct from a generic err).
+	timeout bool
+}
+
+func (e errInjectingQuotaForecaster) ForecastQuota(ctx context.Context, req app.ForecastQuotaRequest) (domain.QuotaForecast, error) {
+	if e.timeout {
+		return domain.QuotaForecast{}, &domain.Error{
+			Code:      domain.ErrCodeUnavailable,
+			Message:   "quota forecaster: simulated timeout",
+			Retryable: true,
+		}
+	}
+	if e.err != nil {
+		return domain.QuotaForecast{}, e.err
+	}
+	return e.inner.ForecastQuota(ctx, req)
+}
+
+type errInjectingRiskCombiner struct {
+	inner app.RiskCombiner
+	err   error
+}
+
+func (e errInjectingRiskCombiner) Combine(ctx context.Context, req app.CombineRiskRequest) (app.CombineRiskResult, error) {
+	if e.err != nil {
+		return app.CombineRiskResult{}, e.err
+	}
+	return e.inner.Combine(ctx, req)
+}
+
+// testStages bundles the four real pipeline-stage implementations (the
+// same ones newTestService wires by default) so a test can selectively
+// substitute an error-injecting wrapper for exactly one stage while
+// leaving the other three real, via newTestServiceWithStages.
+type testStages struct {
+	Scope  app.ScopeEstimator
+	Tokens app.TokenForecaster
+	Quota  app.QuotaForecaster
+	Risk   app.RiskCombiner
+}
+
+// realStages builds the same real scope/token/quota/risk stage chain
+// newTestService uses, against source, so a test can wrap exactly one of
+// them with an error injector while leaving the rest identical to
+// production wiring.
+func realStages(source *fakeDataSource) testStages {
+	return testStages{
+		Scope:  scope.NewRuleScopeEstimator(scopeSourceAdapter{src: source}),
+		Tokens: token.NewRuleTokenForecaster(tokenSourceAdapter{src: source}),
+		Quota:  quota.NewRuleQuotaForecaster(),
+		Risk:   risk.NewRuleRiskCombiner(),
+	}
+}
+
+// newTestServiceWithStages is newTestService's more flexible sibling: it
+// takes an explicit testStages bundle (typically built by realStages and
+// then selectively wrapped with one errInjecting* type) instead of always
+// constructing the real chain internally.
+func newTestServiceWithStages(t *testing.T, clk domain.Clock, ids domain.IDGenerator, source *fakeDataSource, stages testStages) (*evaluation.Service, *sqlite.DB) {
+	t.Helper()
+	db := openMigratedDB(t)
+
+	svc := evaluation.New(
+		db,
+		source,
+		stages.Scope,
+		stages.Tokens,
+		stages.Quota,
+		stages.Risk,
+		policy.NewDecider(),
+		clk,
+		ids,
+	)
+	return svc, db
 }

@@ -112,20 +112,47 @@ Constitution §8 is the worked example).
 
 Every unit of implementation work becomes a DAG node with, at minimum:
 ID, owner, dependencies, estimated complexity, estimated LOC, estimated
-files, validation command, merge order, risk, blockers. Represent the
-graph both as a Mermaid diagram and as a topologically sorted list — the
-diagram is for human review, the sorted list is what an agent actually
-executes against.
+files, **estimated duration, estimated token cost**, validation command,
+merge order, risk, blockers. Represent the graph both as a Mermaid
+diagram and as a topologically sorted list — the diagram is for human
+review, the sorted list is what an agent actually executes against.
 
-**Known weakness, evidenced, not hypothetical:** Preflight's own DAG never
-had duration or token-cost fields, for any node, across 84+ nodes and two
-full execution waves. This was independently rediscovered by 4 of 5
-implementing roles without cross-communication (see Preflight's
-`Wave2_Lessons.md` §1, issue #2). **Recommendation for future projects
-adopting this methodology: decide explicitly, up front, whether your DAG
-will carry duration/token estimates or explicitly declare them out of
-scope — do not let this be an implicit gap discovered independently by
-every team member.**
+Field semantics (defined here because ambiguity was itself a measured
+error source — see Preflight's `Prediction_Error_Report.md` §3):
+
+- **estimated LOC** = expected `git` insertions, implementation + tests
+  together, excluding progress-artifact/lessons docs.
+- **estimated files** = files created or modified by the node's own
+  commits, split as `impl+test` (e.g. `3+2`) — conflating the two was the
+  single most-repeated estimation error across Preflight's waves
+  (`Wave2_Lessons.md` §1 issue #1).
+- **estimated duration** = wall-clock minutes for a single agent
+  invocation, estimate-only precision (band, not point).
+- **estimated token cost** = output-token band for the executing agent.
+  An explicit `n/a — declared out of scope` is allowed for either of the
+  last two, but the cell must exist and say so.
+
+**History:** Preflight's own DAG never had duration or token-cost fields
+across 84+ nodes and twelve waves; 4 of 5 implementing roles
+independently rediscovered the gap without cross-communication
+(`Wave2_Lessons.md` §1, `ADR_Recommendations.md` REC-02). The schema
+above resolves REC-02 for all planning after 2026-07-13 (issue #15); the
+vertical-slice DAG is not retro-annotated — its estimates are historical
+record.
+
+**Measurement discipline (the estimate is only half of REC-02):** actuals
+must be capturable per node, or the estimate can never be scored. Two
+protocols, either satisfies:
+
+1. **One node per agent invocation** where parallelism allows — the
+   harness usage block then reports per-node tokens directly, and the
+   lead's own tool-call timestamps bound duration (no agent self-report
+   needed).
+2. **Lead-side timing** otherwise — the lead records invocation start/end
+   from its own clock and attributes the invocation's token total to the
+   node *set*, explicitly marked as unsplit (never divided evenly and
+   presented as per-node data — `Prediction_Error_Report.md` §0's
+   fabrication rule).
 
 ### 3.3 Approval gate
 

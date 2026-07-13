@@ -9,13 +9,13 @@ gracefully pause, or block that turn.
 It answers a different question than checkpoint/resume/memory tools do:
 not "how do we continue?" but **"should we even start this turn?"**
 
-> **Project status: Day-1 vertical slice in progress (Wave 10 of 11+, integrated).**
-> Bootstrap (Stage-0 contract freeze) and Waves 1-10 are integrated on
-> `main`. **`checkpoint` and `predictor` have completed their entire DAG
-> scope.** `runtime` has one node left (`runtime-b10`); once it lands,
-> `qa` picks up its remaining Stage-4 work (E2E demo, security tests,
-> final report) before the Final integration gate. See the
-> [Day-1 wave roadmap](#day-1-wave-roadmap) below and
+> **Project status: Day-1 vertical slice in progress (Wave 11 of 12+, integrated).**
+> Bootstrap (Stage-0 contract freeze) and Waves 1-11 are integrated on
+> `main`. **`foundation`, `claude-provider`, `checkpoint`, `predictor`,
+> and `runtime` have all completed their entire DAG scope** — every
+> feature role is done. Only `qa`'s remaining Stage-4 work (E2E demo,
+> security tests, final P0/P1/P2 report) and the Final integration gate
+> remain. See the [Day-1 wave roadmap](#day-1-wave-roadmap) below and
 > `docs/implementation/day1/EXECUTION_DAG.md` for task-level status.
 > Milestone gating per `Preflight_ADD.md` §31 still applies.
 
@@ -74,8 +74,8 @@ planning) and must respect the DAG's stage and dependency order.
 | Wave 8 | checkpoint-a06/a08/b08 · predictor-10 · runtime-a08 · qa-04 | ✅ Integrated (`b5a1937`) — includes a corrective fix extending secret redaction to tracked-file diffs (closing Wave 7's P1), and predictor-10's adversarial audit found and fixed a real authorization prompt-binding bypass |
 | Wave 9 | checkpoint-a09/b09 · predictor-11 · runtime-a09/a10/b06 | ✅ Integrated (`192e4b9`) — completes **checkpoint** (a01-a09/b01-b09) and **predictor** (01-11) entirely; found and fixed a real path-traversal vulnerability (checkpoint) and a real TOCTOU race (runtime) |
 | Wave 10 | runtime-a11 · runtime-b09 | ✅ Integrated (`a249ca2`) — closed two genuine gaps: a missing TurnInterrupter-to-PauseRecord wiring path, and no CLI command ever serialized its typed error to JSON (Cobra's default printer flattened it to plain text) |
-| Wave 11 | runtime-b10 | Planned — this role's final Day-1 node (in-process-restart-same-SQLite-file); gate for qa-02/qa-03 |
-| Wave 12 | qa-02/03/06/07/09 | Planned — E2E demo, security tests, final P0/P1/P2 report; needs runtime-b10 as an input |
+| Wave 11 | runtime-b10 | ✅ Integrated (`2fbc0c8`) — completes **runtime** entirely (a01-a11/b01-b10, 21 nodes across 9 waves); proved in-process restart on the same SQLite file, including a real OS-process SIGKILL crash test |
+| Wave 12 | qa-02/03/06/07/09 | Planned — E2E demo, security tests, final P0/P1/P2 report; re-derived from the DAG once Wave 11 lands |
 | Final | contract-integrator-final (Stage 5) | Planned — `go test ./... -race` + cross-role contradiction review; last gate |
 
 Wave 5 onward is intentionally not fixed in detail — each wave is

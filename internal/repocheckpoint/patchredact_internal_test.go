@@ -189,3 +189,45 @@ func TestRedactPatchSecrets_MultipleHunksAndFiles_OnlyOffendingLinesRedacted(t *
 		t.Fatalf("expected dirty.txt's added line to be redacted, got: %s", got)
 	}
 }
+
+func TestRedactPatchSecrets_ADR042_SecretShapedFilenameAndBinaryHeaders_AcceptedBoundary(t *testing.T) {
+	// Pins the residual surface docs/adr/0042-patch-redaction-residual-surface.md
+	// accepts: a secret-shaped FILENAME in diff/---/+++ headers and
+	// binary-diff marker lines are deliberately NOT redacted (rewriting
+	// them breaks `git apply --check`, destroying the checkpoint's
+	// evidentiary value). If this test starts failing, the accepted
+	// boundary changed — update ADR-042 before changing this test.
+	secretName := fakeGitHubToken + ".key"
+	patch := []byte(strings.Join([]string{
+		"diff --git a/" + secretName + " b/" + secretName,
+		"index 1234567..89abcde 100644",
+		"Binary files a/" + secretName + " and b/" + secretName + " differ",
+		"diff --git a/clean.txt b/clean.txt",
+		"index 1234567..89abcde 100644",
+		"--- a/clean.txt",
+		"+++ b/clean.txt",
+		"@@ -1 +1 @@",
+		"-old",
+		"+token: " + fakeGitHubToken,
+		"",
+	}, "\n"))
+
+	got, hadSecret := redactPatchSecrets(patch)
+	if !hadSecret {
+		t.Fatal("expected hadSecret=true: clean.txt's added line contains a secret shape")
+	}
+	// The +/- body redaction still applies…
+	if strings.Contains(string(got), "+token: "+fakeGitHubToken) {
+		t.Fatalf("expected the added content line to be redacted, got: %s", got)
+	}
+	// …while every header/binary-marker occurrence of the secret-shaped
+	// filename survives byte-for-byte (the ADR-042 accepted boundary).
+	for _, want := range []string{
+		"diff --git a/" + secretName + " b/" + secretName,
+		"Binary files a/" + secretName + " and b/" + secretName + " differ",
+	} {
+		if !strings.Contains(string(got), want) {
+			t.Fatalf("ADR-042 boundary changed: expected header line %q to survive redaction untouched, got: %s", want, got)
+		}
+	}
+}

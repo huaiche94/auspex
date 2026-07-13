@@ -719,3 +719,77 @@ is a valid result, not grounds to manufacture busywork. `golangci-lint run ./...
 repository-wide as of this wave's final commit (one `copyloopvar` finding in a first draft — a redundant
 Go-1.22+ loop-variable copy left over from an older idiom — caught and fixed before the final commit). No
 other role's paths were touched; `internal/features/**` was re-read but not modified.
+
+---
+
+## Final-integration-gate correction: `SQLDataSource` (real `DataSource` implementation)
+
+**Not a numbered DAG node.** This is a lead-identified finding from the Final integration gate review
+(`contract-integrator-final`), routed to this role because it falls squarely inside this role's exclusive
+path (`internal/evaluation/**`) even though every DAG node `predictor-01` through `predictor-11` was
+already `completed` (Wave 9 summary above). The finding: `internal/evaluation.DataSource` — the interface
+`evaluation.Service` depends on for everything `app.EvaluateTurnRequest` itself does not carry — had **no
+real production implementation anywhere in the codebase**, confirmed via
+`grep -rn "var _ evaluation.DataSource\|var _ DataSource"`, which found only test-local fakes
+(`fakeDataSource` in `helpers_test.go`, consumed by `restart_test.go`, `restart_sameDB_test.go`,
+`e2e_highrisk_test.go`, `decision_realauth_test.go` outside this package, and this package's own
+`pipeline_e2e_test.go`/`authorization_test.go`). Every pipeline stage was real and deeply tested; the layer
+feeding them real signals from the live system had never been built, which is why `cmd/preflight/main.go`
+still could not wire a real `EvaluationService` in production.
+
+Before starting, `git fetch origin && git merge origin/main` was run per instruction — a clean fast-forward
+from `2e32032` to `35bdd73`, bringing in the `day1/` -> `vertical-slice/` terminology rename across
+`docs/implementation/**`, checkpoint's new `internal/progress` service (`ProgressTreeService` adapter,
+`NodeStore`/`EdgeStore`/`ArtifactStore`), and runtime's new `internal/pause.Service`
+(`GracefulPauseService` adapter) — both landed as Final-integration-gate corrective additions from other
+roles, confirming this task's premise that this is a project-wide gate-driven cleanup pass, not isolated to
+this role. `go build ./...` and `go test ./...` both passed cleanly immediately after the merge, before any
+new code was written. Re-read `CONSTITUTION.md`, `agents/predictor.md`, `internal/evaluation/datasource.go`
+(interface, not modified — implemented against, per the task's explicit instruction), `internal/evaluation/doc.go`,
+this package's own migrations 0040-0044, claude-provider's `0010_events.sql`, checkpoint's
+`0020_progress_nodes.sql`/`0021_progress_edges.sql`/`0022_artifacts.sql`, and foundation's
+`0001_repositories.sql`/`0002_worktrees.sql`/`0003_provider_sessions.sql`/`0004_tasks.sql`.
+
+```yaml
+node: predictor-final-datasource (corrective addition, not a DAG node)
+status: completed
+artifacts:
+  - internal/evaluation/datasource_sql.go
+  - internal/evaluation/datasource_sql_test.go
+validation:
+  - "gofmt -l internal/evaluation  # clean"
+  - "go build ./...  # ok, whole module"
+  - "go vet ./internal/evaluation/...  # ok"
+  - "go test ./internal/evaluation/... -race -v  # PASS, 28 new SQLDataSource tests + all pre-existing predictor-09/-10/-11 tests, zero regressions"
+  - "go test ./...  -race  # PASS, whole module, zero regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide"
+commit: <see final report>
+next_action: none — lead handles final root-wiring integration (cmd/preflight/main.go, internal/app/wiring/**) once this lands; explicitly out of scope for this correction
+assumptions:
+  - "Type name: `evaluation.SQLDataSource`, constructed via `NewSQLDataSource(db *sqlite.DB) *SQLDataSource` (panics on nil db, matching this package's own `New` constructor convention for `Service`). Compile-time assertion `var _ DataSource = (*SQLDataSource)(nil)` is present in both the production file and the test file (the latter via the exported `evaluation.SQLDataSource` type from `_test` package scope)."
+  - "Real, storage-backed methods (7 of 9): `Resolve` (provider_sessions -> worktrees -> repositories, plus a documented task-resolution heuristic — prefer the most-recently-created task bound to the caller's own session, fall back to the most-recently-created task anywhere in the worktree, nil if none exists yet); `Classification` (builds a REAL, non-fabricated `features.PromptFeatures` from the most recent `provider.turn.started` event's `prompt_sha256`/`prompt_byte_length`/`prompt_approx_tokens` payload fields — the only prompt-derived signal claude-provider ever persists, per Constitution §7 rule 2 — then runs it through the real, unmodified `features.ClassifyTask`; every verb/domain-indicator boolean stays false since raw text was never available, so this legitimately yields `TaskClassUnknown` most of the time, which is `ClassifyTask`'s own correct response to insufficient signal, not a limitation of this bridge); `Progress` (calls checkpoint's real, exported `internal/progress.NodeStore.ListByTask`/`EdgeStore.ListByTask` directly, read-only, for real `CompletedRatio`/`UnresolvedBlockers`/current-node signals, with a documented 'most recently updated non-terminal node' current-node heuristic); `RecentSimilarTurnTokens` (queries claude-provider's `events` table for `provider.usage.observed` rows, extracting a `total_tokens` payload field — today's real normalizer payload shape does not yet carry that field, so this yields an honestly-empty slice in practice, activating for free the moment a future claude-provider wave adds it, exactly like predictor-05b's own >=8-sample empirical branch precedent); `Quota` (queries `events` for the latest `provider.quota.observed` row per `limit_id`, decoding `used_percent`/`resets_at` — real, multi-window); `Context` (queries `events` for the latest `provider.context.observed` row, decoding `used_tokens`/`window_tokens`/`used_percent` — real, zero-value/nil-pointer on no event, never a fabricated zero); `RunwayForecast` (queries this package's own `runway_forecasts` table for the most recent row per session — real and correct against the frozen schema, though as of this correction no production code path writes to that table yet: `internal/pause.Service.Observe` computes a `domain.RunwayForecast` via `runway.Scorer.Score` and returns it to its caller but does not itself persist a row — confirmed by `grep -rn \"runway_forecasts\" internal/ | grep -v _test.go` finding no INSERT anywhere; this method activates automatically, with no further change to this file, once a future wave wires that persistence, which is out of this role's exclusive path to add); `PriorRunwayHitConfirmed` (queries this package's own `policy_decisions` table, joined through `predictions`/`events` to recover session scoping since those two tables are turn-scoped not session-scoped, checking the most recent decision's `reason_codes_json` for the exact two literal marker strings `internal/policy/decide.go`'s `runwayPauseDecision` is the sole producer of: `runway_hit_probability_armed_pending_confirmation` and `runway_hit_probability_confirmed_twice`)."
+  - "Honest cold-start methods (2 of 9), always `ok=false`, by design, not by gap-in-effort: `Repository` and `Session`. `features.RepositoryFeatures`' fields (TrackedFileCount, LanguageCount, GoModuleCount, DirtyFileCount, IsMonorepo, etc.) describe repository-content/working-tree-state signals that no table reachable from this package's exclusive path persists — `repositories`/`worktrees` carry only identity/path columns, `repository_checkpoints` (checkpoint's range) carries only diff hashes and byte totals, not a file/language census — and populating them would require either a new Git-scanning capability (explicitly out of this role's Boundary: 'No ... Git commands') or a new cross-role telemetry table (schema is frozen for this correction). `features.SessionFeatures`' fields (RecentTurnUsageP50/80/90, ChangedFilesRecentP50/90, RetryRate, TestFailureRate, etc.) are empirical quantiles/rates over a window the `events` schema cannot honestly reconstruct: no EventType carries a per-turn files/lines-changed payload field, and no event carries a 'this turn was a retry' flag — inventing a proxy definition for 'retry' from `provider.turn.failed`/`provider.turn.started` counts alone would be a real, unprecedented modeling decision (what counts as a retry? within what window?) with nothing in this codebase to anchor it, unlike `RecentSimilarTurnTokens` where `internal/predictor/token`'s own cold-start/empirical-quantile machinery already defines exactly what shape of input it expects. Per this package's own established discipline (predictor-05 through predictor-11: 'no fabrication, cold-start is a valid answer') and the interface's own doc comment ('a zero-value/ok=false return ... means not available yet, not an error'), the honest answer for both methods is `ok=false`, not an invented value."
+  - "Read-only cross-package/cross-table dependencies taken on other roles' real exported types/tables (for the lead to independently verify none were modified): (1) `internal/progress.NodeStore`/`EdgeStore` (checkpoint's exported Go stores, constructed via `progress.NewNodeStore(db, nil)`/`progress.NewEdgeStore(db)` — only their read methods `Get`/`ListByTask` are ever called; a nil `domain.Clock` is passed because those read methods never touch it, avoiding taking on a Clock dependency this file does not otherwise need); (2) raw read-only SQL (`SELECT` only, verified via `grep -n \"INSERT\\|UPDATE\\|DELETE\\|ExecContext\" internal/evaluation/datasource_sql.go` returning zero matches) against foundation's `provider_sessions`/`worktrees`/`repositories`/`tasks` tables, claude-provider's `events` table, and this package's own `runway_forecasts`/`predictions`/`policy_decisions` tables (the latter three already had Go row types in `store.go`, but `RunwayForecast`/`PriorRunwayHitConfirmed` needed different query shapes — most-recent-by-session and a session-scoping join — than `store.go`'s existing turn/prediction-ID-keyed helpers provide, so this file issues its own `SELECT`s rather than duplicating/widening those). No migration was added; no file outside `internal/evaluation/**` was modified (`git status --porcelain` after this correction shows exactly two new files, both under `internal/evaluation/`)."
+  - "`internal/policy` exposes no importable constant for its two runway-hit-probability marker reason-code strings (they are inline literals in `decide.go`'s `runwayPauseDecision`) — rather than adding an export to a path this correction is not scoped to widen, `PriorRunwayHitConfirmed` duplicates the two literal strings as unexported constants in `datasource_sql.go`, with a doc comment cross-referencing `decide.go` as the authoritative source of their meaning, so a future change to `internal/policy`'s literals that isn't mirrored here is at least discoverable by grep, not silently divergent."
+  - "A real, pre-existing-pattern bug was caught and fixed during this correction's own validation, not found by a reviewer: the first draft of `RunwayForecast` declared and checked a `sampleCount`-shaped scan variable for `domain.RunwayForecast.SampleCount`, but `runway_forecasts` (migration 0042) has no `sample_count` column — the variable was always `!Valid` (dead code, `SampleCount` silently always zero, which is technically still honest since it's the type's zero value, but misleadingly implied a real backing column that does not exist). Removed the dead variable and its guard entirely, replaced with an explicit doc comment naming the gap, rather than leaving inert code that looks load-bearing."
+  - "Required tests: a `var _ DataSource = (*SQLDataSource)(nil)` compile-time assertion (present in both files) plus 28 integration-style tests (`datasource_sql_test.go`) against a real, migrated SQLite DB (`openMigratedDB`, this package's own existing test helper, unchanged) with realistic seeded rows across `repositories`/`worktrees`/`provider_sessions`/`tasks`/`events`/`progress_nodes`/`progress_edges`/`runway_forecasts`/`predictions`/`policy_decisions` — covering every method's real-data path AND its cold-start/empty path, plus two end-to-end tests (`TestSQLDataSource_WiredIntoRealService_*`) wiring `SQLDataSource` into a real `evaluation.Service` alongside the SAME real `scope`/`token`/`quota`/`risk`/`policy` pipeline-stage packages production wiring would use (not the fakeDataSource-based helpers), confirming `SQLDataSource` actually satisfies every hand-off `EvaluateTurn`/`Decide` make into `DataSource`, both cold-start and with real seeded data."
+blockers: []
+```
+
+### Summary
+
+`evaluation.SQLDataSource` is a real, concrete, SQLite-backed implementation of this package's own
+`DataSource` interface, built without modifying `datasource.go`'s interface declaration, without touching
+any file outside `internal/evaluation/**`, and without adding a migration (schema was frozen for this
+correction — every query works against tables that already existed). Seven of nine methods are
+real-data-backed against tables/stores owned by foundation, claude-provider, checkpoint, and this package's
+own migration range; two (`Repository`, `Session`) honestly return cold-start (`ok=false`) because the
+frozen schema this correction was scoped to work within has no real backing signal for the specific fields
+those two DTOs promise, and fabricating one would violate this role's own established, wave-over-wave
+"no fabrication, cold-start is a valid answer" discipline more than it would help. This mirrors the same
+honest-scope-bridging judgment this role has exercised since predictor-05 (FeatureSource gaps),
+predictor-07 (missing `ScopeEstimate` formula-term fields), and predictor-09 (the `ConsumeAuthorization`
+scope conflict) — every gap found is documented with the specific reasoning for why it is a gap, not
+silently routed around or silently left unmentioned. All required validation commands pass with zero
+issues and zero regressions across the whole repository. The lead's own root-wiring step
+(`cmd/preflight/main.go`, `internal/app/wiring/**`) was explicitly out of scope and was not touched.

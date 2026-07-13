@@ -90,7 +90,32 @@ type PauseStore interface {
 	// promoted here to the frozen interface so a real caller — not just a
 	// test — can drive a lifecycle transition through the same store
 	// RequestPause/Persist already use).
+	//
+	// UpdateStatus is unconditional (last-writer-wins) and therefore UNSAFE
+	// for any caller that read the record's current status separately
+	// before deciding what to Apply — between that read and this write, a
+	// concurrent caller (another worker processing the same wake job, or a
+	// racing Cancel) may have already moved the record on. Cancel/Resume/
+	// Wake (lifecycle.go, wake.go — runtime-a09) use CompareAndSwapStatus
+	// below instead, precisely to close that gap; UpdateStatus remains here
+	// only for RequestPause's own create-time bookkeeping paths and tests
+	// that intentionally bypass the race-safe path.
 	UpdateStatus(ctx context.Context, id domain.PauseID, status domain.PauseStatus) error
+
+	// CompareAndSwapStatus atomically transitions id from expected to next,
+	// durably, and reports ok=false (no error) if the record's CURRENT
+	// status is no longer expected — i.e. another writer already moved it
+	// since the caller last read it. This is runtime-a09's exactly-once
+	// primitive: every caller that needs "read status, decide an Apply
+	// event, persist the result" as one atomic unit (Cancel, Resume, Wake)
+	// must go through this method instead of a separate GetByID +
+	// UpdateStatus pair, which is exactly the TOCTOU (time-of-check to
+	// time-of-use) gap that would let two concurrent callers both observe
+	// the same starting status and both durably "succeed" — the split-brain
+	// double-resume scenario the required tests "duplicate workers yield
+	// one resume" and "cancel wins race with wake" exist to rule out.
+	// found=false (distinct from ok=false) if id does not exist at all.
+	CompareAndSwapStatus(ctx context.Context, id domain.PauseID, expected, next domain.PauseStatus) (ok bool, found bool, err error)
 }
 
 // RequestPauseRequest is RequestPause's input.
@@ -297,4 +322,30 @@ func (m *MemStore) UpdateStatus(_ context.Context, id domain.PauseID, status dom
 	rec.Status = status
 	m.records[key] = rec
 	return nil
+}
+
+// CompareAndSwapStatus implements PauseStore.CompareAndSwapStatus. The
+// entire read-compare-write sequence runs under m.mu, so two concurrent
+// callers racing on the same id are fully serialized by this one lock: the
+// second to acquire it always observes the first's already-applied write,
+// and correctly reports ok=false if that write moved the record away from
+// the expected status. This is the in-memory reference implementation of
+// runtime-a09's exactly-once primitive — a real SQLite-backed PauseStore
+// achieves the same guarantee with a conditional
+// `UPDATE ... WHERE status = ?` (mirrors internal/scheduler.Store.Complete/
+// Fail/Renew's own `WHERE status = ? AND lease_owner = ?` conditional-update
+// pattern exactly, applied here to pause_records instead of wake_jobs).
+func (m *MemStore) CompareAndSwapStatus(_ context.Context, id domain.PauseID, expected, next domain.PauseStatus) (ok bool, found bool, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key, rec, exists := m.findByID(id)
+	if !exists {
+		return false, false, nil
+	}
+	if rec.Status != expected {
+		return false, true, nil
+	}
+	rec.Status = next
+	m.records[key] = rec
+	return true, true, nil
 }

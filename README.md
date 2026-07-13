@@ -15,8 +15,10 @@ not "how do we continue?" but **"should we even start this turn?"**
 > `checkpoint`, `predictor`, `runtime`, and `qa` — has completed its
 > entire vertical-slice DAG scope.** qa's final severity report found no P0s;
 > one P1 remains open (no production adapter yet connects a persisted
-> provider event to Progress Tree node completion). Only the Final
-> integration gate (`contract-integrator-final`, Stage 5) remains. See
+> provider event to Progress Tree node completion —
+> [#1](https://github.com/huaiche94/preflight/issues/1)). Only the Final
+> integration gate (`contract-integrator-final`, Stage 5,
+> [#2](https://github.com/huaiche94/preflight/issues/2)) remains. See
 > the [Wave roadmap](#wave-roadmap) below and
 > `docs/implementation/vertical-slice/EXECUTION_DAG.md` for task-level status.
 > Milestone gating per `Preflight_ADD.md` §31 still applies.
@@ -51,6 +53,63 @@ document, prior draft, or conversation as authoritative over either.
   it runs.
 
 See `Preflight_ADD.md` §1 for the full executive decision record.
+
+## What an AI-assisted session sees — and what it can do
+
+When Preflight is wired into an AI coding session (today: Claude Code
+native hook mode, wired per [`integrations/claude/`](integrations/claude/)),
+it evaluates every prompt before it runs and keeps observing the session
+while it runs. Every signal below is machine-readable (`--json`, FR-160),
+so it serves two readers at once: the **human developer** deciding whether
+to let a turn proceed, and the **coding agent itself**, which receives the
+gate's decision through the hook response.
+
+### Signals
+
+| Signal | Produced by | Surfaces via |
+|---|---|---|
+| Task class + scope estimate (expected file/LOC bands) | prompt feature extraction (privacy-bounded — raw prompt is never retained) → rule scope estimator | `preflight evaluate`, UserPromptSubmit hook |
+| Token forecast (P50/P80/P90 quantile bands) | Token Forecaster (`internal/predictor/token`, ADR-041) | same |
+| Quota fit — will this turn fit the remaining window | Quota Forecaster (`internal/predictor/quota`) | same |
+| Runway score — will the session survive the next ~10 minutes | status-line telemetry → runway scorer, consumed by pause Observe (debounce/hysteresis) | `preflight hook claude statusline`, pause observe loop |
+| Risk score — **an uncalibrated score, never called a probability** (Constitution principle #2; cold-start policy emits `probability: null`) | risk combiner (`internal/predictor/risk`) | `preflight evaluate` |
+| Policy decision — one of the eight frozen actions: `RUN`, `WARN`, `REQUIRE_CONFIRMATION`, `CHECKPOINT_AND_RUN`, `SPLIT`, `PAUSE`, `PAUSE_AND_AUTO_RESUME`, `BLOCK` | policy engine (`internal/policy`) | UserPromptSubmit hook response, `preflight decision` |
+| Progress Tree node states — completion is evidence-backed, never the agent's own claim of "done" | `internal/progress` CompleteNode atomic protocol | `preflight status` |
+| Checkpoint / pause / wake-job state | state + repository checkpoint stores, pause records | `preflight status` |
+| Environment health (DB, migrations, paths, git) | diagnostics | `preflight doctor` |
+
+### Actions
+
+The per-prompt gate acts automatically: the policy action above returns as
+the UserPromptSubmit hook response (allow, warn with context, require a
+checkpoint first, or block), and the hook stays provider-compatible even
+on internal failure. Beyond that, the human or the agent can invoke:
+
+```text
+preflight evaluate               estimate the current turn before running it
+preflight decision allow|deny    consume a one-time authorization (replays are rejected)
+preflight checkpoint create      State Checkpoint + Repository Checkpoint (never mutates the active branch)
+preflight pause request|cancel   safe-point pause with a durable wake job
+preflight resume                 re-verified resume (repo/quota/session/authorization re-checked first)
+preflight scheduler run-once     execute due wake jobs (daemon-run automation: #7)
+preflight status | doctor        session/checkpoint/pause state; environment health
+preflight hook claude <event>    the four hook entrypoints Claude Code calls
+                                 (user-prompt-submit, stop, stop-failure, statusline)
+```
+
+### Known limits today
+
+- Provider events don't yet drive Progress Tree completion in production
+  wiring ([#1](https://github.com/huaiche94/preflight/issues/1), the one
+  open P1).
+- Unattended auto-resume needs the M6 daemon
+  ([#7](https://github.com/huaiche94/preflight/issues/7)); until then
+  wake jobs fire via `scheduler run-once`.
+- A richer in-session forecast card (tokens/cost/scope per prompt) is
+  tracked in [#14](https://github.com/huaiche94/preflight/issues/14), and
+  calibrated probabilities require real telemetry first
+  ([#11](https://github.com/huaiche94/preflight/issues/11),
+  [#12](https://github.com/huaiche94/preflight/issues/12)).
 
 ## Wave roadmap
 

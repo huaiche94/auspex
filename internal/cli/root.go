@@ -19,12 +19,31 @@ import (
 // cmd/preflight/main.go's own newRootCmd() convention. This constructor is
 // not called from cmd/preflight/main.go yet; that root-wiring integration
 // step belongs to contract-integrator/foundation per agents/runtime.md.
+//
+// # Error-contract wiring (runtime-b09)
+//
+// Every command in this tree is wrapped, via WithJSONErrorRendering, so
+// that a returned error is rendered as SchemaVersionError's typed JSON
+// envelope on the command's stderr — in addition to still being returned
+// as a Go error exactly as before (see errors.go's own doc comment for why
+// the RETURNED VALUE is unchanged: every existing caller's errors.As(err,
+// &domain.Error{}) check, e.g. errors_test.go/root_test.go, keeps working
+// unmodified). SilenceErrors is true (changed from false by this same
+// node): agents/runtime.md's "machine mode never emits decorative text to
+// stdout" applies equally to stderr's error path — Cobra's own default
+// printer would otherwise ALSO print a second, plain-text "Error: ..."
+// line after this package's own JSON envelope, which is exactly the
+// decorative/non-machine-readable text the contract forbids. This was
+// confirmed as a real bug during this node's own test-writing (an early
+// draft of TestErrorContract_NoDecorativeTextOnAnyCommand failed on every
+// single command, catching Cobra's plain-text line appended after the
+// JSON) — SilenceErrors: true is the fix, not a workaround.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "preflight",
 		Short:         "Preflight is a local-first predictive runtime guard for AI coding agents.",
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true,
 	}
 
 	root.AddCommand(
@@ -43,7 +62,7 @@ func NewRootCmd() *cobra.Command {
 		newDoctorCmd(),
 	)
 
-	return root
+	return WithJSONErrorRendering(root)
 }
 
 // newVersionCmd builds `preflight version`. Unlike every other command in

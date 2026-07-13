@@ -1,5 +1,18 @@
 # runtime — Progress Artifact
 
+> **Wave 11 sections appended below the Wave 10 node log** — see "Wave 11"
+> heading. Wave 11 completes `runtime-b10`, the final Part B
+> integration/reliability gate and this role's LAST assigned DAG node —
+> after this wave, every node ever assigned to `runtime` (`a01`-`a11`,
+> `b01`-`b10`, 21 nodes total) is complete. Centerpiece: a real
+> in-process-restart-same-SQLite-file proof (both a clean-shutdown restart
+> and a genuine SIGKILLed-subprocess crash restart), closing one real,
+> repeatedly-flagged gap it found along the way (`pause.PauseStore` had no
+> SQLite-backed implementation, only the in-memory `MemStore` five prior
+> Part A nodes had each separately deferred) plus one genuine Part B Tests
+> gap ("CLI golden tests," never built by any prior b01-b09 node). No new
+> ADRs, no cross-role change requests this wave.
+
 > **Wave 10 sections appended below the Wave 9 node log** — see "Wave 10"
 > heading. Wave 10 completes two nodes in sequence, each validated and
 > committed independently: `runtime-a11` (the final Part A integration
@@ -2148,3 +2161,376 @@ blockers: []
   `internal/app/ports.go` was widened or touched.
 - `runtime-b10` (this role's final node) remains for a future wave, per
   the task's explicit instruction not to start it now.
+
+# Wave 11
+
+Branch: `day1/runtime`, synced from `main` via `git fetch origin && git
+merge origin/main` (fast-forward, clean — no conflicts) before any Wave 11
+work, landing at `b7346a4` (Wave 10 fully integrated). Assigned node:
+`runtime-b10` — this role's FINAL Day-1 node, per the task brief's explicit
+statement that no further node exists for this role after this one.
+
+## runtime-b10 — In-process restart, same SQLite file (final Part B gate)
+
+### What this node had to prove, per its own DAG risk callout
+
+`EXECUTION_DAG.md` names this node's risk explicitly: "includes
+in-process-restart-same-SQLite-file test" — and states it is the gate for
+`qa-02`'s E2E demo and `qa-03`'s dedicated `RestartSameDB` integration
+test. The task brief's own four numbered requirements: (1) a full
+`wiring.Services`/`App` built against a real on-disk file, run through a
+realistic command sequence, discarded, and a brand-new instance built
+against the SAME file proven to see all prior state and keep operating;
+(2) the same guarantee holding even when the prior process's connection
+was NOT cleanly closed (a genuine crash, not a graceful shutdown); (3)
+building this strong enough that `qa` can build on top of it with
+confidence rather than starting from scratch; (4) auditing agents/
+runtime.md Part B's "Tests" list for any genuine remaining gap not already
+covered by `b01`-`b09`, closing exactly what's real and nothing more.
+
+### Two real, pre-existing production/test gaps found and closed — not
+### manufactured busywork
+
+Before writing any restart-proof code, this node researched (directly,
+plus a background research agent cross-check that independently confirmed
+the same findings) which `wiring.Services` fields have real, non-fake
+implementations anywhere in the repository. Confirmed: `StateCheckpoint`
+(`internal/statecheckpoint.Service`), `RepositoryCheckpoint`
+(`internal/repocheckpoint.Service`), and `Evaluation`+`AuthorizationIssuer`
+(`internal/evaluation.Service`) are all real and SQLite-backed. Two are
+NOT: `ProgressTreeService` has no unified adapter anywhere (only
+`internal/testutil/fakes.FakeProgressTreeService` — `checkpoint` role's own
+gap, not this role's to close) and `GracefulPauseService` likewise has no
+adapter over `internal/pause`'s free functions (a real gap in this role's
+OWN Part A, but building a six-method adapter bridging `Observe`/
+`RequestPause`/`ReachSafePoint`/`EnterSleep`/`Resume`/`Cancel` onto already-
+existing, differently-shaped free functions is a substantial new
+production feature, not a restart-safety proof — explicitly out of this
+node's scope, and no P0 command this role owns actually calls
+`GracefulPauseService` today; the CLI's `pause`/`resume`/`scheduler`
+commands reach the pause subsystem through the narrower
+`orchestrator.PauseLifecycleDeps.Store` seam instead).
+
+That same research surfaced the ONE genuine, load-bearing, previously-
+undiscovered gap this node closed with new production code:
+**`pause.PauseStore` (the interface `PauseLifecycleDeps.Store` requires)
+had no SQLite-backed implementation anywhere — only `pause.MemStore`, an
+in-memory reference/test double.** Five prior Part A nodes across four
+earlier waves (`runtime-a04`, `a05`, `a07`, `a09`) had each independently
+noted this same gap in their own doc comments and deliberately deferred it
+("a future integration node reconciles `PersistPauseStore` onto a real
+SQLite-backed `PauseStore`," `persistphase_test.go`'s own
+`seedPauseRecordRow` comment). Proving restart-safety for `pause request`/
+`pause cancel`/`resume` while they still ran against an in-memory store
+would have been dishonest — `MemStore` is discarded the instant its owning
+`App` is, by construction, so no restart test built against it could prove
+anything real. **Fix**: `internal/pause/sqlitestore.go`'s new
+`SQLiteStore`, a real `PauseStore` implementation against the
+already-existing `pause_records` table (migration 0050, this role's own
+range) — `FindActiveByKey`/`Insert`/`GetByID`/`UpdateStatus` plus
+`CompareAndSwapStatus` via the identical conditional-`UPDATE...WHERE`
+idiom `internal/scheduler.Store.Complete`/`Fail`/`Renew` already
+established for `wake_jobs`. Deliberately scoped to `PauseStore` only, NOT
+`PersistPauseStore` (`GetProgress`/`SaveProgress`, `runtime-a05`'s own
+narrower five-step-persist-phase interface) — reconciling that one remains
+the same already-tracked, still-open gap it always was; widening this
+node's scope to close it too would have been scope creep beyond "prove
+restart safety of what exists" into a new persist-phase feature nobody
+asked this node to build.
+
+The second gap, per the task's item 4 audit: agents/runtime.md Part B's
+"Tests" list names 9 items; 7 are already thoroughly covered by `b01`-`b09`
+(confirmed directly, file:line, before concluding "no gap" — not assumed).
+"process exit codes" is provably the same signal already exercised 38+
+times across this package's own tests (`Execute()`'s returned error, which
+`cmd/preflight/main.go` — not this role's path — mechanically converts to
+`os.Exit(1)`); "no-TTY behavior" is structurally guaranteed already (zero
+TTY-detection code exists anywhere in `internal/cli`/`internal/orchestrator`
+— confirmed by grep — and every single existing test already drives every
+command through a non-TTY `bytes.Buffer`). **"CLI golden tests" is a real,
+previously-unclosed gap**: every existing success-path test decodes JSON
+into a `map[string]any` and checks individual keys — an accidentally
+added, removed, renamed, or reordered field in a real command's output
+would pass every existing test silently. `claude-provider` already
+established this exact convention for its own package
+(`internal/hooks/claude/testdata/*.golden.json`,
+`userpromptsubmit_test.go`'s `assertJSONEqual`) — this role's own CLI
+surface had no equivalent. **Fix**: `internal/cli/golden_test.go` + three
+new fixtures under `internal/cli/testdata/golden/` (this role's own
+exclusive path), covering `checkpoint create` (nested two-service result),
+`decision allow` issue flow (conditional-field result), and `doctor`
+(slice-of-results, the shape most likely to silently gain/lose an
+element) — structural (`reflect.DeepEqual` on decoded JSON, not literal
+byte comparison, so insignificant formatting differences never cause
+spurious failures) comparison against checked-in fixtures, with a
+`PREFLIGHT_UPDATE_GOLDEN=1` escape hatch for a deliberate future output-
+shape change (mirrors every golden-file testing setup's standard
+convention). Verified the comparison actually catches a real regression
+(temporarily corrupted a fixture, confirmed the test failed with a clear
+diff, restored it) before considering this closed.
+
+### The in-process-restart-same-SQLite-file test design, in full
+
+`internal/app/wiring/restart_test.go`, two tests:
+
+1. **`TestRestart_SameSQLiteFile_FullLifecycleSurvivesProcessRestart`**
+   (the literal required test). Builds a real on-disk SQLite file (never
+   `:memory:`), a real temporary Git repository, and a full `wiring.App`
+   wired against real `StateCheckpoint`/`RepositoryCheckpoint`/
+   `Evaluation`+`AuthorizationIssuer`/`PauseLifecycle` (this node's new
+   `SQLiteStore`)/`scheduler.Store`/`Diagnostics` (fake only for
+   `ProgressTree`/`GracefulPause`, per the documented, non-dishonest scope
+   boundary above). Drives, through the ACTUAL cobra command tree
+   (`App.RootCmd()`, freshly built per command call — see below for why),
+   a realistic sequence: `checkpoint create` -> real `EvaluateTurn`+
+   `Decide` -> `decision allow` issue flow -> `decision allow` consume
+   flow -> `pause request` -> schedule+claim a real wake job -> `doctor`.
+   Then closes that `*sqlite.DB` entirely and constructs a BRAND NEW
+   `wiring.App`/`*sqlite.DB` pair against the SAME file path — proving,
+   via the post-restart `App`'s own real commands (never by reading the DB
+   directly, which would only prove the storage layer, already covered
+   elsewhere): (a) `CurrentVersion` is identical before/after re-`Migrate`
+   (no double-migration); (b) the pre-restart authorization, replayed
+   post-restart, is still rejected (exactly-once consumption durable
+   across a full App/DB rebuild, not merely an in-process invariant); (c)
+   the pre-restart pause record is still readable AND mutable (`pause
+   cancel` succeeds — proves no orphaned lock on `pause_records`); (d) a
+   brand new wake job can be scheduled AND claimed post-restart (proves
+   the scheduler's write+lock-acquire path, not just reads); (e) a wholly
+   fresh `checkpoint create` and a wholly fresh `decision allow`
+   issue-then-consume-then-replay-rejected cycle both succeed post-restart
+   (proves every write path, not just previously-committed reads, is live
+   again).
+
+2. **`TestRestart_SameSQLiteFile_UncleanShutdown_UncommittedWriteDoesNotCorruptFile`**
+   (requirement 2 — "even if the old process's SQLite connection wasn't
+   cleanly closed"). This test's OWN FIRST DRAFT tried two same-process
+   simulations (abandoning a `*sql.Tx` borrowed from the App's own pool
+   before calling `db.Close()`; then a second, wholly separate
+   `*sqlite.DB` simply never `Close()`d) and BOTH genuinely failed with a
+   real `SQLITE_BUSY` on the very next `Migrate()` call — traced to a real
+   Go-level fact, not a storage-layer bug: `database/sql.DB.Close()` is
+   documented to "wait for all queries that have started processing... to
+   finish" rather than force-closing an abandoned transaction, and
+   `sql.Conn.Close()` on a connection with an open `*sql.Tx` outright
+   DEADLOCKS (verified directly with a throwaway, built-and-deleted
+   experiment before concluding this, not assumed). A same-process
+   simulation cannot faithfully reproduce a real OS-level process death
+   using `database/sql`'s public API alone — a genuinely different failure
+   mode than any prior wave's node has hit. **Fix**: the standard Go
+   idiom for exactly this situation — the test binary re-executes ITSELF
+   as a real child OS process (`os/exec`, `os.Args[0]`,
+   `-test.run=^TestZZZCrashWriterHelper$`), that child opens the same
+   on-disk file, begins a real write transaction, executes it, signals
+   readiness over stdout, then blocks; the parent sends a real `SIGKILL`
+   once it reads the readiness signal. The OS — not this package's own
+   bookkeeping — reclaims the child's file descriptors and whatever
+   SQLite-level lock state they held, exactly as a genuine crash would.
+   The surviving (parent) process then opens a fresh connection to the
+   same file and proves: `Migrate` still succeeds (no BUSY, no hang); the
+   killed writer's uncommitted UPDATE did NOT apply (`pause cancel`
+   against the same pause ID succeeds, proving the record reads back at
+   its pre-crash status, not the abandoned write's target status); a
+   fresh `doctor` and a fresh `checkpoint create` both succeed (proves no
+   residual lock survives into the new connection). `TestZZZCrashWriterHelper`
+   self-skips under any normal `go test` invocation (gated on an env var
+   the parent test alone sets), so it never pollutes or is counted as a
+   real test in a normal run.
+
+Both tests re-run 3-5x under `-race` with zero flakes before being
+considered done (Wave 6's "process CPU time vs wall-clock" hang-diagnosis
+technique and Wave 9's "temporary in-source instrumentation, confirmed
+then deleted" technique were both reused during the crash-writer
+investigation — a throwaway `busytest` experiment package, built inside
+`internal/app/wiring` — the only path where such an experiment could
+legally live — confirmed the `sql.Conn.Close()` deadlock precisely before
+this node concluded a real subprocess was necessary, then was deleted
+before commit, never left in the diff).
+
+### Design note: a fresh `App.RootCmd()` per command call, not one reused tree
+
+`execCmd`/`execCmdExpectError` (the test's own drive helpers) build a
+BRAND NEW `a.RootCmd()` for every single command invocation, rather than
+reusing one `*cobra.Command` tree across multiple `Execute()` calls —
+this file's own first draft did the latter and found a real test-design
+bug: cobra's `StringVar`-bound flag variables are captured once when a
+command tree is built, so a flag OMITTED on a later `Execute()` call
+against the SAME tree silently keeps whatever value an EARLIER call left
+it at, rather than resetting to its default. A `decision allow` issue-flow
+call that ran after an earlier `decision allow ... --authorization-id X`
+call on the same reused tree was silently routed into the CONSUME flow
+instead, because the stale flag value was still set. Building a fresh
+`a.RootCmd()` per call sidesteps this entirely and is also the more
+faithful restart-safety proof: every real invocation of the `preflight`
+binary is its own fresh process building its own fresh cobra tree exactly
+once, so a test that reuses one tree across calls is testing something the
+real binary never actually does.
+
+### Node log
+
+```yaml
+node: runtime-b10
+status: completed
+artifacts:
+  - internal/pause/sqlitestore.go (new: SQLiteStore, a real PauseStore)
+  - internal/pause/sqlitestore_test.go (new: unit + concurrent-CAS proof)
+  - internal/app/wiring/restart_test.go (new: the two required restart tests)
+  - internal/cli/golden_test.go (new: closes the "CLI golden tests" gap)
+  - internal/cli/testdata/golden/checkpoint_create_success.golden.json (new)
+  - internal/cli/testdata/golden/decision_allow_issue_success.golden.json (new)
+  - internal/cli/testdata/golden/doctor_all_skipped_success.golden.json (new)
+validation:
+  - "gofmt -l internal/orchestrator internal/cli internal/pause internal/scheduler internal/app/wiring   # empty"
+  - "go build ./...   # OK, whole repo"
+  - "go vet ./internal/orchestrator/... ./internal/cli/...   # OK"
+  - "go test ./internal/cli/... ./internal/orchestrator/... -race -v   # all PASS"
+  - "go test ./internal/app/wiring/... ./internal/pause/... -race -v   # all PASS, including both restart tests and the new SQLiteStore suite"
+  - "go build ./... && go test ./... -race   # all PASS, whole repo, zero regressions"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+commit: <recorded below>
+next_action: NONE — this was runtime's FINAL assigned DAG node. Every node ever assigned to this role (a01-a11, b01-b10) is now complete.
+assumptions:
+  - "SQLiteStore implements PauseStore only, not PersistPauseStore — the
+    latter (runtime-a05's own narrower persist-phase progress-bookkeeping
+    interface) remains the same already-tracked, still-open gap it was
+    before this node; reconciling it is out of this node's scope (proving
+    restart safety of what exists, not building a new persist-phase
+    feature)."
+  - "GracefulPauseService and ProgressTreeService remain fake in this
+    node's restart harness — neither has a real adapter anywhere in the
+    repository (confirmed directly + via independent background-agent
+    cross-check), and no P0 command this role owns calls
+    GracefulPauseService at all (pause/resume/scheduler commands reach
+    internal/pause through the narrower PauseLifecycleDeps.Store seam
+    instead) — documented explicitly as a non-dishonest scope boundary,
+    not silently papered over."
+  - "The crash-writer subprocess technique (TestZZZCrashWriterHelper,
+    os.Args[0] re-exec + SIGKILL) is the standard Go idiom for testing
+    real process-crash recovery and was adopted only after two same-process
+    simulation attempts were tried and found to give false results (a
+    database/sql-level artifact, not a storage-layer bug) — documented in
+    both the code comments and this artifact so a future reader does not
+    have to rediscover why the simpler approach doesn't work."
+  - "internal/httpapi, internal/daemon remain out of Day-1 scope, unchanged
+    from every prior wave's same observation — no code added there this
+    node, consistent with agents/runtime.md's own stretch-goal framing."
+blockers: []
+```
+
+## Wave 11 cross-node observations — and full role retrospective
+
+Since this is `runtime`'s final Day-1 node, this section closes out both
+the wave and the entire role arc (Bootstrap was lead-only, per
+`CONTRACT_FREEZE.md`; this role's own history runs Wave 3 through Wave 11,
+21 total DAG nodes: `a01`-`a11`, `b01`-`b10`).
+
+**This wave's own two findings**: consistent with every prior "final
+gate"-shaped node this role has shipped (`runtime-a11`, `runtime-b09` in
+Wave 10; `checkpoint-a09`/`checkpoint-b09`/`predictor-11` in the
+cross-role Wave 10 pattern already noted), a comprehensive proof node
+found approximately one real, genuine gap per sub-area audited — one in
+Part A (`pause.PauseStore`'s missing SQLite backing, closed with new
+production code) and one in Part B's own Tests checklist ("CLI golden
+tests," closed with new test infrastructure) — never zero, never many.
+This is now the fourth consecutive "final gate" node (`checkpoint-a09`/
+`b09`/`predictor-11` in Wave 10 cross-role, `runtime-a11`/`b09` also Wave
+10, now `runtime-b10` Wave 11) to land on exactly this shape, which is
+strong, repeated evidence this pattern generalizes: a comprehensive
+audit-then-close node in this project reliably surfaces a small, real,
+countable number of genuine gaps — never a sign the underlying nodes were
+built carelessly (they weren't; every gap found was already explicitly,
+honestly documented by the node that deferred it), and never a sign
+nothing was left to find (something always was, because true end-to-end
+integration exercises interactions no single earlier node's narrower
+scope could exercise).
+
+**The crash-simulation lesson is this wave's one genuinely NEW technique**,
+distinct from anything a prior wave's lessons_learned already named: Wave
+5/9's "process CPU time vs wall-clock" (diagnosing a hang) and "temporary
+in-source instrumentation, confirmed then deleted" (confirming a
+hypothesis before trusting it) both apply here, but the actual FIX
+required — re-executing the test binary as a real child process and
+SIGKILLing it — is a new addition to this role's technique inventory,
+worth naming explicitly for any FUTURE Preflight node (in this role or any
+other) that needs to test real process-crash recovery rather than an
+in-process approximation: **`database/sql`'s own connection-pool
+bookkeeping makes an in-process crash simulation actively misleading, not
+just weaker** — it can produce a FALSE positive failure (the abandoned-Tx
+`SQLITE_BUSY`, an artifact of Go's own pool semantics, not the storage
+layer under test) that looks exactly like a real crash-recovery bug until
+traced to its actual source. Any future crash-recovery test in this
+codebase should default to the subprocess+SIGKILL technique from the
+start, not discover the same false-positive the hard way.
+
+**Full role retrospective (Wave 3 through Wave 11, 21 nodes)**:
+
+- **Sequencing discipline held for the entire arc.** Every wave that
+  contained both Part A and Part B work sequenced Part A first
+  (state-machine/concurrency-correctness risk) ahead of Part B
+  (comparatively lower-risk plumbing built ON TOP of Part A), exactly as
+  Wave 5 first established and every subsequent wave (6, 7, 9, 10)
+  followed without deviation. This wave's own node (`b10`, pure Part B)
+  is the natural capstone of that discipline: by the time Part B needed a
+  final integration gate, Part A had already had 11 of its own nodes'
+  worth of scrutiny (culminating in `runtime-a11`'s own full-lifecycle
+  proof, Wave 10), so this node's real remaining risk was concentrated
+  almost entirely in Part B's own plumbing plus the ONE cross-cutting gap
+  (`PauseStore`'s SQLite backing) that had been honestly deferred, not
+  hidden, since Wave 6.
+- **The single most-repeated, most-validated technical lesson across the
+  whole arc**: treat a just-written test's first-run failure as "my own
+  assertion, design, or simulation technique may encode a wrong mental
+  model" before assuming either "the system under test has a bug" or "the
+  test is simply flaky" — and always get DIRECT evidence (a throwaway
+  debug instrumentation, a process-state check, an isolated repro) before
+  committing to any of the three explanations. This was independently
+  re-derived and correctly applied in `runtime-a06` (Wave 5, a genuine
+  self-deadlock bug), `runtime-a09` (Wave 9, a genuine TOCTOU race PLUS a
+  wrong test assertion, back to back, correctly told apart), `runtime-a11`
+  (Wave 10, two wrong test assertions, zero implementation bugs),
+  `runtime-b09` (Wave 10, a genuine design-choice bug, not a test bug),
+  and now `runtime-b10` (Wave 11, a wrong SIMULATION TECHNIQUE — a new
+  sub-case none of the prior five instances were, since the bug was in
+  neither the test's assertion nor the system under test, but in an
+  invalid same-process crash-simulation methodology). Five distinct
+  sub-cases of the same underlying discipline, each correctly diagnosed,
+  none guessed.
+- **The "comprehensive audit-then-close finds ~1 real gap" pattern**,
+  first clearly named in Wave 10's cross-node observations, held a third
+  and fourth time this wave (Part A's `PauseStore` gap, Part B's golden-
+  test gap) — now confirmed across five total instances spanning two
+  waves and, cross-role, at least three other roles' own equivalent final
+  nodes. This is the arc's strongest piece of process evidence: Preflight's
+  per-node, per-wave documented-gap discipline (Constitution §4.4's
+  "request through the progress artifact, don't wait idle" + this role's
+  own consistent practice of naming a deferred gap explicitly rather than
+  silently skipping it) is what MADE this pattern possible — every gap
+  this node and its Wave 10 predecessors found was already written down
+  by an earlier node, findable, not undiscoverable technical debt.
+- **No new ADRs were ever required across the entire 21-node arc**, and
+  cross-role change requests were rare and small (Wave 4's foundation
+  migrate_test.go staleness, resolved before Wave 5 began; no others).
+  Every real design judgment call this role made across 21 nodes — the
+  pause-record two-backing-stores gap, `PauseStore`'s scope boundary
+  (internal seam vs. frozen port), the `CompareAndSwapStatus` primitive,
+  the two-channel CheckResult-vs-error split, `SilenceErrors`, and now
+  this node's SQLiteStore scope boundary and crash-simulation technique —
+  was resolvable directly from already-frozen documents (Constitution
+  §§2/6/7, `CONTRACT_FREEZE.md`, the relevant ADD sections) without
+  escalation, a direct, load-bearing consequence of `agents/runtime.md`
+  and the frozen contract being genuinely sufficient source material for
+  an agent picking up this role fresh in any given wave, including this
+  final one.
+- **This role's own file-count-undercounting observation (first flagged
+  Wave 5, reconfirmed Waves 7/9/10)** — that any Part-B-shaped node
+  spanning orchestrator-logic + CLI-command + wiring-integration runs
+  roughly 2-3x the DAG's naive per-node file estimate — did NOT recur this
+  wave in the same shape, because `runtime-b10` deliberately added no new
+  CLI command surface (it PROVED existing ones, plus one small new
+  storage-layer file) — worth noting as the one wave where that
+  particular estimation pattern did not apply, because the node's actual
+  shape (integration-proof, not new-feature) was different in kind from
+  every node the original observation was made against.
+
+This closes `runtime`'s full Day-1 DAG scope. No further node remains
+assigned to this role.

@@ -1,0 +1,296 @@
+// sqlitestore.go: a REAL SQLite-backed PauseStore, against the pause_records
+// table this role's own migration range created (0050_pause_records.sql).
+//
+// Five prior nodes (runtime-a04 through a09, see requestpause.go/
+// persistphase_test.go's own doc comments) each explicitly named the same
+// gap and deliberately deferred it: PauseStore had no durable, cross-process
+// implementation, only MemStore (an in-memory reference/test double). That
+// was a reasonable, honestly-documented deferral at each of those stages —
+// none of them needed cross-restart durability to prove their own required
+// tests. runtime-b10 (this file) is different: its whole job is proving
+// Preflight survives a real process restart against the SAME on-disk SQLite
+// file, and PauseStore is exactly the seam PauseLifecycleDeps.Store
+// (internal/orchestrator/pauselifecycle.go) wires `pause request`/
+// `pause cancel`/`resume` through. Proving restart-safety for those three
+// commands while they still ran against an in-memory store would be
+// dishonest — MemStore is discarded the instant its owning App is, by
+// definition. So this file closes that specific, repeatedly-flagged gap: a
+// minimal, real PauseStore, satisfying the interface unchanged (no signature
+// in requestpause.go moves), so every existing caller
+// (RequestPause/Cancel/Resume/Wake, and PauseLifecycleDeps.Store) accepts it
+// as a drop-in replacement for MemStore with zero other code changes.
+//
+// Scope: this file implements PauseStore only (FindActiveByKey/Insert/
+// GetByID/UpdateStatus/CompareAndSwapStatus) — exactly the interface
+// PauseLifecycleDeps.Store and RequestPause/Cancel/Resume/Wake actually take.
+// PersistPauseStore (GetProgress/SaveProgress, persistphase.go's own,
+// narrower interface for runtime-a05's five-step persist orchestration) is
+// NOT implemented here: reconciling PersistPauseStore onto this same table
+// is a separate, already-tracked gap (persistphase_test.go's own
+// seedPauseRecordRow doc comment: "a future integration node reconciles
+// PersistPauseStore onto a real SQLite-backed PauseStore against this same
+// table") that a05's own progress-phase bookkeeping concern, not this
+// integration node's. Building it here too would be scope creep beyond
+// "prove restart safety end-to-end" into a new persist-phase feature this
+// task brief did not ask for.
+package pause
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+
+	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/preflight/internal/storage/sqlite"
+)
+
+// SQLiteStore is a real, cross-process-durable PauseStore backed by the
+// pause_records table (migration 0050). It stores exactly the fields
+// PauseRecord/PauseKey need round-tripped; every other pause_records column
+// (turn_id, runway_forecast_id, safe_point_at, ...) is either not yet
+// populated by any caller this role has built, or belongs to a later node —
+// this store does not invent values for them, it only writes what the
+// PauseStore interface's own callers pass it (NOT NULL columns this store
+// doesn't otherwise populate get a fixed placeholder, documented per-column
+// below, exactly as seedPauseRecordRow's own test helper already does).
+type SQLiteStore struct {
+	db *sqlite.DB
+}
+
+// NewSQLiteStore constructs a SQLiteStore bound to db. db must already be
+// migrated (pause_records must exist) — mirrors every other role's
+// NewStore(db) constructor convention (statecheckpoint.NewStore,
+// repocheckpoint.NewStore, scheduler.NewStore).
+func NewSQLiteStore(db *sqlite.DB) *SQLiteStore {
+	return &SQLiteStore{db: db}
+}
+
+var _ PauseStore = (*SQLiteStore)(nil)
+
+// pauseRecordPlaceholderTurnID/RunwayForecastID fill pause_records' two
+// NOT NULL columns this store's own callers (RequestPause/Cancel/Resume/
+// Wake — none of which take a TurnID or RunwayForecastID today; see
+// PauseRequest's own field set) never supply. A future node that threads a
+// real TurnID/RunwayForecastID through PauseStore.Insert can widen this
+// store's Insert signature then; today's callers have nothing to put here,
+// and a fixed, greppable placeholder is preferable to silently inventing a
+// per-call random value that would make otherwise-identical rows look
+// spuriously different.
+const (
+	pauseRecordPlaceholderTurnID         = "unknown"
+	pauseRecordPlaceholderRunwayForecast = "unknown"
+	pauseRecordDefaultAutoResumeEnabled  = 0
+)
+
+// FindActiveByKey implements PauseStore.FindActiveByKey: the most recent
+// non-terminal row for key's (TaskID, SessionID), if any. "Most recent" is
+// well-defined because a caller only ever creates a new row for a given key
+// once every prior row for it has gone terminal (RequestPause's own
+// idempotency invariant) — but this query does not rely on that invariant
+// holding; it simply orders by rowid DESC and takes the first non-terminal
+// match, so it is correct even if that invariant were ever violated by a
+// bug elsewhere.
+func (s *SQLiteStore) FindActiveByKey(ctx context.Context, key PauseKey) (PauseRecord, bool, error) {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	rows, err := q.QueryContext(ctx, `
+		SELECT id, task_id, session_id, status, metadata_json
+		FROM pause_records
+		WHERE task_id = ? AND session_id = ?
+		ORDER BY rowid DESC
+	`, string(key.TaskID), string(key.SessionID))
+	if err != nil {
+		return PauseRecord{}, false, fmt.Errorf("pause: SQLiteStore.FindActiveByKey: query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		rec, err := scanPauseRecord(rows)
+		if err != nil {
+			return PauseRecord{}, false, err
+		}
+		if !IsTerminal(rec.Status) {
+			return rec, true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return PauseRecord{}, false, fmt.Errorf("pause: SQLiteStore.FindActiveByKey: rows: %w", err)
+	}
+	return PauseRecord{}, false, nil
+}
+
+// Insert implements PauseStore.Insert: a brand new pause_records row.
+// metadata_json carries rec.Reason (this store's own encoding, read back
+// by scanPauseRecord) since pause_records has no dedicated reason column
+// (Preflight_ADD.md §12.2's canonical schema does not name one either).
+func (s *SQLiteStore) Insert(ctx context.Context, rec PauseRecord) error {
+	if rec.ID == "" {
+		return &domain.Error{Code: domain.ErrCodeValidation, Message: "pause: SQLiteStore.Insert requires a non-empty ID", Retryable: false}
+	}
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	metadata := encodePauseMetadata(rec.Reason)
+	_, err := q.ExecContext(ctx, `
+		INSERT INTO pause_records
+			(id, task_id, session_id, turn_id, runway_forecast_id, status, requested_at, auto_resume_enabled, metadata_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		string(rec.ID), string(rec.Key.TaskID), string(rec.Key.SessionID),
+		pauseRecordPlaceholderTurnID, pauseRecordPlaceholderRunwayForecast,
+		string(rec.Status), nowRFC3339Placeholder(), pauseRecordDefaultAutoResumeEnabled,
+		metadata,
+	)
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.Insert: %w", err)
+	}
+	return nil
+}
+
+// GetByID implements PauseStore.GetByID.
+func (s *SQLiteStore) GetByID(ctx context.Context, id domain.PauseID) (PauseRecord, bool, error) {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	row := q.QueryRowContext(ctx, `
+		SELECT id, task_id, session_id, status, metadata_json
+		FROM pause_records
+		WHERE id = ?
+	`, string(id))
+	rec, err := scanPauseRecordRow(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PauseRecord{}, false, nil
+	}
+	if err != nil {
+		return PauseRecord{}, false, fmt.Errorf("pause: SQLiteStore.GetByID: %w", err)
+	}
+	return rec, true, nil
+}
+
+// UpdateStatus implements PauseStore.UpdateStatus: an unconditional status
+// write (no compare — callers are expected to have already validated the
+// transition via pause.Apply, per the interface's own doc comment).
+func (s *SQLiteStore) UpdateStatus(ctx context.Context, id domain.PauseID, status domain.PauseStatus) error {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	res, err := q.ExecContext(ctx, `UPDATE pause_records SET status = ? WHERE id = ?`, string(status), string(id))
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.UpdateStatus: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.UpdateStatus: RowsAffected: %w", err)
+	}
+	if n == 0 {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: SQLiteStore.UpdateStatus: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+	return nil
+}
+
+// CompareAndSwapStatus implements PauseStore.CompareAndSwapStatus via a
+// conditional `UPDATE ... WHERE id = ? AND status = ?` — the real-store
+// analogue of MemStore's mutex-guarded compare-and-swap, and the same
+// conditional-update idiom internal/scheduler.Store.Complete/Fail/Renew
+// already established for wake_jobs (`WHERE status = ? AND lease_owner = ?`)
+// applied here to pause_records instead. SQLite's single-writer-per-
+// transaction semantics (WAL mode, foundation-07) make this UPDATE's
+// affected-row-count an atomic, race-free compare-and-swap: two concurrent
+// callers racing the same id can both issue this statement, but SQLite
+// serializes their commits, so at most one UPDATE actually matches the
+// still-`expected` row — the loser's statement affects zero rows and reports
+// ok=false, exactly like MemStore's mutex-losing branch, without this
+// package needing its own locking on top of what the storage layer already
+// guarantees.
+func (s *SQLiteStore) CompareAndSwapStatus(ctx context.Context, id domain.PauseID, expected, next domain.PauseStatus) (ok bool, found bool, err error) {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	res, execErr := q.ExecContext(ctx, `
+		UPDATE pause_records SET status = ? WHERE id = ? AND status = ?
+	`, string(next), string(id), string(expected))
+	if execErr != nil {
+		return false, false, fmt.Errorf("pause: SQLiteStore.CompareAndSwapStatus: %w", execErr)
+	}
+	n, raErr := res.RowsAffected()
+	if raErr != nil {
+		return false, false, fmt.Errorf("pause: SQLiteStore.CompareAndSwapStatus: RowsAffected: %w", raErr)
+	}
+	if n > 0 {
+		return true, true, nil
+	}
+	// Zero rows affected: either the record doesn't exist at all, or it
+	// exists but is no longer at `expected` (someone else already moved
+	// it — the race-loser case). Distinguish them with a follow-up read,
+	// exactly as MemStore's own CompareAndSwapStatus does, so a caller can
+	// tell "nothing to compare-and-swap" apart from "lost the race."
+	_, foundNow, getErr := s.GetByID(ctx, id)
+	if getErr != nil {
+		return false, false, getErr
+	}
+	return false, foundNow, nil
+}
+
+// scanRow is satisfied by both *sql.Row and *sql.Rows, so
+// scanPauseRecordCore can back both GetByID/CompareAndSwapStatus's
+// single-row reads and FindActiveByKey's multi-row scan without duplicating
+// the column list twice.
+type scanRow interface {
+	Scan(dest ...any) error
+}
+
+func scanPauseRecordCore(r scanRow) (PauseRecord, error) {
+	var id, taskID, sessionID, status, metadataJSON string
+	if err := r.Scan(&id, &taskID, &sessionID, &status, &metadataJSON); err != nil {
+		return PauseRecord{}, err
+	}
+	return PauseRecord{
+		ID:     domain.PauseID(id),
+		Key:    PauseKey{TaskID: domain.TaskID(taskID), SessionID: domain.SessionID(sessionID)},
+		Status: domain.PauseStatus(status),
+		Reason: decodePauseMetadata(metadataJSON),
+	}, nil
+}
+
+func scanPauseRecord(rows *sql.Rows) (PauseRecord, error)  { return scanPauseRecordCore(rows) }
+func scanPauseRecordRow(row *sql.Row) (PauseRecord, error) { return scanPauseRecordCore(row) }
+
+// encodePauseMetadata/decodePauseMetadata round-trip TriggerReason through
+// pause_records.metadata_json's existing free-form JSON column (present
+// since 0050_pause_records.sql, default '{}') rather than adding a new
+// migration for a dedicated column — this role's Part B migration range is
+// explicitly "none unless contract-integrator assigns one"
+// (CONTRACT_FREEZE.md), and Part A's own 0050-0059 range is a shared
+// resource this single field does not need a new file for. A minimal
+// hand-rolled encode/decode (not encoding/json） keeps this file dependency-
+// free for the one string field it needs; a future column added by a real
+// migration can replace this without changing PauseStore's interface.
+func encodePauseMetadata(reason TriggerReason) string {
+	if reason == "" {
+		return `{}`
+	}
+	return `{"reason":"` + string(reason) + `"}`
+}
+
+func decodePauseMetadata(metadataJSON string) TriggerReason {
+	const prefix = `{"reason":"`
+	const suffix = `"}`
+	if len(metadataJSON) > len(prefix)+len(suffix) &&
+		metadataJSON[:len(prefix)] == prefix &&
+		metadataJSON[len(metadataJSON)-len(suffix):] == suffix {
+		return TriggerReason(metadataJSON[len(prefix) : len(metadataJSON)-len(suffix)])
+	}
+	return ""
+}
+
+// nowRFC3339Placeholder stamps requested_at (NOT NULL) with a fixed,
+// greppable sentinel rather than reading a wall clock: SQLiteStore
+// deliberately takes no domain.Clock dependency (PauseStore's interface
+// has none either — MemStore's own Insert doesn't stamp a time at all), so
+// this avoids silently pretending a wall-clock read is meaningful data.
+// requested_at's actual, meaningful value is produced by
+// RequestPause/PersistPhase's own callers elsewhere; this column exists to
+// satisfy pause_records' NOT NULL constraint for a store whose interface
+// was never given a real timestamp to put there. A future node that widens
+// PauseStore.Insert to accept a caller-supplied timestamp can replace this
+// placeholder outright without any other change.
+func nowRFC3339Placeholder() string {
+	return "1970-01-01T00:00:00Z"
+}

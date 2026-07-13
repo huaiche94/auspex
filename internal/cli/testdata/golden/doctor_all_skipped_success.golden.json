@@ -1,0 +1,16 @@
+{
+  "schema_version": "preflight.doctor.v1",
+  "healthy": true,
+  "checks": [
+    {
+      "name": "database",
+      "status": "skipped",
+      "detail": "no database configured"
+    },
+    {
+      "name": "config",
+      "status": "skipped",
+      "detail": "no config loader configured"
+    }
+  ]
+}

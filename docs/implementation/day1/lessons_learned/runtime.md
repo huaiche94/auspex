@@ -281,3 +281,86 @@
   helpers are entirely new code in an already-owned file, not a widening of any shared contract.
 - `runtime-b10` (this role's final Day-1 node) remains for a future wave — explicitly not started
   this wave, per the task's own instruction.
+
+# Lessons Learned — runtime (Wave 11: runtime-b10 — FINAL NODE)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| runtime-b10 | L (DAG: 450 points, ~8h) | L/XL — the DAG's own "High risk" framing for the restart test held exactly, but for a reason the DAG's node description did not name: the hardest part was not building the restart proof itself, it was discovering that TWO same-process crash-simulation techniques both give FALSE results (a `database/sql` pool-bookkeeping artifact, not a real bug), which cost a full investigation cycle before landing on the correct technique (a real subprocess + SIGKILL) | 4 (implied: restart test file + one new store + its test + a golden test file) | 7 (sqlitestore.go, sqlitestore_test.go, restart_test.go, golden_test.go, 3 golden fixture files) — the fixture files are new territory for this role (no prior node shipped a `testdata/` fixture), not counted separately by the DAG's implied estimate | 450 points | one continuous pass, with two full stop-diagnose-fix cycles: (1) a cobra flag-state-leak bug in the test's OWN drive helper (reusing one `*cobra.Command` tree across multiple `Execute()` calls), found and fixed by switching to a fresh `RootCmd()` per call; (2) the crash-simulation methodology itself, which needed a real subprocess after two in-process attempts both produced a genuine but MISLEADING `SQLITE_BUSY` | Two, both self-discovered by direct research before writing any restart code, not assumed: (1) `pause.PauseStore` had no SQLite-backed implementation anywhere — five PRIOR nodes across four earlier waves had each independently deferred this exact gap in their own doc comments; closing it (`SQLiteStore`) was in-scope since `internal/pause` is this role's own exclusive path, mirroring `runtime-a05`'s Wave 7 precedent for "a same-role internal gap discovered mid-node is closed directly, not escalated." (2) "CLI golden tests" (agents/runtime.md Part B's own Tests list) had never been built by any of `b01`-`b09` — confirmed by grep (zero hits for "golden" anywhere under `internal/cli`), closed with a new `testdata/golden/` fixture convention mirroring `claude-provider`'s own already-established precedent for the same technique | `internal/cli/testdata/golden/*.golden.json` — a new file TYPE (checked-in JSON fixtures) this role has never shipped before in 10 prior waves | The two same-process crash-simulation attempts (documented in detail in both restart_test.go's own comments and this wave's progress-artifact section) were NOT wasted effort in the token-waste sense — each one produced a specific, falsifiable, and ultimately WRONG hypothesis about why `SQLITE_BUSY` occurred, and disproving each specifically (via a throwaway, built-and-deleted experiment isolating `sql.Conn.Close()`'s documented deadlock-on-open-Tx behavior) is what made the correct diagnosis (a Go `database/sql`-level artifact, not a SQLite or storage-layer bug) actually CERTAIN rather than merely plausible — consistent with this role's own established "confirm before trusting" discipline, applied here to a debugging problem instead of a fixture-tuning problem | This wave's restart-safety investigation surfaces a genuinely NEW, previously-unnamed technique for this project: **a same-process "abandon a `*sql.Tx` and let it dangle" simulation of a process crash is not a weaker version of a real crash test, it is a DIFFERENT and potentially MISLEADING test** — `database/sql`'s own pool/transaction bookkeeping (documented behavior: `DB.Close()` waits for in-flight queries to finish; `Conn.Close()` deadlocks on an open `Tx`) can produce a failure that looks exactly like a real SQLite-level lock-recovery bug but is actually an artifact of Go's own connection-lifecycle rules. Recommend: any FUTURE Preflight node (this role or any other) that needs to test real process-crash recovery should default to the subprocess-re-exec-plus-SIGKILL technique (`os.Args[0]`, `-test.run=^Name$`, an env-var-gated helper `Test` function, a real `syscall.SIGKILL`) from the outset, rather than rediscovering — the hard way, as this node did — that the simpler in-process approximation gives false results for this specific class of test |
+
+## Wave 11 cross-node observations (single-node wave — this role's LAST)
+
+- This is `runtime`'s final assigned DAG node (`agents/runtime.md`'s full
+  Part A + Part B scope, 21 nodes across 9 waves, is now 100% complete).
+  Unlike every prior "final gate" node this role shipped (`checkpoint-a09`/
+  `checkpoint-b09`/`predictor-11` cross-role, `runtime-a11`/`runtime-b09`
+  same-role, all Wave 10), this node closed out not just Part B but the
+  ENTIRE role's remaining DAG scope — no further work of any kind remains
+  assigned to this role for Day-1.
+- The "comprehensive audit-then-close node finds ~1 real gap per
+  sub-area" pattern (first named Wave 10) held a THIRD and FOURTH time
+  this wave: one real gap in Part A (`PauseStore`'s missing SQLite
+  backing, a production-code fix) and one real gap in Part B's own Tests
+  checklist ("CLI golden tests," a test-infrastructure fix) — never zero,
+  never many, consistent with every "prove the whole stack" node this
+  project has shipped across multiple roles.
+- The crash-simulation-technique lesson (see the node's own "token waste
+  observations" cell above) is this wave's one genuinely NEW addition to
+  this role's technique inventory across the entire 9-wave arc — distinct
+  from (though built on the same underlying discipline as) Wave 5's
+  "process CPU time vs wall-clock" hang-diagnosis technique and Wave 9's
+  "temporary in-source instrumentation, confirmed then deleted" technique.
+  Recommend it be treated as this project's default going forward for any
+  crash-recovery-shaped test, in any role, rather than being rediscovered
+  per-node the way this wave had to rediscover it once.
+- No new ADRs, no cross-role change-request escalations, no frozen-contract
+  questions this wave — consistent with this role's unbroken record across
+  all 9 waves (Wave 4's one foundation change request, resolved before
+  Wave 5, remains the only cross-role escalation this role ever needed in
+  its entire 21-node history). `internal/app/ports.go`, `internal/domain/**`,
+  and every other role's owned packages were called, never modified.
+  `internal/pause/sqlitestore.go`'s new `SQLiteStore` satisfies
+  `pause.PauseStore`, this role's own internal seam (not a frozen port) —
+  no interface in `internal/app/ports.go` was widened or touched, the same
+  discipline this role maintained across all 21 nodes without exception.
+
+## Full-arc retrospective (Wave 3 → Wave 11, all 21 nodes: a01-a11, b01-b10)
+
+- **Estimation accuracy**: pure-logic Part A nodes with no cross-package
+  wiring (`a02`, `a03`, `a06`'s core logic, `a07`, `a08`) consistently
+  landed at or slightly under the DAG's point/file estimates. Every
+  Part-B-shaped node spanning orchestrator+CLI+wiring (`b03`-`b09`)
+  consistently ran 2-3x the DAG's naive file-count estimate, a pattern
+  first flagged Wave 5 and reconfirmed in Waves 7, 9, and 10 without
+  exception — worth writing into the DAG's own estimation convention for
+  any future project using this same execution-plan shape, rather than
+  re-discovering it once per Part-B-shaped node the way this role did five
+  separate times.
+- **Highest-risk nodes justified their risk rating every time**: `a05`
+  (XL, "second highest-risk task in the whole DAG") needed the heaviest
+  test harness this role ever built; `a06`, `a09`, and this final `b10`
+  node each found genuine concurrency or process-lifecycle bugs (a
+  self-deadlock, a real TOCTOU race, and a crash-simulation methodology
+  bug respectively) that a lower-risk node's lighter testing bar would not
+  have caught. The DAG's own risk labels were, across this role's entire
+  history, a reliable predictor of where real bugs (not just LOC) would be
+  found.
+- **This role never required a single ADR across 21 nodes and 9 waves** —
+  the strongest single piece of evidence in this role's own history that
+  `agents/runtime.md` plus the frozen `CONTRACT_FREEZE.md`/`Preflight_ADD.md`
+  contract was genuinely sufficient, wave over wave, for an agent picking
+  up this role fresh each time (no persistent memory across waves) to make
+  every real design judgment call correctly from already-published
+  authority, rather than needing to invent or escalate new ground truth.
+- **The single most-reused cross-wave technique**: "when a just-written
+  test fails reliably on its first run, treat that as 'my own assertion,
+  design, or methodology may be wrong' before assuming either 'the system
+  has a bug' or 'the test is flaky,' and get direct evidence before
+  choosing" — independently, correctly applied in at least six distinct
+  instances across five different waves (`a06`, `a09` twice in one
+  session, `a11` twice, `b09`, and now `b10`'s crash-simulation
+  methodology bug), each time correctly distinguishing which of the
+  several possible explanations was actually true rather than guessing.
+  This is the one technique worth extracting into any future multi-wave,
+  multi-agent project's own shared engineering-practice documentation,
+  independent of Preflight's own domain.

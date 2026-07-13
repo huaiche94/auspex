@@ -2534,3 +2534,220 @@ start, not discover the same false-positive the hard way.
 
 This closes `runtime`'s full vertical-slice DAG scope. No further node remains
 assigned to this role.
+
+---
+
+# Final integration gate corrective addition — `pause.Service`
+
+Branch: `day1/runtime`, synced from `main` via `git fetch origin && git
+merge origin/main` (fast-forward, clean) before this work, bringing in
+Wave 12 (`qa`'s final wave, plus the `LICENSE` file). This is **not a
+numbered DAG node** — every DAG node ever assigned to this role (`a01`-
+`a11`, `b01`-`b10`) was already complete as of Wave 11's commit `ef1c43d`.
+This is a lead-identified finding from the Final integration gate review
+(`contract-integrator-final`), routed to this role because it is squarely
+this role's exclusive-path work, per the same principle Constitution §4
+uses for ordinary DAG assignment (a role's own exclusive paths are where a
+gap in that role's own contract gets closed, regardless of which review
+pass surfaced it).
+
+## What was missing, and why no prior node closed it
+
+`internal/app/ports.go` freezes a six-method `GracefulPauseService`
+interface (`Observe`, `RequestPause`, `ReachSafePoint`, `EnterSleep`,
+`Resume`, `Cancel`). Every one of Part A's eleven nodes built and
+exhaustively tested a real piece of the pause/resume machinery this
+interface describes — the state transition validator (`a02`), `Observer`'s
+debounce/hysteresis (`a03`), `RequestPause`'s idempotency (`a04`), the
+safe-point coordinator and `PersistThenInterrupt` ordering (`a04`), the
+five-phase `Persist` orchestrator (`a05`), the durable scheduler (`a06`/
+`a07`), resume validation (`a08`), `Wake`/`Cancel`/`Resume`'s
+compare-and-swap exactly-once discipline (`a09`), `InterruptAndSleep`
+(`a11`), and a real `SQLiteStore` (`b10`) — but **no single node was ever
+tasked with assembling all of them into one concrete type satisfying the
+frozen interface's exact six-method shape.** `runtime-b10`'s own doc
+comment (Wave 11 section above) explicitly named this as a real gap and
+explicitly scoped it out: "building a six-method adapter bridging
+`Observe`/`RequestPause`/`ReachSafePoint`/`EnterSleep`/`Resume`/`Cancel`
+onto already-existing, differently-shaped free functions is a substantial
+new production feature, not a restart-safety proof — explicitly out of
+this node's scope." That deferred gap is exactly what the Final
+integration gate review caught: `grep -rn "var _ app.GracefulPauseService"`
+across the whole repository, before this addition, found only
+`internal/testutil/fakes.FakeGracefulPauseService` (a test double) and one
+inline test-local satisfaction — never a real, production implementation.
+This is also the reason `cmd/preflight/main.go` was never wired to real
+services: the application root cannot compose against a frozen port with
+no concrete implementation, for any port.
+
+## What this addition is — composition and DTO-shape translation only
+
+`internal/pause.Service` (`internal/pause/service.go`) is the real,
+concrete type. It reimplements no business logic: every state transition,
+every debounce/hysteresis rule, every phase of `Persist`'s five-step
+sequencing, every compare-and-swap race-safety guarantee, and every one of
+`ValidateResume`'s four checks are called through unchanged from their
+existing, already-tested implementations. `Service`'s own job is (a)
+sequencing calls to those pieces in the right order per method, and (b)
+translating between the frozen `app.*` DTOs (deliberately narrow —
+`PauseRequest{SessionID, Reason}`, `SafePoint{PauseID, At}`,
+`ResumeRequest{PauseID}`) and this package's own richer internal shapes
+(`PauseKey{TaskID, SessionID}`, `RequestPauseRequest`,
+`ResumeValidationRequest`, etc.).
+
+Composing against the frozen shapes surfaced two genuine gaps that no
+individual prior node could have found, because satisfying the full
+six-method interface in one place is the first time anything in this role
+needed every piece at once:
+
+1. **`app.PauseRequest` carries no `TaskID`, `WorktreeID`, or paused-work
+   file set** — only `{SessionID, Reason}`. This package's own `PauseKey`
+   requires both `TaskID` and `SessionID`, and `Persist` additionally
+   requires a `WorktreeID`. A repo-wide investigation (direct, plus an
+   independent background research agent cross-check, mirroring
+   `runtime-b10`'s own dual-verification technique) confirmed no frozen
+   port anywhere resolves a `SessionID` to its active `TaskID`/`WorktreeID`
+   — `internal/cli/pause.go`'s own doc comment independently names the
+   identical gap for its own, differently-shaped CLI flags ("no resolver
+   port exists yet"). `Service` closes this with its own narrow,
+   explicitly-documented seam, `SessionContextResolver`, declared in
+   `internal/pause` (not `internal/app/ports.go` — this role cannot freeze
+   a new cross-component contract unilaterally) and left for a future
+   wiring node with access to the `tasks`/`provider_sessions` tables (owned
+   by other roles' exclusive paths) to implement for real. This mirrors
+   `resumevalidation.go`'s own `QuotaSnapshotReader`/`RepoFingerprintReader`/
+   `SessionCapabilityReader` precedent exactly.
+2. **`PersistPauseStore` (`GetProgress`/`SaveProgress`) was never
+   reconciled onto `SQLiteStore`** — `persistphase_test.go`'s own
+   `seedPauseRecordRow` doc comment named this exact gap explicitly back in
+   Wave 7 ("a future integration node reconciles `PersistPauseStore` onto a
+   real SQLite-backed `PauseStore` against this same table"). This
+   addition closes it: `SQLiteStore` (`internal/pause/sqlitestore.go`, this
+   role's own exclusive path) now also implements `PersistPauseStore`,
+   backed by `pause_records`' own `state_checkpoint_id`/
+   `repository_checkpoint_id` columns (already present since migration
+   0050) plus `metadata_json`'s existing free-form JSON slot (already used
+   for `TriggerReason`) widened to a small, fixed four-key shape for the
+   two boolean phase markers and the `WakeJobID` scalar. No new migration,
+   no schema change — every field `PersistProgress` needs already had
+   somewhere to live in the row `Insert` already creates. (One adjacent
+   fix was required alongside this: `decodePauseMetadata`'s original
+   strict-prefix/suffix match against the single-key `{"reason":"X"}` shape
+   would have silently returned `""` the first time `SaveProgress` widened
+   a row's `metadata_json` — caught before it shipped, `decodePauseMetadata`
+   now uses the same general key-extractor `GetProgress` uses.)
+
+Also required, and caught by `go vet` during this addition's own
+validation pass (not by a test): the first draft of `NewService` took
+`Service` itself by value, which copies `Service`'s embedded
+`sync.Mutex`-guarded maps — a real bug `go vet`'s `copylocks` check exists
+specifically to catch. Fixed by splitting `Service`'s plain-data
+constructor input into its own `ServiceDeps` value type (no mutexes) and
+having `NewService(deps ServiceDeps) *Service` build a fresh, heap-allocated
+`Service` from it — `Service` itself is never copied after construction.
+
+## Mapping each frozen method
+
+- **`Observe`**: `internal/predictor/runway.Scorer.Score` produces the
+  `domain.RunwayForecast` the frozen signature returns (the runway
+  forecaster the ADD names as a separate concern from `Observer`'s
+  consumption-side debounce/hysteresis — see `ports.go`'s own package
+  comment on `RiskCombiner` not consuming `RunwayForecast`). Since the
+  frozen `RuntimeObservation` carries only the current `QuotaObservation`
+  sample, never history, and `runway.Scorer` is deliberately stateless
+  (its own doc comment: "all history must be passed in via
+  `ScoreRequest.Previous` by the caller"), `Service` tracks the most
+  recent sample per `(SessionID, LimitID)` itself and supplies it as
+  `Previous` on every call after the first. The resulting forecast is then
+  fed through `Observer.Observe` for its side-effecting debounce/hysteresis
+  bookkeeping; the resulting `ObserveDecision` (`Fire`/`Event`/`Reason`) is
+  intentionally not surfaced (the frozen signature has no field for it) —
+  a caller that needs to act on a fired trigger calls `RequestPause`
+  separately, matching ADD §20.2/§20.3's framing of Observe as a
+  continuous background recompute distinct from the request decision
+  itself. `Observe` also remembers the latest quota sample per `SessionID`
+  (regardless of `LimitID`) as `RequestPause`'s only available source for
+  `ResumeValidationRequest.QuotaBaseline` later — the frozen
+  `PauseRequest` itself carries no quota sample at all.
+- **`RequestPause`**: resolves `SessionID` via `SessionContextResolver`
+  (see gap 1 above), maps the frozen plain-string `Reason` onto this
+  package's closed `TriggerReason` vocabulary, and delegates to the real,
+  unchanged `pause.RequestPause` for the actual idempotent create-or-return
+  logic — confirmed by test: a second call with the same `SessionID`/
+  `Reason` returns the same `PauseID`, not a duplicate.
+- **`ReachSafePoint`**: composes `PersistThenInterrupt`'s ordering
+  guarantee (`safepoint.go`) with the real five-phase `Persist`
+  (`persistphase.go`) as the `CheckpointPersister` half and
+  `InterruptAndSleep` (`interrupt.go`, via `TurnInterrupterAdapter`) as the
+  `Interrupter` half — so `Persist`'s five durable writes must fully
+  succeed before the real `app.TurnInterrupter` is ever called, exactly
+  per ADD §20.15. Also drives the pre-`Checkpointing` transitions
+  (`Predicted`→`Requested`→`Quiescing`→`Checkpointing`) via the same
+  `Apply`+`CompareAndSwapStatus` discipline `lifecycle.go` already
+  established, since the frozen `SafePoint{PauseID, At}` DTO gives a
+  caller no other hook to drive them. Confirmed by test both on the happy
+  path (record reaches `Sleeping`, every Persist phase durably recorded)
+  and the failure path (a `Persist` collaborator failing means the
+  interrupter is never called and the record never advances past its
+  pre-failure status).
+- **`EnterSleep`**: by the time this method is reachable per the frozen
+  state path, `ReachSafePoint` has already durably scheduled the wake job
+  (`Persist`'s own phase 5) and driven the record to `Sleeping`
+  (`InterruptAndSleep`) — so `EnterSleep`'s job is narrower than it might
+  sound: report that already-scheduled `WakeJob`, looked up via
+  `scheduler.Store.GetByPauseKind` (the same idempotent-recovery read
+  `persistphase.go` already uses for its own crash-recovery path), not
+  perform a fresh transition. Fails closed with a `TransitionError` if
+  called before the record is actually `Sleeping`.
+- **`Resume`**: runs the real `ValidateResume` checklist (quota, repository,
+  session, authorization) BEFORE calling the state-machine `Resume`,
+  mapping the outcome via `ResumeValidationResult.Verdict()` — exactly the
+  composition `resumevalidation.go`'s own doc comment named as its
+  documented gap since Wave 8 ("wiring a real check in is explicitly a08's
+  job... **a future integration node's**"). Uses the `SessionContext` and
+  `QuotaBaseline` `RequestPause`/`Observe` remembered for this `PauseID`.
+  A quota-unsafe verdict additionally reschedules the underlying wake job
+  via `RescheduleWakeJobOnQuotaUnsafe`. Confirmed by test on all three
+  verdict paths: fully valid (reaches `Resumed`), quota-unsafe
+  (reschedules to `Sleeping`, non-terminal), and repository-overlap
+  (blocks at `BlockedConflict`).
+- **`Cancel`**: the simplest mapping — the frozen signature is a bare
+  `domain.PauseID` (no wrapper request), translated into
+  `CancelRequest{PauseID}` and delegated to the real, unchanged
+  `pause.Cancel`. Re-confirmed through the real `Service` (not just the
+  bare function) that cancel still wins a race against a subsequent
+  `Resume` call.
+
+## Tests and validation
+
+`internal/pause/service_test.go` adds the required
+`var _ app.GracefulPauseService = (*pause.Service)(nil)` compile-time
+assertion plus integration-style tests for each of the six methods,
+reusing `fulllifecycle_test.go`'s own technique (drive the real
+`Service` against a real, migrated SQLite DB via `openMigratedDB`/
+`seedChain`, and the same `okQuotaReader`/`okRepoFingerprintReader`/
+`okSessionReader`/`okEvaluations`/`fakeTurnInterrupter` doubles
+`resumevalidation_test.go`/`fulllifecycle_test.go` already established)
+rather than starting from scratch. Full validation, all green:
+
+```text
+gofmt -l internal/pause internal/scheduler         # clean
+go build ./...                                     # clean
+go vet ./internal/pause/...                         # clean (after the
+                                                     #   ServiceDeps fix)
+go test ./internal/pause/... -race -v               # all pass
+go build ./... && go test ./... -race               # zero regressions,
+                                                     #   whole repo
+golangci-lint run ./...                             # 0 issues
+```
+
+## What remains explicitly out of scope
+
+`SessionContextResolver` has no real implementation yet — that requires
+the `tasks`/`provider_sessions` tables, owned by other roles' exclusive
+paths, and is exactly the kind of capability gap Constitution §7 rule 3
+requires be surfaced explicitly rather than silently assumed away. Wiring
+a real `pause.Service` into `cmd/preflight/main.go`/
+`internal/app/wiring/**` — including supplying a real
+`SessionContextResolver` — is the lead's root-wiring integration work,
+per this task's own explicit instruction, not this addition's.

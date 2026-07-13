@@ -80,6 +80,7 @@ Fail-open vs fail-closed (Constitution §immutable-day-one-rule-10, from the ver
 - 0030–0039 `checkpoint` (Part B — repository)
 - 0040–0049 `predictor`
 - 0050–0059 `runtime` (Part A — pause/scheduler)
+- 0060–0069 retention/gc (cross-cutting, owned by no vertical-slice role; assigned by ADR-046, `docs/adr/0046-tiered-telemetry-retention.md`)
 
 `runtime` Part B does not get a range; it does not add schema unless `contract-integrator` explicitly assigns one (`Auspex_Parallel_Execution_Plan.md` §7).
 
@@ -163,3 +164,12 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
   this class of change is forbidden by this document's own
   schema-version rules. Historical documents in `docs/archive/` retain
   the old strings by design.
+
+- **2026-07-13 — ADR-046: migration range 0060–0069 assigned to
+  retention/gc.** Tiered telemetry retention (`internal/retention`,
+  `auspex gc`, migration `0060_retention.sql`) is cross-cutting — it
+  archives and deletes rows across every role's tables — so it receives
+  its own range rather than borrowing a vertical-slice role's. No frozen
+  port is added: gc is an internal maintenance concern behind the CLI,
+  not a cross-component service (`internal/app/ports.go` unchanged).
+  New command output schema-version string: `auspex.gc.v1`.

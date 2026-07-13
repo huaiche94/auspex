@@ -5830,6 +5830,19 @@ state directory 全面更名為 Auspex／`auspex`。schema-version 字串重新
 定前綴（pre-release 唯一可行窗口，記錄於 CONTRACT_FREEZE.md 修訂）。
 `docs/archive/` 與 git 歷史不改寫。詳見 `docs/adr/0045-rename-to-auspex.md`。
 
+## ADR-046 — Telemetry 採分層保留（hot window → rollup → 壓縮封存 → 刪除）
+
+**Decision：** SQLite telemetry 無界成長問題採三層保留：raw rows 保留 90
+天（`auspex gc --retention-days` 可調）；到期前先 rollup 成
+`usage_rollups_daily` 與 `calibration_samples`（保住 M13 校準所需的
+prediction-vs-actual 對，actual 不可得時 `actual_known=0`，unknown is
+not zero）；再以 temp+fsync+rename 寫出 gzip JSONL 封存檔並重讀驗證
+row count 與 digest，**驗證通過才刪除** raw rows（fail-closed，絕不部分
+刪除）。每個 task 永遠保留最新 state/repository checkpoint（可恢復性
+安全錨）。Migration range 0060–0069 指派給 retention/gc（跨切面，無
+vertical-slice 角色擁有）。詳見
+`docs/adr/0046-tiered-telemetry-retention.md`。
+
 ---
 
 # 34. Codex Execution Contract

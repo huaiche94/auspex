@@ -16,6 +16,19 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **`auspex gc` — tiered telemetry retention** (ADR-046,
+  [#19](https://github.com/huaiche94/auspex/issues/19)): raw
+  events/features/predictions/decisions/forecasts/consumed
+  authorizations and terminal tasks' superseded checkpoints older than
+  the 90-day hot window (`--retention-days`) are rolled up into
+  `usage_rollups_daily` + `calibration_samples` (preserving
+  prediction-vs-actual pairs for #11 calibration), archived as gzip
+  JSONL under the data dir with full column fidelity, verified by
+  read-back, and only then deleted — fail-closed, never partially. The
+  latest state/repository checkpoint per task is always kept. `--dry-run`
+  is side-effect-free; `--vacuum` opts into a full `VACUUM` (the
+  database runs `auto_vacuum=NONE`, so deletes alone only free pages for
+  reuse). Migration range 0060–0069 is now assigned to retention/gc.
 - Complete vertical slice (85/85 DAG nodes, Bootstrap through the Stage-5
   Final integration gate): frozen domain/port/event contracts, SQLite
   storage with migration ranges per role, Claude Code provider parsers +

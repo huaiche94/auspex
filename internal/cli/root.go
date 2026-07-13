@@ -60,6 +60,7 @@ func NewRootCmd() *cobra.Command {
 		newSchedulerCmd(),
 		newStatusCmd(),
 		newDoctorCmd(),
+		newGCCmd(),
 	)
 
 	return WithJSONErrorRendering(root)
@@ -291,6 +292,24 @@ func newStatusCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("status")
+		},
+	}
+}
+
+// newGCCmd builds the standalone-stub `auspex gc` leaf (ADR-046 tiered
+// telemetry retention). A stub ONLY on this bare tree —
+// internal/app/wiring.App.RootCmd() replaces it with NewGCCmd's real
+// handler (gc.go) once a retention engine is wired, the same
+// stub-then-swap pattern `status`/`doctor` follow: a caller with no
+// wired database still gets an honest "not yet available" instead of a
+// handler that would immediately fail on a nil engine.
+func newGCCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "gc",
+		Short: "Archive and delete telemetry older than the retention window",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("gc")
 		},
 	}
 }

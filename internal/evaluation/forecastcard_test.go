@@ -7,6 +7,7 @@ package evaluation_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -85,15 +86,16 @@ func TestForecastCard_Validation_And_NotFound(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC))
 	svc, _ := newTestService(t, clk, &sequentialIDs{prefix: "id"}, newFakeDataSource())
 
+	var derr *domain.Error
 	if _, err := svc.ForecastCard(context.Background(), ""); err == nil {
 		t.Fatal("ForecastCard(\"\"): expected a validation error")
-	} else if derr, ok := err.(*domain.Error); !ok || derr.Code != domain.ErrCodeValidation {
+	} else if !errors.As(err, &derr) || derr.Code != domain.ErrCodeValidation {
 		t.Fatalf("ForecastCard(\"\") error = %v, want ErrCodeValidation", err)
 	}
 
 	if _, err := svc.ForecastCard(context.Background(), "no-such-evaluation"); err == nil {
 		t.Fatal("ForecastCard(unknown): expected not_found")
-	} else if derr, ok := err.(*domain.Error); !ok || derr.Code != domain.ErrCodeNotFound {
+	} else if !errors.As(err, &derr) || derr.Code != domain.ErrCodeNotFound {
 		t.Fatalf("ForecastCard(unknown) error = %v, want ErrCodeNotFound", err)
 	}
 }

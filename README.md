@@ -142,6 +142,12 @@ OS user data directory (macOS: `~/Library/Application Support/auspex/`,
 Linux: `$XDG_DATA_HOME/auspex/`), so `doctor` is a meaningful check
 immediately after building.
 
+The database doesn't grow forever: `auspex gc` applies the default
+90-day tiered retention (ADR-046) — old telemetry is rolled up into
+daily-usage and calibration summary tables, archived as gzip JSONL under
+the data dir, verified, and only then deleted. `--dry-run` previews,
+`--retention-days` adjusts the window, `--vacuum` shrinks the file.
+
 ### Wire it into Claude Code
 
 Follow [`integrations/claude/`](integrations/claude/) — it ships the

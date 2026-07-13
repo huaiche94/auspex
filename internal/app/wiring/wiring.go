@@ -80,6 +80,16 @@ type Services struct {
 	// triggers the swap.
 	PauseLifecycle orchestrator.PauseLifecycleDeps
 
+	// GC configures `auspex gc` (ADR-046 tiered telemetry retention).
+	// Not required, same reasoning as PauseLifecycle: the retention
+	// engine needs a real *sqlite.DB and data directory (no fake-able
+	// frozen interface stands in for it — gc is an internal maintenance
+	// concern, deliberately NOT a frozen app.* port), so a caller that
+	// hasn't wired one keeps RootCmd's original `gc` stub rather than a
+	// handler that would immediately fail closed on every call. See
+	// RootCmd's own condition for exactly which field gates the swap.
+	GC orchestrator.GCDeps
+
 	// Decision configures `decision allow`/`decision deny` (runtime-b06,
 	// internal/orchestrator.DecisionDeps). Not required: a caller that
 	// hasn't wired the real internal/evaluation.Service's
@@ -315,6 +325,18 @@ func (a *App) RootCmd() *cobra.Command {
 	replaceSubcommand(root, "doctor", func(_ string) *cobra.Command {
 		return cli.NewDoctorCmd(doctorDeps)
 	})
+
+	// gc (ADR-046) only swaps to the real handler when a retention
+	// engine has actually been wired — same gating convention as
+	// pause/decision below, and for the same reason: no fake-able frozen
+	// interface stands in for the engine's real *sqlite.DB + data-dir
+	// dependencies (see Services.GC's own doc comment).
+	if a.services.GC.Runner != nil {
+		gcDeps := a.services.GC
+		replaceSubcommand(root, "gc", func(_ string) *cobra.Command {
+			return cli.NewGCCmd(gcDeps)
+		})
+	}
 
 	// pause/resume/scheduler (runtime-b07) only swap to the real handlers
 	// when a Store has actually been wired — unlike the other command

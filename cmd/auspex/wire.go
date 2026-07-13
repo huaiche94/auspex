@@ -40,6 +40,7 @@ import (
 	"github.com/huaiche94/auspex/internal/predictor/token"
 	"github.com/huaiche94/auspex/internal/progress"
 	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/retention"
 	"github.com/huaiche94/auspex/internal/scheduler"
 	"github.com/huaiche94/auspex/internal/statecheckpoint"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
@@ -235,6 +236,14 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		PauseLifecycle: orchestrator.PauseLifecycleDeps{
 			Store:    pauseStore,
 			WakeJobs: wakeJobStore,
+		},
+		// `auspex gc` (ADR-046 tiered telemetry retention): the engine
+		// runs against the same db (it doubles as the app.TxRunner for
+		// the archive-verified delete transaction) and archives under
+		// dirs.Data/archive/. Clock/IDs are the same injected ports as
+		// every other service — retention never calls time.Now directly.
+		GC: orchestrator.GCDeps{
+			Runner: &retention.Engine{DB: db, Clock: clk, IDs: ids, DataDir: dirs.Data},
 		},
 	}
 

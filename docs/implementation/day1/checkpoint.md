@@ -660,3 +660,91 @@ intentional, since this wave's corrective fix closes the exact gap that
 test documents; per that test's own comment, updating its assertion is
 qa's to do in a future node, not this role's to touch (the file is
 qa-owned and was only read, never edited, this wave).
+
+---
+
+## Wave 9 — final gate nodes: checkpoint-a09, checkpoint-b09
+
+Pre-step: `git fetch origin && git merge origin/main` — clean fast-forward
+to `36e7ffb` (Wave 8's integrated state, including `qa`'s update to the
+LeakageScanner test reflecting this role's own tracked-diff redaction fix,
+and `predictor`/`runtime` Wave 8 work from other roles, nothing touching
+this role's own paths). `go test ./... -race` was green immediately after
+the merge (including the previously-expected-failing LeakageScanner test,
+now passing since qa updated its assertion), before any new work started.
+
+Assigned this wave: `checkpoint-a09` (Part A final integration gate) then
+`checkpoint-b09` (Part B final security gate) — the last two DAG nodes
+assigned to this role, done sequentially with an independent
+validate+commit after each, per explicit wave instruction. Both are
+explicitly framed by `agents/checkpoint.md`/`EXECUTION_DAG.md` as
+cross-cutting proofs that the full stack already built in Waves 1-8 holds
+together end to end, not new features — completing them closes out this
+role's ENTIRE assigned DAG scope (a01-a09, b01-b09).
+
+### checkpoint-a09: Part A final integration gate
+
+```yaml
+node: checkpoint-a09
+status: completed
+artifacts:
+  - internal/progress/complete_node_integration_test.go   # NEW file, package progress_test — ONLY new file this node needed; no production code changed anywhere in internal/progress or internal/statecheckpoint
+validation:
+  - "gofmt -l internal/progress internal/statecheckpoint -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/progress/... ./internal/statecheckpoint/... -> OK"
+  - "go test ./internal/progress/... ./internal/statecheckpoint/... -race -v -> PASS (full suite, including 3 new TestA09_* integration tests)"
+  - "go test ./internal/progress/... ./internal/statecheckpoint/... -race -count=3 -> PASS, stable across repeats (no flakiness)"
+  - "go test ./... -race -> green whole-repo, zero regressions"
+  - "golangci-lint run ./internal/progress/... ./internal/statecheckpoint/... -> 0 issues"
+commit: (recorded below)
+next_action: checkpoint-b09 (this wave's second and final node)
+assumptions:
+  - "Pure test-only node, deliberately: every earlier a04-a08 node already built the real production mechanism (CompleteNode's atomic protocol, Service.Create/Snapshot/LoadLatest/Verify, both packages' own Reconcilers); a09's job per its own DAG framing is proving those pieces compose correctly end to end using the REAL implementations, not adding a new one. No file outside this single new test file was touched."
+  - "realTreeReader (test-local, in complete_node_integration_test.go, NOT production code) adapts the REAL *progress.NodeStore/*progress.ArtifactStore to statecheckpoint.TreeReader, deliberately replacing service_test.go's in-memory fakeTreeReader for this file's own tests — the whole point of this node is exercising the actual stack, not a stand-in. This is exactly the 'production wiring layer' internal/statecheckpoint's own doc comments (checkpoint-a05) anticipated a later integration step would supply; this node IS that integration proof, kept test-local since no wiring package/cmd exists yet in this role's own paths to hold it permanently."
+  - "Proof 1 (100-node extension): reused the exact same 100-sequential-nodes shape as checkpoint-a04's original required test, but added a second pass over all 100 resulting checkpoint IDs calling Service.Snapshot (a08) and Service.Verify (a05) on each — a04's original test only called the package-level statecheckpoint.Unmarshal/Verify functions directly against the raw store row, never exercising the Service layer's own API surface a real caller (runtime, or a future CLI) would actually use. Also cross-checked LoadLatest agrees with the 100th checkpoint, and ran both Reconcilers once over the resulting history as a baseline (non-crash) sanity check reused by proof 3's crash scenario."
+  - "Proof 2 (cross-package concurrent race): deliberately DIFFERENT nodes per writer goroutine (30 workers), not the same node — checkpoint-a04's own race tests already fully proved the same-node case (optimistic-concurrency arbitration via NodeStore.TransitionStatus). The genuine new shape here is concurrent completions of DISTINCT nodes racing against CONCURRENT reads: a background goroutine repeatedly calls both packages' Reconcilers AND Service.LoadLatest+Verify against the same, growing state_checkpoints table while writes are still landing. Every read either observes a consistent snapshot (zero violations, a Verify()-able latest checkpoint) or the frozen not-found error for 'no checkpoints yet' — asserted to never see a torn/inconsistent read across the whole run, then re-verified once more after wg.Wait() as a final, definitely-quiesced check."
+  - "Proof 3 (two-reconciler-agreement): halts CompleteNode.Run via HaltAfter=PhaseVerifyArtifacts (evidence staged to disk, DB transaction never opened) after first completing 3 nodes cleanly, giving both Reconcilers real pre-existing history to reason about rather than an empty task. Constructs FRESH Reconciler struct values bound to the same *sqlite.DB/evidence dir after the halt (not reusing the harness's original struct values) to model a genuine process restart rather than the same long-lived object happening to still be around. internal/progress's Reconciler correctly finds exactly 1 orphaned staged artifact and 0 integrity violations; internal/statecheckpoint's Reconciler correctly reports CheckpointsScanned=3 (not 4 — the crash victim's row was never inserted) and 0 violations. Both conclusions describe the SAME crash window from two different vantage points (filesystem+artifacts table vs. state_checkpoints rows) without either reconciler knowing the other exists, and neither one falsely reports either a phantom 4th checkpoint or a broken pre-existing one. A subsequent retry with identical evidence content (proving FileStager's content-addressed idempotency) succeeds, and both reconcilers then re-converge to 0 orphans / 4 scanned / 0 violations, proving recovery is not merely non-contradictory but actually reaches a fully-reconciled end state."
+  - "Genuine bug caught while building proof 3: the test's first draft used IDENTICAL literal Markdown content ('# X\\n\\nprose\\n') for every node's artifact, which meant every node's FileStager-staged evidence hashed to the SAME sha256 — the crash victim's own staged file was already 'referenced' by the 3 earlier checkpoints' manifests purely by content coincidence, so the orphan-detection assertion passed for the wrong reason (actually: failed with 0 orphans found, catching the flaw immediately). Fixed by a small uniqueMarkdown(nodeSuffix) helper giving every node's evidence genuinely distinct content/digest, which is exactly the kind of fixture-quality issue this role's own Wave 6 lessons-learned note (redact package's too-short Azure key fixture) already flagged as a recurring risk category worth calling out explicitly rather than silently patching."
+  - "No cross-role contract gap found; no ports.go change requested. No production code in internal/progress or internal/statecheckpoint needed any change — every mechanism this node exercises (CompleteNode.Run, Service.Create/Snapshot/LoadLatest/Verify, both Reconcile methods) was already correct; this node's entire value is the proof, not a fix."
+blockers: none
+```
+
+### checkpoint-b09: Part B final security gate
+
+```yaml
+node: checkpoint-b09
+status: completed
+artifacts:
+  - internal/repocheckpoint/security.go                       # NEW: safeArtifactPath (manifest-declared artifact path validation) + safeRelativeName (writeArtifactDir files-map-key validation)
+  - internal/repocheckpoint/verify.go                         # FIX: Verify now calls safeArtifactPath before joining a manifest artifact's Path onto ArtifactRoot, instead of joining it unchecked
+  - internal/repocheckpoint/atomicwrite.go                    # HARDENING: writeArtifactDir now calls safeRelativeName on every files map key before writing, defense in depth
+  - internal/repocheckpoint/capture.go                        # HARDENING: Capture now rejects a CheckpointID that is not a safe relative path segment before joining it onto ArtifactsRoot
+  - internal/repocheckpoint/security_adversarial_internal_test.go  # NEW, white-box (package repocheckpoint): unit coverage of safeArtifactPath/safeRelativeName + writeArtifactDir's own defense-in-depth rejection
+  - internal/repocheckpoint/security_adversarial_test.go       # NEW, external (package repocheckpoint_test): end-to-end adversarial fixtures through the real Capture/Verify pipeline
+validation:
+  - "gofmt -l internal/repocheckpoint internal/gitx -> empty"
+  - "go build ./... -> OK"
+  - "go vet ./internal/repocheckpoint/... ./internal/gitx/... -> OK"
+  - "go test ./internal/repocheckpoint/... ./internal/gitx/... -race -v -> PASS (full suite, zero regressions, including every new adversarial test)"
+  - "go test ./internal/repocheckpoint/... ./internal/gitx/... -race -count=2 -> PASS, stable (no flakiness)"
+  - "go test ./... -race -> green whole-repo"
+  - "golangci-lint run ./internal/repocheckpoint/... ./internal/gitx/... -> 0 issues"
+  - "golangci-lint run ./... (whole repo) -> 0 issues"
+commit: (recorded below)
+next_action: none — this was this role's LAST assigned DAG node (a01-a09, b01-b09 all complete)
+assumptions:
+  - "GENUINE SECURITY FINDING, not merely a test-writing exercise: while auditing every path-join in Part B for the adversarial fixtures this node's own DAG risk callout demands, found that Verify (verify.go) joined manifest.Artifacts[].Path directly onto row.ArtifactRoot with NO traversal/symlink validation at all — unlike validateUntrackedPath's identical treatment of git-reported untracked paths (security.go, checkpoint-b04). manifest.json is read fresh from disk on every Verify/RestoreDryRun call (RestoreDryRun's own checksum step calls Verify first) and is an ordinary file for as long as a checkpoint directory exists — nothing prevents it from later being hand-edited, corrupted, or restored from an untrusted source. Confirmed exploitable with a standalone reproduction BEFORE fixing it: a manifest with one artifact path rewritten to a '../'-laden relative path made Verify open, stat, and SHA-256 a file completely outside the checkpoint's own directory (its computed hash appeared in the mismatch report, proving the read happened). Fixed with a new safeArtifactPath guard (security.go) mirroring validateUntrackedPath's exact posture (no '..' segment, no absolute path, resolved path must stay under ArtifactRoot, neither the leaf nor any ancestor directory may be a symlink) applied to manifest-declared paths instead of git-reported ones. TestVerify_ManifestArtifactPathTraversal_Rejected (security_adversarial_test.go) is the permanent regression test, built by hand-tampering a REAL manifest.json produced by a REAL Capture call (not a synthetic fixture), and additionally asserts the secret file's actual content never leaks into the returned problem report."
+  - "Two further defense-in-depth hardenings applied proactively (not confirmed independently exploitable through any current production caller, but closing the same class of gap before qa-06 or a future caller could reintroduce it): (1) writeArtifactDir (atomicwrite.go) now validates every files map key via a new safeRelativeName check before joining it under tempDir — today's only caller (capture.go) always supplies a small fixed set of literal names, but writeArtifactDir is this package's own general atomic-write primitive, not a Capture-only helper, so it should not rely on every future caller re-deriving the same safety property independently; (2) Capture itself (capture.go) now rejects a CheckpointID that is not a safe relative path segment before joining it onto ArtifactsRoot — CheckpointID is a public-API field, and while production wiring always supplies a domain.IDGenerator-produced opaque ID, this function's own contract does not otherwise prevent a caller from passing untrusted input. Both are unit-tested directly (security_adversarial_internal_test.go) AND proven not to break Capture's real files-map/CheckpointID usage (the full pre-existing suite stayed green with zero changes to any non-adversarial test)."
+  - "Required-tests inventory reviewed against every earlier b02-b08 node before writing anything new (agents/checkpoint.md Part B's full list: tracked/staged/unstaged/untracked, rename/delete, binary file, spaces/newlines in path, nested worktree, concurrent mutation, temp cleanup, path traversal, oversize, secret-like file exclusion) — every one already has real coverage from b04-b08. This node's genuine increment, per its own DAG risk callout ('path traversal/symlink escape tests are a security gate'), is: (a) the manifest-path-traversal finding above; (b) a nested-directory-via-symlink escape (deeper than security_test.go's existing single top-level-symlink case) and a dangling-symlink case (target does not exist at all); (c) a malicious CheckpointID (both '../' and absolute-path shapes); (d) an embedded-NEWLINE-byte filename (a real, platform-permitted special-character shape distinct from the existing spaces-in-path test, proven to survive this package's NUL-terminated `-z` parsing); (e) a combined oversize-file-plus-symlink-escape single capture, proving the two independent guards both fire correctly together rather than one masking the other. Every fixture asserts the malicious path/content NEVER appears inside the produced archive/temp-directory tree, not merely that the call didn't error."
+  - "Every adversarial fixture uses only argv-based gitx.Client calls (Constitution §7 rule 5) — the malicious inputs are filesystem-level (real symlinks via os.Symlink, a real hand-edited manifest.json, a crafted CheckpointID string) rather than attempted shell-command injection, since this whole codebase already never constructs a shell command string anywhere; the actual risk surface for this role is path-join safety, not command injection, which is exactly what this node's fixtures target."
+  - "No cross-role contract gap found; no ports.go change requested. No schema/migration change — this node is pure Go-level hardening plus tests, entirely within internal/repocheckpoint (+ its own test files); internal/gitx was touched only by running its existing suite as a regression check, no gitx file was edited."
+blockers: none
+```
+
+Final validation after both Wave 9 nodes together: `golangci-lint run ./...`
+(whole repo) → 0 issues; `go build ./...` → OK; `go vet ./...` → OK;
+`go test ./... -race` → green across every package, zero regressions. This
+completes every DAG node ever assigned to the `checkpoint` role — Part A
+(a01-a09) and Part B (b01-b09) are both fully complete; no further nodes
+remain in this role's scope per `EXECUTION_DAG.md`.

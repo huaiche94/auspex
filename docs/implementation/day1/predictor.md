@@ -622,3 +622,100 @@ role's paths were touched. `golangci-lint run ./...` reports 0 issues repository
 final commit (three `errcheck` findings against a new shared test helper's unused `*domain.Error` return
 value, caught and fixed by prefixing the standalone-statement call sites with `_ =` before the final
 commit).
+
+## Wave 9 (predictor-11 — final DAG node)
+
+Branch: `day1/predictor`, continuing from `379b7cf` (Wave 8, `predictor-10`). Per explicit instruction,
+`origin/main` was merged first (`git fetch origin && git merge origin/main`) — a clean fast-forward from
+`379b7cf` to `36e7ffb`, bringing in Wave 8's integrated state (`checkpoint-a06/a08/b08` plus a tracked-diff
+redaction fix, this role's own already-merged `predictor-10`, `runtime-a08`, `qa-04`, and new packages
+`internal/gitx/patch.go`, `internal/pause/resumevalidation.go`, `internal/repocheckpoint/patchredact.go` +
+`restoredryrun.go`, `internal/statecheckpoint/reconcile.go`). Whole-repo `go build ./...` and
+`go test ./...` both passed cleanly immediately after the merge, before any new code was written. Re-read
+`CONSTITUTION.md`, `agents/predictor.md` in full (especially "Required tests"), `docs/implementation/day1/
+EXECUTION_DAG.md`'s `predictor-11` entry, `docs/implementation/day1/CONTRACT_FREEZE.md`,
+`docs/adr/0041-predictor-forecast-layer.md`, and every prior wave's own artifacts
+(`internal/features/**`, `internal/predictor/{quantile,scope,token,quota,runway,risk}/**`,
+`internal/policy/**`, `internal/evaluation/**`) before starting, per instruction.
+
+This node's job, per the DAG and the task instruction, is not new features but a comprehensive final proof
+that the entire Scope Estimator -> Token Forecaster -> Quota Forecaster -> Risk Combiner -> Policy ->
+Evaluation persistence/authorization chain works correctly END-TO-END, under realistic combined load, and
+is fast enough — specifically covering full-pipeline property tests, deterministic output, reason-code
+golden tests, adversarial fail-open/fail-closed at every stage hand-off, the full
+`EvaluateTurn -> Decide -> ConsumeAuthorization` flow, and full-pipeline benchmarks — none of which any
+individual predictor-0N node's own package-level tests exercise in combination.
+
+```yaml
+node: predictor-11
+status: completed
+artifacts:
+  - internal/evaluation/pipeline_e2e_test.go
+  - internal/evaluation/helpers_test.go (extended: error-injecting DataSource fields, four errInjecting*
+    pipeline-stage wrappers, testStages bundle, newTestServiceWithStages)
+validation:
+  - "gofmt -l internal/predictor internal/policy internal/evaluation internal/features  # clean"
+  - "go build ./...  # ok, whole module"
+  - "go vet ./internal/predictor/... ./internal/policy/... ./internal/evaluation/...  # ok"
+  - "go test ./internal/predictor/... ./internal/policy/... ./internal/evaluation/... -race -bench=. -benchmem -v  # PASS, 113 top-level PASS lines, 0 FAIL, across 8 packages (predictor, predictor/quota, predictor/risk, predictor/runway, predictor/scope, predictor/token, policy, evaluation)"
+  - "go build ./... && go test ./... -race  # PASS, whole module (33 packages), zero regressions"
+  - "golangci-lint run ./...  # 0 issues repository-wide (one copyloopvar finding in a first draft — a redundant Go-1.22+ loop-var copy — caught and fixed before the final commit)"
+commit: <see final report>
+next_action: none — predictor-11 is this role's final assigned DAG node; every node predictor-01 through predictor-11 is now completed; nothing remains in this role's scope
+assumptions:
+  - "This node's scope (per agents/predictor.md's Boundary and the task instruction) is internal/predictor/**, internal/policy/**, internal/evaluation/** only — internal/features/** was read and re-verified but not modified, since the audit found no gap traceable to that package specifically."
+  - "The wide-table-driven full-chain fuzz (TestFullPipeline_WideTableFuzz, internal/evaluation/pipeline_e2e_test.go) combines 11 hand-picked fixtures (cold-start, fully-populated-low-risk, high-scope-high-quota-pressure, quota-Reached-flag-set, negative/zero degenerate inputs, extreme/MaxFloat64/MaxInt64 magnitude inputs, three runway-forecast shapes covering armed/confirmed/emergency debounce states, nil-TaskID-and-empty-slices) with 200 programmatically randomized cases (quota/context UsedPercent swept across roughly [-75,175], token-history sample counts 0-40, runway RiskScore occasionally >1.0) — deliberately including pathological/out-of-spec values (negative percentages, RiskScore>1.0) since a real hand-off bug is exactly as likely to surface from an upstream stage's own degenerate output as from a directly-malicious external input."
+  - "Fail-open/fail-closed adversarial testing (Section 4 of pipeline_e2e_test.go) required extending internal/evaluation/helpers_test.go's existing fakeDataSource (predictor-09's original fixture, which only ever exercised a Resolve-error path) with an injectable error field on every one of DataSource's nine methods, plus four new errInjecting* wrapper types (errInjectingScopeEstimator, errInjectingTokenForecaster, errInjectingQuotaForecaster, errInjectingRiskCombiner) implementing the four ADR-041 app interfaces directly, so a test can force exactly one pipeline stage to fail/degrade while the other three run for real against production wiring (realStages + newTestServiceWithStages). This is additive to the existing test-only file, not a change to any production code or to fakeDataSource's existing zero-value (all-fields-unset) default behavior, which every pre-existing predictor-09/predictor-10 test still relies on unchanged."
+  - "'Fails toward the safe direction' for a genuine upstream error (as distinct from a legitimate cold-start/degraded-but-present result) is defined and verified as: EvaluateTurn returns a non-nil error AND persists zero rows to the predictions table for that TurnID (checked directly via SQL in TestFullPipeline_UpstreamErrorsFailClosed_NeverSilentAllow, not just by inspecting the returned error) — matching CONTRACT_FREEZE.md's transaction-boundary section naming partial persistence, not merely a wrong return value, as the specific failure mode a WithTx-wrapped operation must prevent."
+  - "The DAG's own named scenario ('TokenForecaster returns all-nil') is modeled as a distinct failure SHAPE from a Go error return — errInjectingTokenForecaster.nilResult returns a zero-value domain.TokenForecast with a NIL error, simulating a stage that degrades without erroring. TestFullPipeline_StageErrorsFailClosed/token_forecaster_returns_all_nil asserts this legitimately different outcome: EvaluateTurn still completes (this is a valid cold-start-shaped degradation, not a crash), but the resulting Evaluation.Calibrated must be false — proving the pipeline degrades honestly rather than either crashing or silently reporting false confidence."
+  - "The full EvaluateTurn -> Decide -> ConsumeAuthorization flow tests (Section 5) issue an Authorization via the existing IssueAuthorization bridge method (predictor-09's own documented addition beyond the frozen app.EvaluationService interface) bound to the REAL TurnID/PromptHash that came out of a real EvaluateTurn/Decide call pair, re-confirming exactly-once/wrong-binding/clock-bound-expiry hold when wired to a real decision — not just against a synthetic authorization row as predictor-09/predictor-10's own tests already did. No gap was found here: every invariant held identically against real and synthetic bindings."
+  - "Full-pipeline benchmarks (BenchmarkEvaluateTurn_FullPipeline, BenchmarkEvaluateTurnThenDecide_FullPipeline) use a warm (non-cold-start) representative fixture (benchDataSource) rather than the perpetually-cold-start default, since ADD §29.11's 'warm evaluate' target is the correct comparison point for a steady-state hot-path benchmark — a perpetually-cold-start benchmark would take fewer branches and understate real steady-state cost. Measured (non -race, benchtime=1000x): BenchmarkEvaluateTurn_FullPipeline ~98 microseconds/op (6.8 KB/op, 136 allocs/op); BenchmarkEvaluateTurnThenDecide_FullPipeline ~189 microseconds/op (12 KB/op, 310 allocs/op). Under this node's own required -race validation command, both scale up roughly an order of magnitude (~1.3ms and ~3.4ms/op respectively) from race-detector instrumentation overhead alone. Compared against Preflight_ADD.md §29.11's stated targets (warm evaluate P50 < 25 ms, P95 < 100 ms): even the -race-inflated numbers carry roughly 20-70x headroom against P50 and 30-75x against P95; the non-race numbers carry roughly 130-250x headroom. predictor-08's own BenchmarkDecide (Policy alone) remains far under the separate 'policy < 1ms' sub-budget unchanged (measured 127.5 ns/op under -race this run, consistent with Wave 6's 52.83 ns/op non-race figure)."
+  - "This comprehensive pass found no real cross-stage bug — every DataSource-level and pipeline-stage-level failure mode already failed correctly (error propagates, zero partial persistence; the one legitimate degrade-without-erroring case already produces Calibrated=false by construction). This is a different, equally legitimate outcome from predictor-10's wave (which found and fixed a real prompt-binding bypass) — documented explicitly rather than manufacturing a cosmetic change to have something to report, per the task instruction's own explicit permission for this outcome."
+blockers: []
+```
+
+## Wave 9 summary
+
+The single assigned node (`predictor-11`) is `completed` with durable artifacts and passing validation
+commands, on branch `day1/predictor`. `origin/main` was merged first per instruction (clean fast-forward,
+`379b7cf` -> `36e7ffb`), confirmed building/testing cleanly before any new code was written. This is the
+predictor role's final assigned DAG node: **every node from `predictor-01` through `predictor-11` is now
+`completed`**, closing out this role's full scope (`internal/features/**`, `internal/predictor/**`,
+`internal/policy/**`, `internal/evaluation/**`) with nothing remaining.
+
+The comprehensive full-pipeline test suite (`internal/evaluation/pipeline_e2e_test.go`, ~900 lines, six
+labeled sections mirroring predictor-10's own authorization_test.go convention) proved, through the real
+`evaluation.Service` (not mocks of the pipeline itself):
+
+1. Full-chain property tests (quantile monotonicity, unknown propagation, no-NaN/Inf/divide-by-zero) via
+   an 11-fixture hand-picked table plus 200 randomized cases driven through the whole
+   Scope->Token->Quota->Risk->Policy->Decide chain — zero panics, zero NaN/Inf escapes, zero invalid
+   `Confidence` values.
+2. Deterministic output for identical inputs across the full pipeline, re-run against every fixture in the
+   same wide table (not just the single cold-start case predictor-09 originally tested).
+3. Reason-code golden tests confirming the final `Evaluation.ReasonCodes` forms a coherent explanation
+   (cold-start -> `PREDICTION_COLD_START`; quota near limit -> `QUOTA_NEAR_LIMIT`; context near limit ->
+   `CONTEXT_NEAR_LIMIT`).
+4. Adversarial fail-open/fail-closed at every hand-off: all nine `DataSource` methods and all four
+   ADR-041 pipeline-stage interfaces (`ScopeEstimator`/`TokenForecaster`/`QuotaForecaster`/`RiskCombiner`)
+   forced to fail or degrade, one at a time, confirming `EvaluateTurn` always fails closed (returns an
+   error, persists zero rows) on a genuine upstream error, and that the one legitimate degrade-without-
+   erroring case (an all-nil `TokenForecast`) still reports `Calibrated=false`, never a fabricated
+   confident result — plus a dedicated test confirming an uncalibrated runway emergency condition still
+   forces `PolicyPause` even when every other pipeline input is cold-start/empty.
+5. The full `EvaluateTurn -> Decide -> ConsumeAuthorization` flow (exactly-once, wrong-session/wrong-
+   prompt rejection, clock-bound expiry) re-confirmed against an `Authorization` bound to a REAL
+   `TurnID`/`PromptHash` produced by a real `EvaluateTurn`/`Decide` call pair, not just the synthetic
+   bindings predictor-09/predictor-10 already tested.
+6. Full-pipeline benchmarks: `BenchmarkEvaluateTurn_FullPipeline` ~98us/op and
+   `BenchmarkEvaluateTurnThenDecide_FullPipeline` ~189us/op (non-race, warm fixture), both 130-250x under
+   `Preflight_ADD.md` §29.11's warm-evaluate P50<25ms/P95<100ms targets; ~1.3ms/~3.4ms under this node's
+   own required `-race` validation command (still 20-75x under budget).
+
+**No real cross-stage bug was found this wave** — every hand-off already failed toward the safe direction
+correctly. This is documented as a legitimate, differently-shaped outcome from predictor-10's wave (which
+found and fixed a real prompt-binding bypass), per the task's own explicit instruction that a clean audit
+is a valid result, not grounds to manufacture busywork. `golangci-lint run ./...` reports 0 issues
+repository-wide as of this wave's final commit (one `copyloopvar` finding in a first draft — a redundant
+Go-1.22+ loop-variable copy left over from an older idiom — caught and fixed before the final commit). No
+other role's paths were touched; `internal/features/**` was re-read but not modified.

@@ -1,5 +1,13 @@
 # runtime — Progress Artifact
 
+> **Wave 9 sections appended below the Wave 8 node log** — see "Wave 9"
+> heading. Wave 9 completes three nodes in sequence, each validated and
+> committed independently: `runtime-a09` (duplicate-wake exactly-once +
+> cancel-wins-race), `runtime-a10` (provider interrupter/resumer fake
+> contract tests), `runtime-b06` (decision allow/deny wired to the REAL
+> `internal/evaluation.Service`, replacing runtime-b03's fake). No new ADRs,
+> no cross-role change requests this wave.
+
 > **Wave 5 sections appended below the Wave 4 node log** — see "Wave 5"
 > heading. Wave 5 completes six nodes in one pass: the full currently-
 > unlocked frontier for this role (`runtime-a02`, `runtime-a06`,
@@ -1518,3 +1526,333 @@ blockers: []
   `app.EvaluationService.ConsumeAuthorization`'s frozen signatures
   (`internal/app/ports.go`) were used exactly as declared, with no
   requested addition.
+
+## Wave 9
+
+Three nodes this wave, each validated and committed independently per the
+task brief's explicit instruction (never batched): `runtime-a09`,
+`runtime-a10`, `runtime-b06`. Merged `origin/main` first (fast-forward,
+clean) to bring in Wave 8's integrated state: predictor's real, hardened
+`ConsumeAuthorization` and checkpoint's completed Part A/B final gates.
+
+### runtime-a09: duplicate wake exactly-once + cancel-wins-race
+
+**The real bug this node found and fixed.** `lifecycle.go`'s `Cancel` and
+`Resume` (runtime-b07, prior wave) were written as a single `GetByID`
+followed by one or more unconditional `UpdateStatus` calls. That shape has
+a genuine time-of-check-to-time-of-use gap: two concurrent callers acting
+on the SAME `PauseID` (the split-brain scenario this node's task brief
+names explicitly — a lease reclaimed after appearing expired, but the
+original holder still alive and unaware) could both read the same starting
+status and both durably "succeed," silently clobbering each other. This was
+not a hypothetical: an early version of this node's own
+`TestCancelAndWake_ConcurrentRaceNeverLeavesInconsistentState` test (see
+Lessons Learned) caught a *different*, more subtle issue in the test's own
+assumption, which in turn confirmed the underlying fix was necessary and
+correct.
+
+**Fix**: added `PauseStore.CompareAndSwapStatus(ctx, id, expected, next)
+(ok, found bool, err error)` to the `PauseStore` interface
+(`requestpause.go`), implemented on `MemStore` under the store's existing
+mutex (the in-memory reference implementation's own analogue of a real
+SQLite-backed store's `UPDATE ... WHERE status = ?` conditional update —
+mirrors `internal/scheduler.Store.Complete/Fail/Renew`'s own
+`WHERE status = ? AND lease_owner = ?` pattern exactly, applied here to
+`pause_records` instead of `wake_jobs`). `Cancel` and `Resume`
+(`lifecycle.go`) were rewritten around a shared `applyCASVerb`/
+`applyCASFrom`/`tryApplyCAS` retry-loop helper: every state transition is
+now an atomic read-`Apply`-swap unit, retried on a lost race rather than
+either clobbering a concurrent writer or silently giving up.
+
+**New**: `wake.go`'s `Wake(ctx, store, WakeRequest{PauseID})` — the
+scheduler-to-pause-state-machine bridge applying `EventWakeDue`
+(`Sleeping -> WakePending`) that no code previously implemented at all
+(confirmed by grep: `EventWakeDue` was referenced only in the transition
+table and tests before this node). This closes the gap needed to build a
+genuine, end-to-end "duplicate wake" test rather than only testing the
+already-existing lease-claim exclusivity (`internal/scheduler`) in
+isolation.
+
+**Tests** (`internal/pause/wake_test.go`, `splitbrain_test.go`):
+- `TestDuplicateWake_WorkersYieldOneResume` / `_WorkersAcrossManyPausesEachWokenOnce`
+  — many goroutines (20, repeated 50 times) racing `Wake` on the same
+  `PauseID` yield exactly one success, every losing call a genuine
+  `*pause.TransitionError`; extended to N independently-sleeping pauses
+  raced concurrently.
+- `TestDuplicateWake_SplitBrainReclaimedLeaseOriginalHolderStillAlive_OnlyOneWakeSucceeds`
+  — the literal split-brain scenario using a REAL `scheduler.Store`: worker
+  A claims a short lease, the lease expires while A is still alive
+  (unaware), worker B legitimately reclaims it per `scheduler.Store`'s own
+  expired-lease rule, and both A and B concurrently call `Wake` for the
+  same `PauseID` — exactly one succeeds, and the lease layer's own
+  `Complete` independently confirms only B (the true current holder) can
+  complete the job.
+- `TestCancelAndWake_ConcurrentRaceNeverLeavesInconsistentState`,
+  `TestCancel_WinsAgainstAlreadyInFlightWake`,
+  `TestCancel_CannotWinAfterResumeStarted` — prove cancel always wins a
+  genuine race against wake (Sleeping and WakePending both have a Cancel
+  edge), even when wake already landed first, right up until Resume
+  actually starts (Resuming has no Cancel edge — ADD §20.11's race window
+  closing exactly there, not before).
+- `TestMemStore_CompareAndSwapStatus_*` — direct unit coverage of the new
+  primitive, including a 25-goroutine/30-repeat concurrent-serialization
+  proof independent of `Cancel`/`Resume`/`Wake`'s own semantics.
+
+This coverage is designed to feed `qa-07`'s dedicated
+`DoubleWorkerRace -race -count=20` stress test directly — the DAG names
+`runtime-a09` as `qa-07`'s sole dependency.
+
+```yaml
+node: runtime-a09
+status: completed
+artifacts:
+  - internal/pause/requestpause.go (CompareAndSwapStatus added to PauseStore + MemStore)
+  - internal/pause/requestpause_test.go (fakePauseStore stub method added)
+  - internal/pause/lifecycle.go (Cancel/Resume rewritten around CAS retry loop)
+  - internal/pause/wake.go (new: Wake)
+  - internal/pause/wake_test.go (new)
+  - internal/pause/splitbrain_test.go (new)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli internal/testutil/fakes   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/...   # OK"
+  - "go test ./internal/scheduler/... ./internal/pause/... -run 'DuplicateWake|Cancel' -race -v   # all PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/... -race -v   # all PASS"
+  - "go build ./... && go test ./...   # all PASS, whole repo, zero regressions"
+commit: e7d37be
+next_action: runtime-a11 (Required tests — crash-after-every-phase, expired-lease-reclaim, XL) — NOT this wave
+assumptions:
+  - "PauseStore.CompareAndSwapStatus is a NEW interface method (not a
+    frozen cross-component port — PauseStore itself is this package's own
+    internal seam, per requestpause.go's existing doc comment) — widening
+    it was in-bounds since only this package's own MemStore implements it
+    today (confirmed by grep before making the change)."
+  - "Wake does not itself claim or complete a scheduler lease — that
+    remains internal/scheduler.Store's job; a future scheduler-worker loop
+    composes Claim -> Wake -> ValidateResume/Resume -> Complete, with
+    Wake's CAS guarantee covering only the pause-record-mutating middle
+    step regardless of what the lease layer decided."
+  - "splitbrain_test.go models the split-brain scenario against
+    pause.MemStore (not a real SQLite-backed PauseStore), since no such
+    adapter exists yet — the same documented gap persistphase_test.go's
+    own seedPauseRecordRow comment already calls out (pause_records the
+    SQL table vs. PauseStore the in-memory interface are two different
+    backing stores today for what is conceptually one pause record)."
+blockers: []
+```
+
+### runtime-a10: provider interrupter/resumer fake contract tests
+
+Researched first whether `app.TurnInterrupter`/`app.SessionResumer`
+(`internal/app/ports.go`) carry any additional frozen behavioral contract
+beyond their bare method signatures — checked `Preflight_ADD.md` §9.10,
+§20.6 Phase 4, §20.15, §28.4, `CONTRACT_FREEZE.md`, and
+`agents/claude-provider.md`'s own stretch-goal section. Confirmed: none.
+Both are deliberately narrow, single-method interfaces with no doc
+comments in the frozen contract itself; ADD's only related guidance is
+operational (§20.15: "provider interrupt times out -> kill managed
+process, mark uncertain"; §28.4: "inspect provider, reconcile") — a
+pause-package-level concern layered above these calls, not a second return
+channel the interfaces themselves need.
+
+Built the contract suite around exactly the properties `internal/pause`'s
+own callers rely on: a well-formed call succeeds and returns internally
+consistent data (`SessionResumer.Resume`'s `RunHandle.SessionID` must
+match the request, never a silent substitution); a failure surfaces as a
+plain returned error, never a panic (what "provider interrupt failure
+leaves recoverable state" depends on one layer up — `EventInterruptFailed`
+can only be applied to an ordinary error value); context cancellation is
+respected unless an implementation explicitly opts out
+(`SkipContextCancellation`).
+
+**New**:
+- `internal/testutil/fakes/provider.go` — `FakeTurnInterrupter`/
+  `FakeSessionResumer`, following this package's existing Func-field
+  convention exactly.
+- `internal/testutil/fakes/providercontract.go` —
+  `ProviderInterrupterContract`/`ProviderSessionResumerContract`, each
+  taking a constructor closure plus an `ArrangeSuccess`/`ArrangeFailure`
+  configuration, so any implementation — these fakes today, or a future
+  real `claude-provider` signal-interruption/session-resume adapter (that
+  role's own documented stretch goal) — runs the identical suite to prove
+  itself compliant, without `runtime` writing bespoke tests per adapter.
+- `internal/testutil/fakes/providercontract_test.go` — runs the suite
+  against both fakes, including the unconfigured-fake default path and an
+  explicit demonstration of the context-cancellation opt-out.
+
+```yaml
+node: runtime-a10
+status: completed
+artifacts:
+  - internal/testutil/fakes/provider.go (new)
+  - internal/testutil/fakes/providercontract.go (new)
+  - internal/testutil/fakes/providercontract_test.go (new)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli internal/testutil/fakes   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/...   # OK"
+  - "go test ./internal/testutil/fakes/... -run ProviderContract -v -race   # all PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/... -race -v   # all PASS"
+  - "go build ./... && go test ./...   # all PASS, whole repo, zero regressions"
+commit: e246ee1
+next_action: none named for this node in the DAG ("None" in the Blockers column) — claude-provider's own future stretch-goal adapter is the natural future consumer of this suite, not a runtime follow-up
+assumptions:
+  - "Neither interface has additional frozen behavioral invariants beyond
+    the bare signature — confirmed by direct research against
+    Preflight_ADD.md/CONTRACT_FREEZE.md/agents/claude-provider.md before
+    writing the suite, not assumed. The suite therefore deliberately tests
+    only the properties internal/pause's own call sites actually rely on,
+    not speculative invariants no document states."
+  - "The suite is a function taking a constructor closure (newX func() X)
+    plus an Arrange* configuration struct, not a fixed instance or a
+    zero-config default — this is what lets a future real adapter's own
+    contract test file supply its own success/failure arrangement without
+    this package guessing at how a real adapter fails on demand."
+blockers: []
+```
+
+### runtime-b06: decision allow/deny wired to real EvaluationService
+
+Wired the REAL `internal/evaluation.Service` (predictor-09/10, both
+integrated on `main`) into `preflight decision allow`/`decision deny`,
+replacing runtime-b03's fake — a hard dependency per the DAG note, since
+only real, storage-backed `ConsumeAuthorization` can prove the
+replay-rejection guarantee end to end rather than merely simulating it.
+
+**Design**: `agents/runtime.md`'s Part B pipeline steps 10/11 ("`decision
+allow` issues one-time authorization" / "Resubmitted prompt consumes
+authorization exactly once before allowing") describe two DIFFERENT
+moments of one flow, not one call. `DecisionAllowCmd`
+(`internal/orchestrator/decision.go`) selects between them by whether the
+caller supplies an `AuthorizationID`:
+- **Issue flow** (no `AuthorizationID`): reads the evaluation's `Decide`
+  result, then issues a fresh one-time `app.Authorization` via a new local
+  `AuthorizationIssuer` seam — `IssueAuthorization` is a real method on
+  `*evaluation.Service` but deliberately NOT part of the frozen
+  `app.EvaluationService` interface (confirmed by reading
+  `internal/evaluation/service.go`'s own doc comment, which anticipates
+  exactly this future caller), so this package declares its own narrow
+  interface for the one extra method it needs, mirroring
+  `evaluate.go`'s existing `UsageObservationLoader`/`GitSnapshotter`
+  precedent.
+- **Consume flow** (`AuthorizationID` supplied — the resubmission): calls
+  the real `ConsumeAuthorization` directly with the caller's
+  `TurnID`/`PromptHash`, never re-deriving a new decision or a new
+  authorization.
+
+`DecisionDenyCmd` reads back the decision via `Decide` (read-back, not
+recompute, per `internal/evaluation/doc.go`'s own documented convention)
+with no authorization side effect — there is no "un-authorization" to
+revoke; simply never issuing/consuming one already achieves "denied."
+
+**Wiring**: `internal/cli/decision.go` (`NewDecisionCmd`) and a new
+`Services.Decision` field in `internal/app/wiring/wiring.go`, gated on
+`Decision.Issuer != nil` (not on `Evaluation` alone — a fake can implement
+`app.EvaluationService` perfectly well without also satisfying
+`AuthorizationIssuer`, so `Issuer` is the correct, minimal signal that real
+wiring is in place) — matches the established stub-until-wired convention
+runtime-b05/b07 set for `checkpoint`/`pause`.
+
+**Real-pipeline test harness** (`decision_realauth_test.go`): built a real
+`*evaluation.Service` against real predictor pipeline stages (`scope`,
+`token`, `quota`, `risk`, `policy`) and a migrated SQLite DB — no fake
+`app.EvaluationService` anywhere in this file. A fake `DataSource`, tuned
+against `internal/predictor/risk/combiner.go`'s actual scoring formula
+(large changed-file/line quantiles plus every completion/blast-radius flag
+the real pipeline reads: security-sensitive, migration-likely,
+cross-layer, open-ended scope), reliably drives `OverallRisk.Score` to
+1.0 (critical band, confirmed via direct inspection —
+`app.PolicyCheckpointAndRun`), with a separate low-risk control fixture
+confirmed to land on `app.PolicyRun`, proving the high-risk fixture is
+testing something real rather than an artifact of every input being
+flagged.
+
+All four required tests proven, verbatim:
+- **"high-risk block and allow-once flow"**: the high-risk fixture reaches
+  `PolicyCheckpointAndRun`, and `DecisionAllowCmd`'s issue flow
+  successfully issues a real, unconsumed `Authorization` for it.
+- **"second authorization replay rejected"**: issue → consume (succeeds
+  exactly once) → replay the SAME `AuthorizationID` a third time → rejected
+  with `ErrCodeConflict`, against the real predictor-10-hardened
+  `markAuthorizationConsumed` conditional update — not a fake merely
+  asserting this would happen. Extended to a 20-attempt tight sequential
+  replay loop (mirrors predictor-10's own hardening-test style) — exactly
+  one success across all 20.
+- **"resubmitted prompt consumes authorization exactly once before
+  allowing"**: the consume-flow test proves this directly — the exact
+  scenario the required test names.
+- **"checkpoint failure does not issue authorization"**: modeled with the
+  realistic caller sequence (a `checkpointThenDecisionAllow` helper calling
+  the real `CheckpointCreate` first, short-circuiting on its error before
+  ever reaching `DecisionAllowCmd`), with a spy `Issuer` that fails the
+  test if invoked at all — proven by construction, not merely inferred.
+
+```yaml
+node: runtime-b06
+status: completed
+artifacts:
+  - internal/orchestrator/decision.go (new: DecisionAllowCmd, DecisionDenyCmd, AuthorizationIssuer)
+  - internal/orchestrator/decision_test.go (new: structural/validation coverage against fakes)
+  - internal/orchestrator/decision_realauth_test.go (new: real evaluation.Service integration)
+  - internal/cli/decision.go (new: NewDecisionCmd)
+  - internal/app/wiring/wiring.go (Services.Decision field + RootCmd swap)
+  - internal/app/wiring/wiring_test.go (decision wiring tests)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli internal/testutil/fakes   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/...   # OK"
+  - "go test ./internal/orchestrator/... -run 'DecisionAllow|ReplayRejected' -v   # all PASS"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... ./internal/testutil/fakes/... ./internal/app/wiring/... -race -v   # all PASS"
+  - "go build ./... && go test ./...   # all PASS, whole repo, zero regressions"
+commit: e150b35
+next_action: runtime-b09 (JSON/error contract across all P0 commands) — NOT this wave
+assumptions:
+  - "AuthorizationIssuer is a NEW local interface in internal/orchestrator
+    (not internal/app/ports.go, which is contract-integrator-owned and not
+    touched) — IssueAuthorization is real on *evaluation.Service but
+    intentionally outside the frozen app.EvaluationService interface, per
+    that package's own doc comment anticipating this exact caller."
+  - "Services.Decision is gated on Issuer specifically, not on Evaluation
+    being non-nil, since only the real concrete Service satisfies both
+    seams simultaneously — a fake EvaluationService alone must not
+    trigger the swap to a command path that assumes real authorization
+    semantics."
+  - "DecisionAllowRequest's SnapshotFingerprint/RepositoryCheckpointID are
+    issue-flow-only, threaded verbatim from the caller (which is expected
+    to have already run `checkpoint create` upstream) — this command does
+    not itself create a checkpoint, mirroring CheckpointCreate's own
+    two-step, not-blurred-together precedent."
+blockers: []
+```
+
+## Wave 9 cross-node observations
+
+- All three nodes were validated and committed independently, per the
+  explicit task instruction — no batching. Each node's own validation
+  command (from `EXECUTION_DAG.md`) was run and confirmed green before
+  moving to the next; the full owned-package test suite plus a whole-repo
+  `go build`/`go test` was additionally run after every single node, not
+  just at the end of the wave.
+- `runtime-a09` is the one node this wave whose own test suite caught a
+  real design flaw in ITS OWN first draft (not in existing code) before
+  commit — see Lessons Learned for the full account. The fix was to the
+  test's assertion, not the implementation, but the exercise is exactly
+  why the CAS retry-loop implementation itself was written and tested as
+  rigorously as it was: a first naive implementation attempt (a plain
+  `GetByID` + `UpdateStatus` sequence, i.e. what `Cancel`/`Resume` already
+  looked like before this wave) would have failed a correctly-written
+  version of the same test reliably, not flakily — this was verified
+  directly (see Lessons Learned).
+- `runtime-a10` and `runtime-b06` both required a dedicated research pass
+  before writing any code — confirming, respectively, that no additional
+  frozen behavioral contract exists for `TurnInterrupter`/`SessionResumer`
+  beyond the bare signature, and reverse-engineering the real risk-scoring
+  formula (`internal/predictor/risk/combiner.go`) well enough to build a
+  fake `DataSource` that reliably drives the real pipeline into a specific
+  risk band rather than merely asserting a policy action from a mocked
+  `Decide` call. Both research passes are reflected in code comments at
+  their exact point of relevance, not just in this progress artifact.
+- No new ADRs, no cross-role change-request escalations, no frozen-contract
+  questions this wave. `internal/app/ports.go`, `internal/domain/**`, and
+  `internal/evaluation/**` were called, never modified, per the task's
+  explicit boundary.

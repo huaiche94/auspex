@@ -622,3 +622,185 @@ func (g *wiringSeqIDs) NewID() string {
 	g.n++
 	return g.prefix + "-" + string(rune('0'+g.n))
 }
+
+// --- runtime-b06: decision allow/deny wiring --------------------------------
+
+// fakeAuthorizationIssuer is this file's own minimal local double for
+// orchestrator.AuthorizationIssuer, mirroring
+// internal/orchestrator/decision_test.go's own copy — kept package-local
+// (not shared) since it is a narrow, package-specific interface, exactly
+// like that file's own precedent explains.
+type fakeAuthorizationIssuer struct {
+	issueFunc func(ctx context.Context, turnID domain.TurnID, promptHash, snapshotFingerprint, decision string, repoCheckpointID *domain.RepositoryCheckpointID) (app.Authorization, error)
+}
+
+func (f *fakeAuthorizationIssuer) IssueAuthorization(ctx context.Context, turnID domain.TurnID, promptHash, snapshotFingerprint, decision string, repoCheckpointID *domain.RepositoryCheckpointID) (app.Authorization, error) {
+	return f.issueFunc(ctx, turnID, promptHash, snapshotFingerprint, decision, repoCheckpointID)
+}
+
+// TestApp_RootCmd_DecisionUnwired_StaysStub proves the documented fallback:
+// leaving Services.Decision.Issuer at its zero value (nil) keeps RootCmd's
+// original `decision` stub tree in place — the mere presence of a
+// (fake-satisfiable) EvaluationService is not enough to trigger the swap,
+// per Services.Decision's own doc comment on why Issuer specifically gates
+// it.
+func TestApp_RootCmd_DecisionUnwired_StaysStub(t *testing.T) {
+	a, err := wiring.New(fullFakeServices())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"decision", "allow"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err = root.Execute()
+	if err == nil {
+		t.Fatal("decision allow succeeded despite Decision.Issuer being unwired; want the stub's ErrCodeUnavailable")
+	}
+	var derr *domain.Error
+	if !errors.As(err, &derr) || derr.Code != domain.ErrCodeUnavailable {
+		t.Fatalf("err = %v, want the stub's ErrCodeUnavailable", err)
+	}
+}
+
+// TestApp_RootCmd_DecisionAllow_RealEndToEnd proves runtime-b06's wiring:
+// once Services.Decision.Issuer is set, `decision allow` swaps to the real
+// handler and calls through to Decide then IssueAuthorization, end to end
+// through the CLI tree.
+func TestApp_RootCmd_DecisionAllow_RealEndToEnd(t *testing.T) {
+	services := fullFakeServices()
+	services.Evaluation = &fakes.FakeEvaluationService{
+		DecideFunc: func(_ context.Context, req app.DecideRequest) (app.DecisionResult, error) {
+			if req.EvaluationID != "eval-1" {
+				t.Errorf("Decide EvaluationID = %q, want eval-1", req.EvaluationID)
+			}
+			return app.DecisionResult{ID: "dec-1", Action: app.PolicyRequireConfirmation}, nil
+		},
+	}
+	services.Decision = orchestrator.DecisionDeps{
+		Issuer: &fakeAuthorizationIssuer{
+			issueFunc: func(_ context.Context, turnID domain.TurnID, _ string, _ string, decision string, _ *domain.RepositoryCheckpointID) (app.Authorization, error) {
+				if turnID != "turn-1" {
+					t.Errorf("IssueAuthorization turnID = %q, want turn-1", turnID)
+				}
+				if decision != string(app.PolicyRequireConfirmation) {
+					t.Errorf("IssueAuthorization decision = %q, want %q", decision, app.PolicyRequireConfirmation)
+				}
+				return app.Authorization{ID: "auth-1", TurnID: turnID}, nil
+			},
+		},
+	}
+
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"decision", "allow", "--evaluation-id", "eval-1", "--turn-id", "turn-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("decision allow: %v (want the real handler to succeed, not the stub's ErrCodeUnavailable)", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["issued"] != true {
+		t.Errorf("issued = %v, want true", decoded["issued"])
+	}
+	if decoded["authorization_id"] != "auth-1" {
+		t.Errorf("authorization_id = %v, want auth-1", decoded["authorization_id"])
+	}
+}
+
+// TestApp_RootCmd_DecisionAllow_ConsumeFlow_RealEndToEnd proves the
+// resubmission (consume) flow routes through the wired CLI tree to
+// ConsumeAuthorization, not Decide/Issuer.
+func TestApp_RootCmd_DecisionAllow_ConsumeFlow_RealEndToEnd(t *testing.T) {
+	decideCalled := false
+	services := fullFakeServices()
+	services.Evaluation = &fakes.FakeEvaluationService{
+		DecideFunc: func(context.Context, app.DecideRequest) (app.DecisionResult, error) {
+			decideCalled = true
+			return app.DecisionResult{}, nil
+		},
+		ConsumeAuthorizationFunc: func(_ context.Context, req app.ConsumeAuthorizationRequest) (app.Authorization, error) {
+			if req.AuthorizationID != "auth-1" || req.TurnID != "turn-1" {
+				t.Errorf("ConsumeAuthorization request mismatch: %+v", req)
+			}
+			return app.Authorization{ID: req.AuthorizationID, TurnID: req.TurnID}, nil
+		},
+	}
+	services.Decision = orchestrator.DecisionDeps{
+		Issuer: &fakeAuthorizationIssuer{
+			issueFunc: func(context.Context, domain.TurnID, string, string, string, *domain.RepositoryCheckpointID) (app.Authorization, error) {
+				t.Error("IssueAuthorization must not be called on the consume flow")
+				return app.Authorization{}, nil
+			},
+		},
+	}
+
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"decision", "allow", "--turn-id", "turn-1", "--authorization-id", "auth-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("decision allow (consume flow): %v", err)
+	}
+	if decideCalled {
+		t.Error("Decide was called on the consume flow — it must not be")
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["consumed"] != true {
+		t.Errorf("consumed = %v, want true", decoded["consumed"])
+	}
+}
+
+// TestApp_RootCmd_DecisionDeny_RealEndToEnd proves `decision deny` swaps to
+// the real handler too, once Decision.Issuer is wired.
+func TestApp_RootCmd_DecisionDeny_RealEndToEnd(t *testing.T) {
+	services := fullFakeServices()
+	services.Evaluation = &fakes.FakeEvaluationService{
+		DecideFunc: func(context.Context, app.DecideRequest) (app.DecisionResult, error) {
+			return app.DecisionResult{ID: "dec-1", Action: app.PolicyBlock}, nil
+		},
+	}
+	services.Decision = orchestrator.DecisionDeps{
+		Issuer: &fakeAuthorizationIssuer{},
+	}
+
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	root := a.RootCmd()
+	root.SetArgs([]string{"decision", "deny", "--evaluation-id", "eval-1"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("decision deny: %v", err)
+	}
+	var decoded map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if decoded["action"] != string(app.PolicyBlock) {
+		t.Errorf("action = %v, want %q", decoded["action"], app.PolicyBlock)
+	}
+}

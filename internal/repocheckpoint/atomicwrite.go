@@ -132,6 +132,21 @@ func writeArtifactDirWithHalt(finalDir string, files map[string][]byte, haltAfte
 	}
 
 	for rel, content := range files {
+		// checkpoint-b09 security gate, defense in depth: every production
+		// caller (capture.go) only ever populates files with a small fixed
+		// set of literal names ("manifest.json", "untracked.zip", etc — never
+		// anything derived from repository content), so this can never fire
+		// on the real Capture path today. It is still checked here, not just
+		// trusted, because writeArtifactDir is this package's own general
+		// atomic-write primitive, not a Capture-only helper — a future
+		// caller (or a mistake in a future edit to capture.go) that ever did
+		// derive a files key from untrusted input must not be able to write
+		// outside tempDir via a "../" segment or an absolute path, the same
+		// posture safeArtifactPath (security.go) applies to manifest-read
+		// paths and validateUntrackedPath applies to git-reported ones.
+		if !safeRelativeName(rel) {
+			return errIntegrity("repocheckpoint: refusing to write artifact %q: not a safe relative path", rel)
+		}
 		path := filepath.Join(tempDir, filepath.FromSlash(rel))
 		if mkErr := os.MkdirAll(filepath.Dir(path), 0o755); mkErr != nil {
 			return fmt.Errorf("repocheckpoint: create dir for %s: %w", rel, mkErr)

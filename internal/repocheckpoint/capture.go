@@ -260,6 +260,17 @@ func Capture(ctx context.Context, gitClient *gitx.Client, clock domain.Clock, re
 		files["skipped-files.json"] = skippedJSON
 	}
 
+	// checkpoint-b09 security gate, defense in depth: req.CheckpointID is a
+	// caller-supplied public-API field (production wiring always passes a
+	// domain.IDGenerator-produced opaque ID, never untrusted input, but this
+	// function's own contract does not otherwise prevent a caller from
+	// passing one) — reject it outright if it could turn ArtifactsRoot/<ID>
+	// into a path escaping ArtifactsRoot, rather than silently joining it
+	// and letting writeArtifactDir's own defense-in-depth check (which
+	// would also catch a "../" segment) be the only backstop.
+	if !safeRelativeName(string(req.CheckpointID)) {
+		return CaptureResult{}, errIntegrity("repocheckpoint: capture: checkpoint ID %q is not a safe path segment", req.CheckpointID)
+	}
 	finalDir := filepath.Join(req.ArtifactsRoot, string(req.CheckpointID))
 	if err := writeArtifactDir(finalDir, files); err != nil {
 		return CaptureResult{}, err

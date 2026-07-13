@@ -169,3 +169,111 @@ two-layer verification strategy, not just more test cases:
   Recommend that any shared test helper returning a value only some callers need should be written with
   that in mind from the start (e.g. document that bare-statement callers must use `_ = helper(...)`),
   rather than discovering the lint gap only after golangci-lint runs — it cost one extra edit pass here.
+
+## Wave 9 (predictor-11 — final DAG node, role closes out)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| predictor-11 | L | M/L — the required test-writing itself was L-shaped, but no new production code was needed since the audit found nothing to fix | 1 new file (DAG's own description implies "add tests", not a file-count target) | 2 (pipeline_e2e_test.go new; helpers_test.go extended with error-injecting DataSource fields + four errInjecting* stage wrappers + a testStages bundle) | 450 (DAG estimate) | one continuous pass, no wall-clock instrumentation in this environment | None — this node is explicitly scoped to internal/predictor/**, internal/policy/**, internal/evaluation/**, all already owned and already merged; no other role's paths were touched | `helpers_test.go` (existing, from predictor-09) needed extending rather than a wholly new fixture file, since the fail-open/fail-closed adversarial suite (this node's highest-risk required test) needed error-injection hooks on every `DataSource` method AND wrapper types for all four ADR-041 pipeline-stage interfaces (`ScopeEstimator`/`TokenForecaster`/`QuotaForecaster`/`RiskCombiner`) that predictor-09's original fixture never needed, since predictor-09 only ever tested one failure mode (`Resolve`) | None | The DAG's own scenario list ("ScopeEstimator errors, TokenForecaster returns all-nil, QuotaForecaster times out") is phrased as three different FAILURE SHAPES, not just three different injection points — a generic `err error` field per stage would have missed this distinction. Modeling `errInjectingTokenForecaster.nilResult` (succeeds with a zero-value result, no error) as structurally different from `errInjectingQuotaForecaster.timeout` (a specific retryable domain.Error) forced writing two different assertions (`Calibrated` must stay false vs. the call must fail closed) rather than one generic "returns an error" check — this distinction mattered and would have been lost if the adversarial suite treated "stage returns an error" as the only failure mode worth testing | The audit found zero real defects — every hand-off in the chain (DataSource-level and stage-level) already failed correctly: an upstream error propagates as a `runPipeline` error (no partial persistence, confirmed directly by querying the `predictions` table after each forced failure, not just checking the returned error), and the one legitimate "degrade without erroring" case (TokenForecaster returning an all-nil result) already produces `Calibrated=false` by construction, never a fabricated confident result. This is a genuinely different, equally valid outcome from predictor-10's wave (which found and fixed a real bug) — recommend the DAG/Constitution continue treating "audited thoroughly, found nothing" as a first-class, non-inferior outcome to "audited and fixed a bug," provided the audit's negative result is backed by the same standard of evidence (a suite that would have failed had the bug existed, not just green tests that never really exercised the failure path) |
+
+## predictor-11 verification approach: proving an audit found nothing, not just asserting it
+
+Unlike predictor-10 (Wave 8), which found and fixed one real cross-call bug, this node's fail-open/
+fail-closed adversarial pass (`TestFullPipeline_UpstreamErrorsFailClosed_NeverSilentAllow`,
+`TestFullPipeline_StageErrorsFailClosed`, `TestFullPipeline_DegradedRunwayNeverSilentlyAllowsWhenEmergency`,
+`TestFullPipeline_NeverProducesPolicyRunFromMissingCriticalSignals`) found the existing chain already
+correct at every injected failure point. Per Constitution §6/§7 discipline ("completed means evidenced," not
+"claimed"), a negative audit result is only meaningful if it is falsifiable — this suite is: every
+DataSource method and every one of the four ADR-041 pipeline-stage interfaces has a dedicated error-
+injection path (nine `DataSource` methods, four stage wrappers), each wired through a real
+`evaluation.Service` (not a mock of the service itself), each asserting the specific safe outcome
+(`EvaluateTurn` returns an error AND leaves zero rows in `predictions` for that TurnID — checked directly
+via SQL, not just "err != nil"). A version of this suite that only checked "err != nil" without also
+confirming zero partial persistence would have been strictly weaker, since CONTRACT_FREEZE.md's
+transaction-boundary section names partial persistence (not just a wrong return value) as the specific
+failure mode a `WithTx`-wrapped operation must prevent.
+
+## predictor-11 cross-node observation: the wide-table-driven full-chain fuzz caught nothing new, and that
+is itself informative
+
+`TestFullPipeline_WideTableFuzz` (11 hand-picked fixtures spanning cold-start/fully-populated/pathological-
+value/extreme-magnitude/runway-emergency/runway-debounce shapes, plus 200 programmatically randomized
+input combinations across quota/context UsedPercent ranges including out-of-[0,100] values and 0-40-sample
+token histories) found zero panics, zero NaN/Inf escapes, and zero invalid Confidence values across the
+full Scope->Token->Quota->Risk->Policy->Decide chain. This corroborates (rather than merely repeats) each
+individual stage's own prior property tests (predictor-04/-06/-07/-08's own "no NaN/Inf" sweeps): the
+absence of a NEW failure at the chain level, after each stage already independently proved this property in
+isolation, is evidence the per-stage clamping/degradation disciplines (`clamp01`/`clamp01Risk`, "unknown is
+not zero" pointer semantics, cold-start `Calibrated=false` gating) compose correctly across hand-offs, not
+just within a single stage's own boundary. This is the specific kind of confidence a package-level test
+suite cannot provide by itself, regardless of how thorough it is, and is likely valuable general guidance
+for how any future multi-stage Preflight pipeline (not just this one) should close out its final integration
+node: a wide, adversarial, chain-level property fuzz is worth running even when every individual stage
+already has its own property tests, precisely because a hand-off bug is invisible to per-stage tests by
+construction.
+
+## predictor-11 benchmark results vs. ADD §29.11
+
+`BenchmarkEvaluateTurn_FullPipeline` (one full `EvaluateTurn` call: Scope -> Token -> Quota -> Risk ->
+Policy, plus the `feature_vectors`/`predictions`/`policy_decisions` transactional persistence, against a
+real migrated SQLite DB, `benchtime=1000x`, no `-race`): **~98 microseconds/op, ~6.8 KB/op, 136 allocs/op**.
+`BenchmarkEvaluateTurnThenDecide_FullPipeline` (the same, plus the immediately-following `Decide` read-back
+a real caller always performs per `internal/orchestrator/evaluate.go`'s existing wiring): **~189
+microseconds/op, ~12 KB/op, 310 allocs/op**. Under `-race` (this node's own required validation command),
+both numbers scale up by roughly an order of magnitude (~1.3ms and ~3.4ms/op respectively) purely from
+race-detector instrumentation overhead, not from the production code path itself. Compared against
+`Preflight_ADD.md` §29.11's stated targets — **warm evaluate P50 < 25 ms, P95 < 100 ms** — even the inflated
+`-race` numbers carry roughly 20-70x headroom against the P50 target and 30-75x against the P95 target; the
+non-`-race` numbers carry roughly 130-250x headroom. `predictor-08`'s own `BenchmarkDecide` (Policy alone,
+~53-128ns/op depending on machine load) remains far under the separate `policy < 1ms` sub-budget, unchanged
+by this wave. Recommend future roles benchmarking a SQLite-transaction-backed hot path always report both
+the `-race` and non-`-race` numbers side by side against an ADD-stated budget, since the two can differ by
+an order of magnitude and a reviewer comparing only the `-race` number against a tight external budget could
+otherwise wrongly conclude a real regression exists.
+
+## predictor-11 role retrospective: full arc across Waves 1-9
+
+This is the predictor role's last assigned DAG node — every node from `predictor-01` through `predictor-11`
+is now `completed`, closing out the role's full scope (`internal/features/**`, `internal/predictor/**`,
+`internal/policy/**`, `internal/evaluation/**`). Looking back across all nine waves:
+
+- **The pipeline grew by contract amendment, not by silent scope creep.** ADR-041 (accepted before any
+  Wave-2 code was written) split what the original Bootstrap DAG conflated (`predictor-07` depending on
+  `predictor-06`) into the correct five-stage chain (Scope -> Token -> Quota -> Risk -> Policy, with Runway
+  independent) plus two new nodes (`predictor-05b`/`predictor-05c`). Every subsequent wave built directly
+  against that corrected contract; no later wave had to retroactively patch a structural mistake, because
+  the mistake was caught and fixed at the contract layer before implementation began, exactly as
+  Constitution §6/§7's "a real gap found before code is written is fixed at the contract layer" principle
+  intends.
+- **Two distinct real bugs were found across the whole arc, both by adversarial testing built specifically
+  for a High-risk-flagged node, never by incidental discovery**: predictor-08's unclamped NaN/Inf
+  RiskScore leak (Wave 6, caught by that wave's own required fail-open/fail-closed test) and predictor-10's
+  prompt-hash-binding bypass (Wave 8, caught by a dedicated adversarial audit pass). predictor-11's own
+  adversarial pass (Wave 9) found no third bug — a legitimate, differently-shaped but equally rigorous
+  outcome, not a lesser one, provided (as documented above) the negative result is itself falsifiable
+  evidence, not an absence of looking.
+- **Every stage that needed to invent its own bootstrap constants documented exactly why and how**
+  (predictor-05's cold-start fallback table, predictor-05b's token multiplier caps and P80 interpolation,
+  predictor-05c's default quota/context deltas, predictor-06's outlier thresholds) — none of these were
+  silently asserted as measured values; every one is traceable to "the ADD names the mechanism but not this
+  specific constant" and flagged for replacement once real historical telemetry lands in a later wave. This
+  discipline, applied consistently for nine waves, is what let predictor-11's cross-stage audit focus
+  entirely on hand-off correctness rather than re-litigating whether any individual stage's numbers were
+  defensible — that question was already answered, wave by wave, as each stage was built.
+- **The cold-start-safe, uncalibrated-is-not-a-probability invariant (Constitution §6/§7, this role's single
+  most load-bearing rule) held everywhere it was tested, at every layer**: `domain.RiskComponent`/
+  `TokenForecast`/`QuotaForecast`'s own `Calibrated` field, `policy.Decision.Probability`'s two-call-site-only
+  structural guard, and now this wave's full-chain fuzz and fail-open/fail-closed suite confirming the same
+  property holds end-to-end through real persisted `Evaluation`s. No wave ever found a violation of this
+  specific invariant — the closest was predictor-08's NaN/Inf leak, a related but distinct bug (a
+  score-magnitude bug, not a calibration-claim bug).
+- **Every wave merged `origin/main` first and confirmed a clean whole-repo build/test before writing new
+  code**, catching integration drift early rather than discovering it at a later merge. This wave's merge
+  (`379b7cf` -> `36e7ffb`, Wave 8's integrated state) was clean and required no adaptation before predictor-11's
+  own work began, consistent with every prior wave's experience on this branch.
+- **Recommendation for any future project structuring a similar multi-stage predictor/policy pipeline**:
+  reserve an explicit final "prove the chain" node (this project's `predictor-11`) distinct from the
+  per-stage build nodes, even when every stage already has thorough package-level tests — the value is not
+  redundant coverage, it is coverage of the hand-offs themselves, which are by construction invisible to any
+  single stage's own test suite, and this wave's zero-new-bugs result is itself only meaningful because that
+  distinct node existed and was held to the same evidentiary standard as a bug-finding wave.

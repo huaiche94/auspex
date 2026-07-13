@@ -115,7 +115,7 @@ flowchart TD
 
 - **前提（不重議）：** 金錢預算依 ADR-043 定案「未設定即不啟用」。context 不同——它非使用者宣告、有客觀上限、撞上即災難。
 - **選項：** ①**出廠即啟用保守閾值（✅）**：投影 P90 context >85% → WARN、>95% → CHECKPOINT_AND_RUN 建議；cold-start 信心不足不觸發（沿用 Confidence 紀律）；config 可關可調。風險：未校準投影可能誤報。②完全惰性——零驚訝但核心保護形同虛設。
-- **後果：** 實作排在 #17 之後（本條目在 merge 後補 commit SHA）。
+- **後果：** 已落地（commit `c8496c8`）：`internal/policy/context.go` 閾值規則 + never-downgrade 動作強度階梯 + migration 0045 持久化投影 + 預估卡/statusline/evaluate JSON 的 context 行。注意：現行 RuleQuotaForecaster 一律 cold-start，所以閾值「已啟用但暫不觸發」——warmed forecaster（#11）落地當天即自動生效（有 warmed-stub 端到端測試證明整條鏈）。
 - **重審條件：** 校準資料（#11）就緒後重新檢視閾值；若誤報率高於預期，降級為惰性是一行 config 預設值的事。
 
 ## D-09 — 本輪推進節奏

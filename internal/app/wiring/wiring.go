@@ -79,6 +79,21 @@ type Services struct {
 	// RootCmd's own replaceSubcommand call for exactly which condition
 	// triggers the swap.
 	PauseLifecycle orchestrator.PauseLifecycleDeps
+
+	// Decision configures `decision allow`/`decision deny` (runtime-b06,
+	// internal/orchestrator.DecisionDeps). Not required: a caller that
+	// hasn't wired the real internal/evaluation.Service's
+	// AuthorizationIssuer seam yet (Decision.Issuer nil) keeps RootCmd's
+	// original `decision` stub tree — see RootCmd's own condition for
+	// exactly which field gates the swap. Decision.Evaluation, unlike
+	// Issuer, is NOT independently sufficient to trigger the swap: the
+	// issue flow's AuthorizationIssuer is this command's whole reason for
+	// requiring the REAL service (a fake can implement
+	// app.EvaluationService alone perfectly well, but only the real
+	// *internal/evaluation.Service also satisfies AuthorizationIssuer),
+	// so gating on Issuer alone is the correct, minimal signal that real
+	// wiring is actually in place.
+	Decision orchestrator.DecisionDeps
 }
 
 // HookSupport bundles the optional collaborators
@@ -241,6 +256,20 @@ func (a *App) RootCmd() *cobra.Command {
 		schedulerDeps := a.services.PauseLifecycle
 		replaceSubcommand(root, "scheduler", func(_ string) *cobra.Command {
 			return cli.NewSchedulerCmd(schedulerDeps)
+		})
+	}
+
+	// decision (runtime-b06) only swaps to the real handlers once the
+	// REAL internal/evaluation.Service's AuthorizationIssuer seam has been
+	// wired — see Services.Decision's own doc comment for why Issuer,
+	// specifically, is the gating field rather than Evaluation.
+	if a.services.Decision.Issuer != nil {
+		decisionDeps := a.services.Decision
+		if decisionDeps.Evaluation == nil {
+			decisionDeps.Evaluation = a.services.Evaluation
+		}
+		replaceSubcommand(root, "decision", func(_ string) *cobra.Command {
+			return cli.NewDecisionCmd(decisionDeps)
 		})
 	}
 

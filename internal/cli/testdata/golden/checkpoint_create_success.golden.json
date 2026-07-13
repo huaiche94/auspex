@@ -1,0 +1,6 @@
+{
+  "schema_version": "preflight.checkpoint-create.v1",
+  "state_checkpoint_id": "sc-golden-1",
+  "repository_checkpoint_id": "rc-golden-1",
+  "repository_checkpoint_git_head": "cafef00dcafef00dcafef00dcafef00dcafef00d"
+}

@@ -235,3 +235,49 @@
   (`pause.PauseStore`, adding `CompareAndSwapStatus`) is this role's own internal seam, not a frozen
   cross-component port, so it required no escalation — consistent with `runtime-a05`'s Wave 7
   precedent for the same class of in-bounds internal-interface change.
+
+# Lessons Learned — runtime (Wave 10: runtime-a11, runtime-b09)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| runtime-a11 | XL (DAG: 550 points, ~10h) | L/XL — lighter than the XL estimate in one sense (2 files, both new, no rework of prior nodes' own tests) but genuinely hard in the sense the DAG predicted: composing five-plus already-independently-correct packages into one lifecycle proof surfaced exactly one real gap that needed new production code, and finding it required auditing 9 required-test items individually first, not writing tests speculatively | 2 (implied: one integration test file) | 2 (interrupt.go new, fulllifecycle_test.go new) — lighter than the DAG's XL sizing would suggest by file count, though fulllifecycle_test.go itself is the largest single test file this role has written (12 test functions, ~700 LOC) | 550 points | one continuous pass, preceded by a dedicated research pass (a background agent), with two self-caught test-design bugs mid-node (see below) | None — every dependency this node composed (persistphase.go, lifecycle.go, wake.go, resumevalidation.go, scheduler.Store, testutil/fakes) was already real and already this role's own prior work; the one "new" piece (TurnInterrupterAdapter) is new PRODUCTION code this node itself identified as missing, not an external dependency gap | None beyond the 2-file total | None external | Two, both self-caught by this node's own first test run, both corrected against the actual transition table/design docs rather than guessed: (1) an over-strict "no earlier event can ever re-fire" assertion in the 9-step crash sweep failed because EventResumeValid legitimately has two distinct edges in the transition table — re-derived the correct invariant (status must equal the immediately-preceding step's own output, never regress further back) instead of weakening the check to "whatever happened"; (2) an assertion that BlockedConflict is terminal was wrong — it deliberately is not (ADD §20.9's manual Cancel edge) — checked directly against statemachine.go's terminalStates set rather than assumed from the name "Blocked" | Confirms Wave 9's lesson (runtime-a09) at a larger, whole-role scale: a node framed as "prove the ENTIRE stack composes correctly" should budget for finding that ONE required test's underlying production wiring genuinely does not exist yet (here: no code called TurnInterrupter and applied the resulting event to a real PauseRecord — safepoint.go's own PersistThenInterrupt deliberately stopped short of this, by documented design, in an EARLIER wave), not just for writing a proof of something already true. The dedicated pre-code research pass (auditing all 9 required tests against existing coverage with file:line precision) was what made it possible to say precisely "5 of 9 needed no new code, 3 needed a fuller composition test only, exactly 1 needed new production code" rather than a vaguer "reviewed everything, looks fine" |
+| runtime-b09 | M (DAG: 250 points, ~3h) | M — estimate held on points but the DAG's own 3-file estimate undercounted for the same reason Wave 5/7's lessons already flagged for orchestrator+CLI+wiring-shaped nodes: a cross-cutting fix that touches the shared root-command-construction path (root.go, wiring.go) in addition to the new test file and errors.go is inherently more files than a single-command node | 3 (implied) | 4 (errorcontract_test.go new, errors.go modified, root.go modified, wiring.go modified) | 250 points | one continuous pass, preceded by a dedicated research pass (a second background agent), with one real self-caught bug mid-node (see below) | None — every real command's own error/success-path code was already correct and needed no changes; the fix was entirely in shared root-command plumbing (errors.go/root.go/wiring.go), which this role already owns | None beyond the 4-file total | None external | One real, load-bearing one: an early design instinct ("keep SilenceErrors: false so this JSON-rendering addition is purely additive, changing nothing about existing behavior") was itself wrong — it left Cobra's own plain-text error line printing ALONGSIDE the new JSON envelope, which directly violates "machine mode never emits decorative text," a requirement this same node was trying to satisfy. Caught immediately (100% failure rate, not flaky) by this node's own TestErrorContract_NoDecorativeTextOnAnyCommand on first run across every single command. Fixed by flipping SilenceErrors to true — the JSON envelope REPLACES Cobra's default text, it does not sit alongside it | The "purely additive, don't change existing behavior" instinct is usually right (and WAS right for the returned Go error value itself — every existing errors.As-based test needed zero changes) but is not automatically right for every dimension of a fix; this node's bug is a specific, nameable case of a more general lesson: when a fix's own stated GOAL (no decorative text) and a design choice made in service of a DIFFERENT goal (don't change existing behavior) conflict, write the test for the STATED GOAL first and let it adjudicate, rather than assuming both goals are simultaneously satisfiable by construction. Recommend treating "test the requirement you are actually trying to satisfy, not just the requirement you're trying to avoid breaking" as a named discipline for any future cross-cutting fix in a shared root/wiring file |
+
+## Wave 10 cross-node observations
+
+- Both nodes this wave are the same SHAPE as Wave 9's `runtime-a10`/Wave 8's `runtime-a08` and this
+  role's own established pattern for `checkpoint-a09`/`checkpoint-b09`/`predictor-11`-class nodes:
+  comprehensive final-proof/audit nodes rather than new-feature nodes, each preceded by a dedicated
+  background-agent research pass BEFORE any code was written, exactly as the task brief instructed.
+  Both research passes returned precise, file:line-cited findings that were independently spot-checked
+  against the actual repository before being trusted, consistent with Wave 9's own established
+  practice of verifying a research agent's report rather than accepting it blindly.
+- The wave's single biggest validated finding across BOTH nodes: a comprehensive "does this already
+  hold" node should expect to find approximately ONE genuine gap per pass, not zero and not many —
+  `runtime-a11` found exactly one (provider-interrupt-failure production wiring, out of 9 required
+  tests audited) and `runtime-b09` found exactly one (no JSON error-rendering layer, out of the full
+  P0 command surface audited), each surrounded by several already-correct areas the research pass
+  confirmed rather than needlessly re-built. This is worth naming as the expected shape of any future
+  "prove the whole stack together" node in this project: budget for finding ONE real thing, not for
+  finding nothing (which risks skipping past a real gap) or for finding many things (which would
+  suggest the individual nodes leading up to it were not actually done correctly, which was not the
+  case in either instance this wave).
+- Both nodes' own test-writing caught a real bug in THIS SAME NODE'S own first draft (not in an
+  earlier node's shipped code, unlike Wave 9's `runtime-a09` finding a real bug in Wave-7-vintage
+  `lifecycle.go`) — consistent with, but a distinct sub-case of, this role's now well-established
+  cross-wave technique: treat a test's first-run failure as "my own assertion or design choice may be
+  wrong" before assuming either "the system under test is broken" or "the test itself is simply
+  flaky," and verify directly rather than guessing. `runtime-a11`'s two fixes were both test-assertion
+  corrections (checked against statemachine.go directly); `runtime-b09`'s one fix was a genuine
+  design-choice correction (SilenceErrors) rather than a test-only fix — worth distinguishing these
+  two sub-cases explicitly (wrong test vs. wrong implementation-adjacent design choice) as both are
+  live possibilities a first-run failure can indicate, not just the two this role's Wave 9
+  lessons_learned already named (wrong test vs. wrong implementation).
+- No new ADRs, no cross-role change-request escalations, and no frozen-contract questions this wave.
+  `internal/app/ports.go`, `internal/domain/**`, and every other role's owned packages were called,
+  never modified. The one new production code this wave (`internal/pause/interrupt.go`'s
+  `TurnInterrupterAdapter`/`InterruptAndSleep`) satisfies `pause.Interrupter`, an existing internal
+  seam this role already owns (not a frozen port); `internal/cli/errors.go`'s new JSON-rendering
+  helpers are entirely new code in an already-owned file, not a widening of any shared contract.
+- `runtime-b10` (this role's final Day-1 node) remains for a future wave — explicitly not started
+  this wave, per the task's own instruction.

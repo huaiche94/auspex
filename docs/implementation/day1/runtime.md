@@ -1,5 +1,15 @@
 # runtime — Progress Artifact
 
+> **Wave 10 sections appended below the Wave 9 node log** — see "Wave 10"
+> heading. Wave 10 completes two nodes in sequence, each validated and
+> committed independently: `runtime-a11` (the final Part A integration
+> gate — full lifecycle crash-injection sweep + closing the one genuine
+> gap this pass found, provider-interrupt-failure state-machine
+> integration) and `runtime-b09` (uniform error contract + privacy gate
+> audit across all P0 CLI commands, closing the JSON-error-rendering gap
+> this pass found). No new ADRs, no cross-role change requests this wave.
+> `runtime-b10` (this role's final node) remains for a future wave.
+
 > **Wave 9 sections appended below the Wave 8 node log** — see "Wave 9"
 > heading. Wave 9 completes three nodes in sequence, each validated and
 > committed independently: `runtime-a09` (duplicate-wake exactly-once +
@@ -1856,3 +1866,285 @@ blockers: []
   questions this wave. `internal/app/ports.go`, `internal/domain/**`, and
   `internal/evaluation/**` were called, never modified, per the task's
   explicit boundary.
+
+## Wave 10
+
+Two sequential nodes, each independently validated and committed:
+`runtime-a11` (the final Part A integration gate) and `runtime-b09`
+(Part B's error-contract + privacy gate audit). Both are comprehensive
+proof/audit nodes, not new-feature nodes — the task brief was explicit
+that manufacturing busywork where nothing new is found is the wrong
+outcome; both nodes instead did the research first, then closed exactly
+the genuine gaps that research found, and reported precisely where no
+gap existed.
+
+### runtime-a11: full Part A lifecycle integration proof + interrupt-failure gap closure
+
+A dedicated research agent audited every required test in
+`agents/runtime.md`'s Part A "Required tests" list against ALL existing
+coverage (`internal/pause/**`, `internal/scheduler/**`) before any code
+was written, with file:line precision. Findings, verbatim by required
+test:
+
+- **"crash after every phase resumes/reconciles correctly"**: already
+  fully covered for the 5 PERSIST sub-phases by `persistphase_test.go`'s
+  existing `HaltAfter`/`HaltError` harness (runtime-a05). GENUINE GAP: no
+  test crash-injected across the OTHER ~9 top-level lifecycle transitions
+  (`Predicted->Requested` through `Resuming->Resumed`). Closed by
+  `TestFullLifecycle_CrashAfterEveryTransition_ResumesOrReconciles` (a
+  9-step sweep, "crashing" — re-reading fresh from the durable store —
+  after every transition and asserting no lost/doubled work) plus
+  `TestFullLifecycle_CrashDuringQuiescing_EmergencyShortCircuitReconciles`
+  for the emergency short-circuit edge.
+- **"restart recovers wake job"**: a07's `restart_test.go` proves this at
+  the scheduler/lease level in isolation. GENUINE GAP: nothing composed
+  `scheduler.Store.Restart` with `pause.Wake` and a real `ValidateResume`
+  call in one flow. Closed by
+  `TestFullLifecycle_RestartRecoversWakeJob_ThenReEntersResumeValidation`.
+- **"unsafe quota reschedules" / "repo overlap blocks" / "unrelated repo
+  change follows configured policy"**: a08's `resumevalidation_test.go`
+  proves these at the `ValidateResume` function level directly. GENUINE
+  GAP: nothing drove these through the FULL lifecycle (`RequestPause` ->
+  persist transitions -> `Wake` -> `ValidateResume` -> `Resume` via
+  `Verdict()`). Closed by `TestFullLifecycle_QuotaUnsafeReschedules_EndToEnd`,
+  `TestFullLifecycle_RepoOverlapBlocks_EndToEnd`,
+  `TestFullLifecycle_UnrelatedRepoChangeFollowsPolicy_EndToEnd` (both
+  policy branches).
+- **"duplicate workers yield one resume" / "expired lease reclaimed" /
+  "cancel wins race with wake"**: a09 already proves these, including one
+  real composition (`splitbrain_test.go` pairs a real `scheduler.Store`
+  with `pause.Wake`). This node re-ran the equivalent races ONE LEVEL
+  FURTHER down the lifecycle (through a real `ValidateResume`/`Resume`
+  call) specifically to catch any interaction effect the narrower a09
+  compositions could have missed — mirroring how a09 itself caught a real
+  bug in earlier-wave code last wave. Result: **no new bug found; the
+  CAS-based guarantees hold under the fuller composition, confirmed
+  precisely, not assumed.** See
+  `TestFullLifecycle_DuplicateWakeRace_ThroughFullValidateResume`,
+  `TestFullLifecycle_ExpiredLeaseReclaimed_ThenFullValidateResume`,
+  `TestFullLifecycle_CancelWinsRace_EvenDuringValidation`.
+- **"provider interrupt failure leaves recoverable state"**: THE ONE
+  GENUINE PRODUCTION-CODE GAP this node found. The transition-table edge
+  (`{Interrupting, interrupt_failed} -> Failed`) and a bare-`Apply`-level
+  test already existed, and runtime-a10 already built
+  `FakeTurnInterrupter` — but no production code anywhere in
+  `internal/pause` actually called a `TurnInterrupter` and applied the
+  resulting event to a real `PauseRecord`. `safepoint.go`'s
+  `PersistThenInterrupt` (runtime-a04) deliberately proves ordering only,
+  by its own documented scope, and never touches `PauseStore`/`Apply`.
+  **Fix**: new `internal/pause/interrupt.go` —
+  `TurnInterrupterAdapter` (bridges the frozen `app.TurnInterrupter` onto
+  this package's `PauseID`-keyed seam, exactly as `safepoint.go`'s own doc
+  comment anticipated a later node would do) and `InterruptAndSleep`
+  (drives `Interrupting -> {Sleeping | Failed}` via the same
+  `CompareAndSwapStatus` discipline `lifecycle.go`/`wake.go` established).
+  Proven by `TestFullLifecycle_ProviderInterruptFailure_LeavesRecoverableState`
+  (the record durably lands at `Failed`, readable, never stuck at
+  `Interrupting`) plus a success-path control test and a
+  wrong-starting-state-rejected test.
+
+**Two test-design bugs caught and fixed in this node's own first draft**
+(not the implementation, consistent with this role's established
+practice of treating a first-run test failure as "my assertion may encode
+a wrong mental model" before assuming a real bug):
+1. An over-strict "no earlier step's event can ever re-fire" assertion in
+   the crash-sweep test failed on `Validating->Resuming`, because
+   `EventResumeValid` legitimately has TWO edges in the transition table
+   (`WakePending->Validating` and `Validating->Resuming`,
+   `statemachine.go`) — re-derived the correct invariant (the reconciled
+   status must equal exactly the immediately-preceding step's own output,
+   and never regress to a status from two-or-more steps back) instead.
+2. `TestFullLifecycle_RepoOverlapBlocks_EndToEnd` asserted
+   `domain.PauseBlockedConflict` is terminal — it is deliberately NOT
+   (`statemachine.go`'s `terminalStates` set excludes it; ADD §20.9's
+   manual-resolution UI reaches it via a documented `EventCancel` edge).
+   Corrected the assertion to check the real property: no AUTOMATIC event
+   has an edge from `BlockedConflict`, only the documented manual
+   `Cancel`.
+
+```yaml
+node: runtime-a11
+status: completed
+artifacts:
+  - internal/pause/interrupt.go (new: TurnInterrupterAdapter, InterruptAndSleep)
+  - internal/pause/fulllifecycle_test.go (new: 12 test functions)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli internal/app/wiring internal/testutil/fakes   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/...   # OK"
+  - "go test ./internal/pause/... ./internal/scheduler/... -race   # PASS (DAG's literal validation command)"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... -race -v   # all PASS"
+  - "golangci-lint run ./internal/pause/...   # 0 issues"
+  - "go build ./... && go test ./...   # all PASS, whole repo, zero regressions"
+commit: 084d002
+next_action: runtime-b09 (error contract + privacy gate audit) — same wave, done next
+assumptions:
+  - "TurnInterrupterAdapter/InterruptAndSleep are new production code in
+    internal/pause (this role's own exclusive path), not a widening of any
+    frozen internal/app/ports.go interface — app.TurnInterrupter itself is
+    untouched; the adapter satisfies pause.Interrupter (safepoint.go's own
+    existing, narrower seam), exactly as that file's doc comment already
+    anticipated a later node would do."
+  - "This node's job (per the task brief) was to find and close GENUINE
+    gaps only, not manufacture busywork — of the 9 required tests audited,
+    5 were already fully proven and needed no new code; 3 needed a fuller
+    lifecycle composition (new tests, no new production code, and no bugs
+    found); exactly 1 (provider interrupt failure) needed new production
+    code because no prior node had actually wired that call path."
+blockers: []
+```
+
+### runtime-b09: uniform error contract + privacy gate audit across all P0 commands
+
+A dedicated research agent audited every P0 command's error path, success
+path, schema-versioning, and privacy handling against `agents/runtime.md`'s
+"JSON and errors" contract before any code was written, with file:line
+precision. Findings:
+
+- Every real (non-stub) command (`checkpoint create`, `decision
+  allow`/`deny`, `pause request`/`cancel`, `resume`, `scheduler run-once`,
+  `status`, `doctor`) already constructed a `*domain.Error` internally on
+  every error path, and already emitted its own schema-versioned JSON on
+  success. This part of the contract was already correct — confirmed, not
+  assumed.
+- **THE genuine, fixable gap**: no command's typed error was ever
+  serialized to JSON anywhere. Every command built the right typed Go
+  value, but Cobra's own default error printer (`SilenceErrors: false`)
+  flattened it to a bare `.Error()` plain-text line on stderr —
+  `internal/cli/errors.go` had exactly one helper (`notImplemented`)
+  before this node, no JSON-rendering path at all.
+- **Fix**: `internal/cli/errors.go` gained `SchemaVersionError`
+  (`"preflight.error.v1"`), `RenderErrorJSON` (any error -> the frozen
+  envelope, degrading a non-`*domain.Error` to `ErrCodeInternal` rather
+  than producing nothing), and `WithJSONErrorRendering` (walks a command
+  tree, wraps every leaf's `RunE` to ALSO write the JSON envelope to
+  stderr, returning the original error UNCHANGED so every existing
+  `errors.As` caller/test keeps working — purely additive). Wired into
+  both `cli.NewRootCmd()` and `internal/app/wiring.App.RootCmd()` (the
+  latter re-applies it after every `replaceSubcommand` swap, since a
+  freshly-built real subtree is unwrapped; an `Annotations` marker makes
+  re-wrapping an already-wrapped leaf a safe no-op, so calling it twice
+  never double-writes the envelope).
+- **Real bug caught by this node's own test, not assumed away**: keeping
+  `SilenceErrors: false` (an early draft's "purely additive, don't change
+  existing behavior" instinct) directly violated "machine mode never
+  emits decorative text" — Cobra's own plain-text line still printed
+  AFTER the new JSON envelope on every single command, caught by
+  `TestErrorContract_NoDecorativeTextOnAnyCommand` failing across the
+  entire command tree on first run. Fix: `SilenceErrors: true` in
+  `root.go` — the JSON envelope is a strictly better replacement, not an
+  addition alongside Cobra's own text.
+- **Known, pre-existing gaps, now documented as explicit checked tests**
+  (not silently fixed, since fixing them is a bigger design call than
+  this node's mandate): `init`/`evaluate`/`progress show`/`state show`
+  have no real CLI constructor anywhere in the repository (permanent
+  `notImplemented` stubs, confirmed by the research pass) —
+  `TestErrorContract_KnownIncompleteCommands_AreStubsOnly` fails loudly if
+  a future node adds a real one without updating this note.
+  `version`'s success output is a bare string, not schema-versioned JSON
+  — changing an already-integrated command's output shape was judged out
+  of this audit's scope (Constitution §7 rule 10: no speculative changes
+  beyond scope) — `TestErrorContract_VersionCommand_KnownGap_PlainStringNotJSON`
+  documents this explicitly.
+- `internal/httpapi` does not exist anywhere in the repository (confirmed:
+  no directory, no files) — an explicit ADD/`agents/runtime.md` stretch
+  goal not yet built ("HTTP daemon is secondary to a working CLI"). The
+  DAG's validation command names
+  `go test ./internal/httpapi/... ./internal/cli/... -run ErrorContract`;
+  running it confirms the combination fails (exit 1) purely because
+  `internal/httpapi` has no directory to `go test`, while
+  `go test ./internal/cli/... -run ErrorContract` alone passes cleanly —
+  this is the documented no-op the task brief anticipated, not a real gap,
+  and no placeholder package was built to paper over it.
+- **Privacy gate**: every command touching prompt-adjacent data
+  (`decision allow`/`deny`'s `--prompt-hash`, hook `user-prompt-submit`)
+  only ever threads a `PromptHash` (already a hash by the time it reaches
+  this layer, `internal/app/ports.go`'s frozen field), never raw prompt
+  text — confirmed by a grep audit (zero hits for any raw-prompt field
+  crossing `internal/cli`/`internal/orchestrator`/`internal/app/wiring`)
+  and proven directly by
+  `TestErrorContract_NoRawPromptInAnyErrorOrOutput` (a canary-string sweep
+  across all 18 P0 command paths) and
+  `TestErrorContract_DecisionAllow_RealPath_NeverEchoesPromptHashAsRawText`
+  (a real, not-stub, issue-flow test proving the canary never leaks into
+  `decision allow`'s own JSON output, which — correctly — has no
+  `prompt_hash` field to begin with).
+
+```yaml
+node: runtime-b09
+status: completed
+artifacts:
+  - internal/cli/errorcontract_test.go (new: 10 test functions)
+  - internal/cli/errors.go (SchemaVersionError, RenderErrorJSON, WithJSONErrorRendering)
+  - internal/cli/root.go (SilenceErrors: true; wires WithJSONErrorRendering)
+  - internal/app/wiring/wiring.go (re-applies WithJSONErrorRendering after replaceSubcommand)
+validation:
+  - "gofmt -l internal/pause internal/scheduler internal/orchestrator internal/cli internal/app/wiring internal/testutil/fakes   # empty"
+  - "go build ./...   # OK"
+  - "go vet ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/...   # OK"
+  - "go test ./internal/cli/... -run ErrorContract -v   # all PASS (httpapi half of the DAG's combined command is a confirmed no-op, not a real target — internal/httpapi does not exist)"
+  - "go test ./internal/pause/... ./internal/scheduler/... ./internal/orchestrator/... ./internal/cli/... -race -v   # all PASS"
+  - "golangci-lint run ./...   # 0 issues, whole repo"
+  - "go build ./... && go test ./...   # all PASS, whole repo, zero regressions"
+commit: ad335b2
+next_action: runtime-b10 (this role's final node) — NOT this wave
+assumptions:
+  - "internal/httpapi is out of Day-1 scope per agents/runtime.md's own
+    stretch-goal framing; the DAG's validation command referencing it is
+    a documented no-op for this node, not a gap this node closes by
+    building a placeholder package."
+  - "WithJSONErrorRendering's returned Go error is intentionally UNCHANGED
+    from today's behavior — every existing test that asserts on the
+    returned error (errors_test.go, root_test.go, wiring_test.go) needed
+    zero changes; the JSON envelope write to stderr is the only new
+    behavior, confirmed by running the full existing suite unmodified
+    after this change and seeing zero regressions."
+  - "version's plain-string output and init/evaluate/progress-show/
+    state-show's permanent-stub status are DOCUMENTED gaps, not silently
+    fixed ones — both are checked by a dedicated test that fails loudly
+    the moment either changes, per Constitution §6's evidence discipline
+    applied to a known-gap claim, not just a completed-node claim."
+blockers: []
+```
+
+## Wave 10 cross-node observations
+
+- Both nodes were validated and committed independently, per the explicit
+  task instruction — no batching. Each node's own DAG validation command
+  was run and confirmed (or, for `runtime-b09`, confirmed as a documented
+  no-op for the `internal/httpapi` half) before moving to the next; the
+  full owned-package test suite plus a whole-repo `go build`/`go test`
+  was additionally run after every single node, not just at the end of
+  the wave.
+- Both nodes are the same SHAPE as `checkpoint-a09`/`checkpoint-b09`/
+  `predictor-11` last wave: comprehensive final-proof/audit nodes, not
+  new-feature nodes. Both were explicitly instructed to report precisely
+  where nothing new was found rather than manufacturing busywork — this
+  wave, `runtime-a11` found exactly one genuine production-code gap
+  (provider-interrupt-failure state-machine wiring) out of nine required
+  tests audited, and `runtime-b09` found exactly one genuine, fixable gap
+  (no JSON error-rendering layer) plus two pre-existing, out-of-scope
+  gaps it documented rather than silently fixed.
+- Both nodes' own test-writing caught a real bug in THIS SAME NODE'S first
+  draft, not in prior-wave code — consistent with (but distinct from)
+  `runtime-a09`'s Wave 9 precedent of finding a bug in an EARLIER node's
+  code. `runtime-a11`'s crash-sweep test and `BlockedConflict`-terminal
+  assertion were both corrected against `statemachine.go`'s actual
+  transition table; `runtime-b09`'s `SilenceErrors: false` "purely
+  additive" instinct was corrected to `true` once its own new
+  decorative-text test caught Cobra's plain-text line still printing
+  alongside the new JSON envelope. Both are instances of this role's
+  established technique (Wave 9 lessons_learned): when a just-written test
+  fails reliably on first run, default to "my assertion/design encodes a
+  wrong mental model," verify directly, then fix precisely — never assume
+  the first hypothesis (bug vs. test-modeling error vs. design error)
+  without checking.
+- No new ADRs, no cross-role change-request escalations, no frozen-contract
+  questions this wave. `internal/app/ports.go`, `internal/domain/**`, and
+  every other role's owned packages were called, never modified.
+  `internal/pause/interrupt.go`'s new `TurnInterrupterAdapter` satisfies
+  `pause.Interrupter` (this package's own internal seam, not a frozen
+  port) exactly as `safepoint.go` already anticipated; no interface in
+  `internal/app/ports.go` was widened or touched.
+- `runtime-b10` (this role's final node) remains for a future wave, per
+  the task's explicit instruction not to start it now.

@@ -273,7 +273,20 @@ func (a *App) RootCmd() *cobra.Command {
 		})
 	}
 
-	return root
+	// runtime-b09: cli.NewRootCmd() already wrapped its own stub tree with
+	// cli.WithJSONErrorRendering, but every replaceSubcommand call above
+	// swaps in a FRESH subtree (cli.NewHookClaudeCmd, cli.NewCheckpointCmd,
+	// ...) built after that wrapping already ran — those fresh RunE
+	// closures are unwrapped. Re-applying the wrap here, once, after every
+	// replacement, ensures every command reachable from THIS App's actual
+	// command tree (real or still-stub) uniformly renders the typed JSON
+	// error envelope, not just whichever subset happened to still be a
+	// stub when cli.NewRootCmd() ran. wrapCommandTree recurses the whole
+	// tree and is idempotent per leaf (each RunE is wrapped exactly once
+	// here, since this is the only wrap call that runs after every
+	// replacement), so calling it again on already-wrapped leaves that
+	// were NOT replaced is harmless — see errors.go's own doc comment.
+	return cli.WithJSONErrorRendering(root)
 }
 
 // replaceSubcommand removes root's top-level subcommand named name (a

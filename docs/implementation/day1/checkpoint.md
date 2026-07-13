@@ -748,3 +748,62 @@ Final validation after both Wave 9 nodes together: `golangci-lint run ./...`
 completes every DAG node ever assigned to the `checkpoint` role — Part A
 (a01-a09) and Part B (b01-b09) are both fully complete; no further nodes
 remain in this role's scope per `EXECUTION_DAG.md`.
+
+---
+
+## Corrective addition (post-Wave 12, Final integration gate): real `app.ProgressTreeService` adapter
+
+Not a numbered DAG node — this role's entire assigned DAG scope (a01-a09,
+b01-b09) was already complete as of the Wave 9 entry above. This entry
+records a finding from the **Final integration gate review**
+(`contract-integrator-final`) that was routed to this role because it is
+squarely this role's exclusive-path work, not the lead's to implement
+directly.
+
+### The finding
+
+`internal/app/ports.go`'s frozen `ProgressTreeService` interface (7 methods:
+`CreateTask`, `UpsertPlan`, `StartNode`, `CompleteNode`, `FailNode`,
+`Snapshot`, `Reconcile`) had **no concrete production implementation
+anywhere in the repository**. Across a01-a09 this role built and
+exhaustively tested every individual piece the interface needs — `NodeStore`,
+`EdgeStore`, `ArtifactStore`, the node state machine
+(`ValidateTransition`/`IsTerminal`/`AllowedTransitions`), `CompleteNode`'s
+atomic protocol, and `Reconciler` — but never assembled one type satisfying
+the exact 7-method contract. Confirmed via
+`grep -rn "var _ app.ProgressTreeService"` across the whole repo before
+starting: only `internal/testutil/fakes.FakeProgressTreeService` (a test
+double) and ad hoc in-test satisfaction existed. This is precisely why
+`cmd/preflight/main.go` was never wired to real services: composing the
+app's root requires a real implementation of every frozen port, and this one
+never existed.
+
+### What was built
+
+```yaml
+node: checkpoint-corrective-01 (not a DAG node; Final-integration-gate finding)
+status: completed
+artifacts:
+  - internal/progress/task_store.go   # NEW: minimal TaskStore CRUD over `tasks` (migrations/0004_tasks.sql) — grepped first; no other role owns task-row CRUD, and CreateTask is explicitly a ProgressTreeService responsibility per the frozen interface
+  - internal/progress/service.go      # NEW: Service, the real app.ProgressTreeService implementation composing TaskStore/NodeStore/CompleteNode/Reconciler
+  - internal/progress/service_test.go # NEW: compile-time interface assertion + integration-style delegation tests for all 7 methods
+validation:
+  - "gofmt -l internal/progress                    -> empty"
+  - "go build ./...                                -> OK"
+  - "go vet ./internal/progress/...                -> OK"
+  - "go test ./internal/progress/... -race -v      -> PASS (full suite, zero regressions, including 15 new TestService_* tests)"
+  - "go build ./... && go test ./... -race          -> green whole-repo, zero regressions"
+  - "golangci-lint run ./...                        -> 0 issues"
+commit: (recorded in the top-level commit for this addition)
+next_action: none from this role — the lead (contract-integrator) wires Service into cmd/preflight/main.go / internal/app/wiring/** alongside the sibling GracefulPauseService adapter; both are out of this role's exclusive paths.
+assumptions:
+  - "This is composition and DTO-shape translation ONLY, per the finding's own framing — every piece of real logic (state transitions, atomicity, idempotency, crash recovery, dependency/parent-ordering checks) already existed and was already exhaustively tested; Service reimplements none of it. Each of the 7 methods is a thin adapter: CreateTask -> TaskStore.Insert; UpsertPlan -> NodeStore.ListByTask (for the current version) + TaskStore.SetActiveNodeAndVersion; StartNode -> NodeStore.Get + TransitionStatus + SetTimestamps; CompleteNode -> a direct, unmodified call to CompleteNode.Run (this package's own pre-existing atomic protocol type, distinct from the interface method of the same name) with a DTO translation at the boundary; FailNode -> NodeStore.Get + TransitionStatus to failed; Snapshot -> NodeStore.ListByTask; Reconcile -> Reconciler.Reconcile plus NodeStore.ListByTask to populate ReconciledNodes."
+  - "TaskStore is new but narrowly scoped: just Insert/Get/SetActiveNodeAndVersion, enough for CreateTask and UpsertPlan's documented responsibility (0004_tasks.sql's own header comment: 'checkpoint's Progress Tree service is responsible for keeping [active_node_id] consistent with progress_nodes.id'). It does not own task lifecycle policy (status transitions beyond initial insert, auto_resume_enabled semantics) — out of scope for a composition-only fix."
+  - "UpsertPlanRequest (frozen ports.go DTO) carries only a TaskID, not an actual node/edge plan payload — the frozen contract does not yet define a bulk-plan-upsert request shape. UpsertPlan therefore confirms the task exists and reports the tree's current version (NodeStore.ListByTask count, the same 'version = len(nodes)' convention statecheckpoint.Service.Create already established); a caller seeding actual nodes/edges alongside this call uses NodeStore.Insert/EdgeStore.Insert directly, exactly as this role's own a01-a09 tests already do. Widening the request DTO to accept a bulk plan body would require an ADR and contract-integrator's sign-off (Constitution §4/§3) — flagged here as a follow-up for contract-integrator to consider, not something this corrective addition unilaterally does."
+  - "FailNode's frozen FailNodeRequest carries a FailureClass, but no migration in this role's owned 0020-0029 range added a failure_class column to progress_nodes — persisting it would need a new migration + likely an ADR discussion, out of scope for a composition-only fix. FailNode still performs the real, durable in_progress/ready/etc -> failed state transition the interface promises; FailureClass is validated as non-empty but not yet persisted as its own column. Documented here as a known, narrow gap for a future node to close, not a silently dropped contract term."
+  - "app.ProgressTreeSnapshot (frozen DTO) carries only TaskID + Nodes today, not edges or artifacts — Snapshot returns exactly that shape; a caller needing edges/artifacts uses EdgeStore.ListByTask/ArtifactStore.ListByNode directly, which remain available as this package's own public API regardless of what the frozen Snapshot DTO currently carries."
+  - "Reconcile's ReconciledNodes is populated as every node in the task NodeStore.ListByTask returns, since Part A's Reconciler.Reconcile (checkpoint-a04/a06/a09) operates task-scoped over the whole tree's durable state (staged-artifact-vs-DB crash windows + checkpoint integrity), not a subset — this is an honest DTO-shape translation of an already-task-scoped reconciliation pass, not new reconciliation logic."
+  - "Required tests followed the brief exactly: a `var _ app.ProgressTreeService = (*Service)(nil)` compile-time assertion, plus integration-style tests proving each of the 7 methods delegates to (and does not diverge from) the underlying already-tested piece — e.g. TestService_CompleteNode_MatchesDirectCompleteNodeRun completes one node via Service.CompleteNode and a different node via CompleteNode.Run directly with equivalent inputs, then cross-checks the returned domain.StateCheckpoint against the durable row AND an independent statecheckpoint.Verify pass — not a from-scratch re-test of CompleteNode's own correctness (already proven exhaustively across a04-a09)."
+  - "Did not touch internal/app/ports.go (frozen, contract-integrator-owned), go.mod/go.sum (foundation-owned), cmd/preflight/main.go, internal/app/wiring/**, or internal/pause/** (a sibling teammate's concurrent GracefulPauseService adapter work) — strictly within internal/progress/**, this role's own exclusive path."
+blockers: none
+```

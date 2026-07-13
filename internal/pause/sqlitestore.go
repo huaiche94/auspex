@@ -262,6 +262,16 @@ func scanPauseRecordRow(row *sql.Row) (PauseRecord, error) { return scanPauseRec
 // hand-rolled encode/decode (not encoding/json） keeps this file dependency-
 // free for the one string field it needs; a future column added by a real
 // migration can replace this without changing PauseStore's interface.
+//
+// decodePauseMetadata delegates to extractJSONStringField (below, added
+// alongside this file's PersistPauseStore reconciliation) rather than the
+// original strict-prefix/suffix match, specifically so a row whose
+// metadata_json has ALREADY been rewritten by SaveProgress into the wider
+// four-key persistProgressMetadata shape still correctly yields back its
+// own "reason" value — the original strict-shape match would silently
+// return "" the first time SaveProgress ran on a row, which would be a
+// real, if narrow, data-loss regression this reconciliation must not
+// introduce.
 func encodePauseMetadata(reason TriggerReason) string {
 	if reason == "" {
 		return `{}`
@@ -270,14 +280,248 @@ func encodePauseMetadata(reason TriggerReason) string {
 }
 
 func decodePauseMetadata(metadataJSON string) TriggerReason {
-	const prefix = `{"reason":"`
-	const suffix = `"}`
-	if len(metadataJSON) > len(prefix)+len(suffix) &&
-		metadataJSON[:len(prefix)] == prefix &&
-		metadataJSON[len(metadataJSON)-len(suffix):] == suffix {
-		return TriggerReason(metadataJSON[len(prefix) : len(metadataJSON)-len(suffix)])
+	return TriggerReason(extractJSONStringField(metadataJSON, "reason"))
+}
+
+// --- PersistPauseStore reconciliation (Service's own composition gap) -----
+//
+// GetProgress/SaveProgress close the gap persistphase_test.go's own
+// seedPauseRecordRow doc comment named explicitly: "a future integration
+// node reconciles PersistPauseStore onto a real SQLite-backed PauseStore
+// against this same table." That future node is this one (the Final
+// integration gate's GracefulPauseService Service, service.go), and this
+// is the reconciliation: SQLiteStore now satisfies BOTH PauseStore and
+// PersistPauseStore against the exact same pause_records row, using
+// columns that already exist (state_checkpoint_id, repository_checkpoint_id
+// — migration 0050) plus metadata_json's existing free-form JSON slot
+// (already used by encodePauseMetadata/decodePauseMetadata for
+// TriggerReason) for the two boolean phase markers and the WakeJobID
+// scalar neither dedicated column covers. No new migration, no schema
+// change — every field PersistProgress needs already has somewhere to
+// live in the row Insert already creates.
+var _ PersistPauseStore = (*SQLiteStore)(nil)
+
+// persistProgressMetadata is metadata_json's full decoded shape once this
+// file's GetProgress/SaveProgress are in play — a strict superset of the
+// single "reason" key encodePauseMetadata/decodePauseMetadata already
+// round-trip, so a record written before this file existed (reason only)
+// still decodes correctly (the three new fields simply read as their zero
+// values: not-yet-taken/not-yet-saved/no wake job recorded here yet).
+type persistProgressMetadata struct {
+	Reason                string `json:"reason,omitempty"`
+	ProgressSnapshotTaken bool   `json:"progress_snapshot_taken,omitempty"`
+	PauseRecordSaved      bool   `json:"pause_record_saved,omitempty"`
+	WakeJobID             string `json:"wake_job_id,omitempty"`
+}
+
+// GetProgress implements PersistPauseStore.GetProgress: reads the current
+// phase-progress markers back from pause_records — state_checkpoint_id/
+// repository_checkpoint_id from their own dedicated columns, the two
+// booleans and WakeJobID from metadata_json.
+func (s *SQLiteStore) GetProgress(ctx context.Context, id domain.PauseID) (PersistProgress, bool, error) {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+	row := q.QueryRowContext(ctx, `
+		SELECT state_checkpoint_id, repository_checkpoint_id, metadata_json
+		FROM pause_records
+		WHERE id = ?
+	`, string(id))
+
+	var stateCkptID, repoCkptID sql.NullString
+	var metadataJSON string
+	err := row.Scan(&stateCkptID, &repoCkptID, &metadataJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return PersistProgress{}, false, nil
 	}
-	return ""
+	if err != nil {
+		return PersistProgress{}, false, fmt.Errorf("pause: SQLiteStore.GetProgress: %w", err)
+	}
+
+	meta := decodePersistProgressMetadata(metadataJSON)
+	progress := PersistProgress{
+		ProgressSnapshotTaken: meta.ProgressSnapshotTaken,
+		PauseRecordSaved:      meta.PauseRecordSaved,
+	}
+	if stateCkptID.Valid && stateCkptID.String != "" {
+		v := domain.StateCheckpointID(stateCkptID.String)
+		progress.StateCheckpointID = &v
+	}
+	if repoCkptID.Valid && repoCkptID.String != "" {
+		v := domain.RepositoryCheckpointID(repoCkptID.String)
+		progress.RepositoryCheckpointID = &v
+	}
+	if meta.WakeJobID != "" {
+		v := domain.WakeJobID(meta.WakeJobID)
+		progress.WakeJobID = &v
+	}
+	return progress, true, nil
+}
+
+// SaveProgress implements PersistPauseStore.SaveProgress: durably records
+// progress's fields back onto the same row GetProgress reads from. Called
+// once per successful Persist step (persistphase.go's own discipline), so
+// this is a single-row UPDATE per call, never a batch — matching
+// PersistPauseStore's own "never batched" contract exactly.
+func (s *SQLiteStore) SaveProgress(ctx context.Context, id domain.PauseID, progress PersistProgress) error {
+	q := sqlite.QuerierFromContext(ctx, s.db)
+
+	// Preserve the existing Reason (encodePauseMetadata's own field) —
+	// SaveProgress must not silently drop it when it rewrites
+	// metadata_json for the phase-progress fields.
+	existing, found, err := s.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.SaveProgress: reading existing reason: %w", err)
+	}
+	if !found {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: SQLiteStore.SaveProgress: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+
+	meta := persistProgressMetadata{
+		Reason:                string(existing.Reason),
+		ProgressSnapshotTaken: progress.ProgressSnapshotTaken,
+		PauseRecordSaved:      progress.PauseRecordSaved,
+	}
+	if progress.WakeJobID != nil {
+		meta.WakeJobID = string(*progress.WakeJobID)
+	}
+
+	var stateCkptID, repoCkptID sql.NullString
+	if progress.StateCheckpointID != nil {
+		stateCkptID = sql.NullString{String: string(*progress.StateCheckpointID), Valid: true}
+	}
+	if progress.RepositoryCheckpointID != nil {
+		repoCkptID = sql.NullString{String: string(*progress.RepositoryCheckpointID), Valid: true}
+	}
+
+	res, err := q.ExecContext(ctx, `
+		UPDATE pause_records
+		SET state_checkpoint_id = ?, repository_checkpoint_id = ?, metadata_json = ?
+		WHERE id = ?
+	`, stateCkptID, repoCkptID, encodePersistProgressMetadata(meta), string(id))
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.SaveProgress: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("pause: SQLiteStore.SaveProgress: RowsAffected: %w", err)
+	}
+	if n == 0 {
+		return &domain.Error{
+			Code:      domain.ErrCodeNotFound,
+			Message:   fmt.Sprintf("pause: SQLiteStore.SaveProgress: pause record %q not found", id),
+			Retryable: false,
+			Details:   map[string]string{"pause_id": string(id)},
+		}
+	}
+	return nil
+}
+
+// encodePersistProgressMetadata/decodePersistProgressMetadata hand-roll
+// the same minimal, dependency-free JSON-object encoding
+// encodePauseMetadata/decodePauseMetadata already use for the single
+// "reason" key (this file's own doc comment on those functions explains
+// why: no migration-range budget this wave for a dedicated column, and a
+// hand-rolled encode/decode keeps this file free of an encoding/json
+// dependency for a small, fixed field set). Unlike the single-key
+// original, this is a small fixed-order four-key object; each key's
+// presence/value is written unconditionally in a stable order so encoding
+// is deterministic and decoding is a straightforward per-key scan rather
+// than a general JSON parse.
+func encodePersistProgressMetadata(m persistProgressMetadata) string {
+	b := boolStr(m.ProgressSnapshotTaken)
+	p := boolStr(m.PauseRecordSaved)
+	return `{"reason":"` + jsonEscape(m.Reason) + `","progress_snapshot_taken":` + b +
+		`,"pause_record_saved":` + p + `,"wake_job_id":"` + jsonEscape(m.WakeJobID) + `"}`
+}
+
+func decodePersistProgressMetadata(metadataJSON string) persistProgressMetadata {
+	return persistProgressMetadata{
+		Reason:                extractJSONStringField(metadataJSON, "reason"),
+		ProgressSnapshotTaken: extractJSONBoolField(metadataJSON, "progress_snapshot_taken"),
+		PauseRecordSaved:      extractJSONBoolField(metadataJSON, "pause_record_saved"),
+		WakeJobID:             extractJSONStringField(metadataJSON, "wake_job_id"),
+	}
+}
+
+// extractJSONStringField/extractJSONBoolField/jsonEscape are the minimal,
+// dependency-free scanners this hand-rolled encoding needs — sufficient
+// for the small, fixed, always-flat field set this file ever writes
+// (never a user-supplied or externally-sourced JSON blob), not a general
+// JSON parser. A field absent from metadataJSON (e.g. a row written before
+// this file existed, which only ever had "reason") decodes to its zero
+// value, never an error — exactly the same forward-compatible behavior
+// decodePauseMetadata's own single-field version already had.
+func extractJSONStringField(json, key string) string {
+	marker := `"` + key + `":"`
+	idx := indexOf(json, marker)
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(marker)
+	end := indexOf(json[start:], `"`)
+	if end < 0 {
+		return ""
+	}
+	return jsonUnescape(json[start : start+end])
+}
+
+func extractJSONBoolField(json, key string) bool {
+	marker := `"` + key + `":`
+	idx := indexOf(json, marker)
+	if idx < 0 {
+		return false
+	}
+	rest := json[idx+len(marker):]
+	return len(rest) >= 4 && rest[:4] == "true"
+}
+
+func indexOf(s, substr string) int {
+	n, m := len(s), len(substr)
+	if m == 0 {
+		return 0
+	}
+	for i := 0; i+m <= n; i++ {
+		if s[i:i+m] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// jsonEscape/jsonUnescape handle only the one escape this file's own
+// values could ever plausibly contain (a literal double quote or
+// backslash inside Reason, which is otherwise a closed TriggerReason
+// enum value today, or WakeJobID, an ID-generator-produced string) —
+// sufficient for this hand-rolled encoding's own fixed, narrow field set,
+// not a general JSON string escaper.
+func jsonEscape(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '"', '\\':
+			out = append(out, '\\', s[i])
+		default:
+			out = append(out, s[i])
+		}
+	}
+	return string(out)
+}
+
+func jsonUnescape(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			i++
+			out = append(out, s[i])
+			continue
+		}
+		out = append(out, s[i])
+	}
+	return string(out)
 }
 
 // nowRFC3339Placeholder stamps requested_at (NOT NULL) with a fixed,

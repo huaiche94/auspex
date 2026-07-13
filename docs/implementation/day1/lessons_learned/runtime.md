@@ -364,3 +364,33 @@
   This is the one technique worth extracting into any future multi-wave,
   multi-agent project's own shared engineering-practice documentation,
   independent of Preflight's own domain.
+
+# Lessons Learned — runtime (Final integration gate corrective addition: `pause.Service`)
+
+| task_id | estimated_complexity | actual_complexity | estimated_files_changed | actual_files_changed | estimated_duration | actual_duration | unexpected_dependencies | unexpected_files | blockers_encountered | token_waste_observations | recommendations_for_preflight |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| runtime-final-gracefulpause-service (not a DAG node) | M/L (lead-identified finding, no DAG estimate exists) | M — every piece of real logic already existed and was already tested; the actual work was composition, DTO-shape translation, and discovering/documenting two genuine, previously-deferred gaps, not new business logic | 2 (one new file, one existing file extended) | 4 (`internal/pause/service.go` new, `internal/pause/service_test.go` new, `internal/pause/sqlitestore.go` extended with `PersistPauseStore`, this doc + lessons_learned) | N/A | one continuous pass | None beyond this role's own already-owned packages (`internal/pause`, `internal/scheduler`) — no cross-role dependency was needed, confirmed by a background research agent's independent cross-check that no frozen port anywhere resolves `SessionID`->`TaskID` | None — no new file type, unlike `b10`'s golden-fixture precedent | Two real design gaps, both self-discovered and explicitly surfaced rather than silently papered over: (1) the frozen `app.PauseRequest`/`SafePoint`/`ResumeRequest` DTOs carry no `TaskID`/`WorktreeID`/quota-baseline — closed with a locally-declared `SessionContextResolver` seam (no real implementation yet, explicitly left for a future wiring node), mirroring `resumevalidation.go`'s own narrow-seam precedent; (2) `PersistPauseStore` was never reconciled onto `SQLiteStore` (named as a gap by five nodes since Wave 7) — closed directly since `internal/pause` is this role's own exclusive path | `go vet ./internal/pause/...` caught a real bug during this node's own validation pass, not a test: the first draft of `NewService(deps Service)` copied a `Service` value containing `sync.Mutex`-guarded maps. Fixed by splitting `Service`'s constructor input into a separate, mutex-free `ServiceDeps` value type — cheap once caught, but a reminder that `go vet` is part of the required validation gate for exactly this class of bug, not merely a formality to run after tests already pass | Confirms this role's own Wave-10/11-established pattern one more time, in a new shape: a comprehensive external review (this time from `contract-integrator-final`, not this role's own internal audit) found exactly one real, previously-deferred, already-self-documented gap (the missing `GracefulPauseService` adapter) rather than a swathe of undiscovered problems — because every prior node that touched this boundary (`a04`, `a05`, `a09`, `b10`) had already written down the gap explicitly rather than silently skipping it. Recommend continuing this project's standing discipline of naming a deferred gap in the doc comment of the node that finds it, even when closing it is out of that node's own scope — it is what made this corrective addition a fast, well-scoped composition task instead of an open-ended investigation |
+
+## Final addition — cross-node observations
+
+- This is confirmation, not a new instance, of `runtime`'s own
+  most-repeated process lesson (Wave 11's retrospective, above): every
+  real judgment call this addition needed — the `SessionContextResolver`
+  seam's shape, the `PersistPauseStore` reconciliation's column mapping,
+  the `ServiceDeps`/`Service` split — was resolvable directly from
+  already-published authority (this package's own prior doc comments,
+  Constitution §7 rule 3's "surface capability gaps explicitly," and
+  `go vet`'s own diagnostic), without escalation and without a new ADR.
+- Unlike every numbered DAG node this role shipped, this addition's
+  starting point was a review finding rather than an execution-plan
+  assignment — worth noting as a positive data point that this role's
+  standing conventions (narrow internal seams for undeclared
+  capabilities, explicit gap documentation in the node that finds a gap,
+  reusing an existing integration-test technique rather than inventing a
+  new one) generalized cleanly to a differently-sourced task, not just to
+  the DAG's own pre-planned shape.
+- This is, in the fullest sense, this role's actual final piece of Day-1
+  work: every DAG node was already complete, and this corrective addition
+  closes the one remaining concrete gap those nodes' own doc comments had
+  already flagged. No further work of any kind is anticipated for this
+  role.

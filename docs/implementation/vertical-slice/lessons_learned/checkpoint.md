@@ -109,3 +109,42 @@ per-node:
 No further recommendations beyond what is already recorded per-node above;
 this section exists only to name the patterns that recurred across the
 whole arc rather than within any single node.
+
+6. **"Every individual piece is tested" is not the same claim as "the
+   frozen interface has a real implementation," and nothing in this role's
+   own a01-a09 checklist would have caught the difference.** The Final
+   integration gate found that `app.ProgressTreeService` — the actual
+   contract `cmd/preflight/main.go` needs to compose the app's root — had
+   no concrete type behind it anywhere in the repository, despite every
+   underlying piece (`NodeStore`, `EdgeStore`, `ArtifactStore`, the state
+   machine, `CompleteNode`, `Reconciler`) being exhaustively tested across
+   nine waves, including `checkpoint-a09`'s own "full stack holds together
+   end-to-end" integration gate. `a09` proved the pieces compose against
+   each other; it never asked "does anything satisfy the actual frozen Go
+   interface a caller outside this package would use." The gap survived an
+   integration gate explicitly designed to catch composition problems
+   because the gate's own test harness (`newFullStackHarness`,
+   `complete_node_integration_test.go`) wires the pieces together by hand
+   inside the test, which proves the pieces CAN compose but is not the same
+   artifact as a production type that DOES compose them behind the frozen
+   port. Recommendation for any future multi-piece role with a frozen
+   interface at the end of its DAG: add an explicit, named checklist item —
+   separate from "do the pieces work together" — for "does a
+   `var _ app.X = (*ConcreteType)(nil)` assertion exist for a real,
+   production type, not only a test double." A role can pass every one of
+   its own DAG nodes and still leave this gap, because no single node's
+   brief happened to ask the question directly.
+7. **The fix itself confirms the DAG's own repeated framing was right: this
+   was composition, not new logic.** `internal/progress.Service` (the
+   corrective addition) is ~250 lines, none of which reimplement a state
+   transition, an atomicity guarantee, or an idempotency check — every
+   method is a DTO translation plus a direct call into an already-tested
+   piece. The one substantive judgment call was `FailNode`'s
+   `FailureClass`, which the frozen `FailNodeRequest` DTO accepts but which
+   has no persisted column in this role's owned `0020-0029` migration
+   range; rather than silently dropping it or inventing a column outside
+   the corrective addition's stated scope, it is validated as non-empty and
+   documented as an explicit, narrow gap for a future node — the same
+   "surface the gap explicitly rather than paper over it" discipline this
+   role's Constitution obligations (§7.3) already required for provider
+   capability gaps, applied here to an interface/schema gap instead.

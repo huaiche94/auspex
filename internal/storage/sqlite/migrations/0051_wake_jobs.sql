@@ -1,6 +1,6 @@
 -- 0051_wake_jobs.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `wake_jobs` — the durable
+-- Auspex_ADD.md §12.2 canonical schema: `wake_jobs` — the durable
 -- scheduler's work queue (agents/runtime.md Part A P0 deliverables 6-7:
 -- claim/renew/complete/fail/retry lease semantics, restart recovery of
 -- overdue/leased jobs). The lease-claim transaction shape this table must

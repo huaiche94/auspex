@@ -1,4 +1,4 @@
-# Preflight Vertical-Slice Parallel Implementation Plan
+# Auspex Vertical-Slice Parallel Implementation Plan
 
 ## 1. Decision
 
@@ -13,7 +13,7 @@ Claude status-line / hook event
         ↓
 normalized telemetry persisted in SQLite
         ↓
-UserPromptSubmit preflight evaluation
+UserPromptSubmit auspex evaluation
         ↓
 explainable risk decision
         ↓
@@ -178,7 +178,7 @@ No feature role should invent a competing domain type. `contract-integrator` mus
 ### Files owned only by `contract-integrator`
 
 ```text
-Preflight_ADD.md
+Auspex_ADD.md
 AGENTS.md
 internal/domain/**
 internal/app/ports.go
@@ -192,7 +192,7 @@ docs/implementation/vertical-slice/CONTRACT_FREEZE.md
 ```text
 go.mod
 go.sum
-cmd/preflight/main.go
+cmd/auspex/main.go
 internal/config/**
 internal/paths/**
 internal/buildinfo/**
@@ -233,13 +233,13 @@ Each feature role writes unit tests under its own package. `qa` owns only:
 Recommended branches:
 
 ```bash
-git worktree add ../preflight-contract-integrator -b vertical-slice/contract-integrator
-git worktree add ../preflight-foundation           -b vertical-slice/foundation
-git worktree add ../preflight-claude-provider      -b vertical-slice/claude-provider
-git worktree add ../preflight-checkpoint           -b vertical-slice/checkpoint
-git worktree add ../preflight-predictor            -b vertical-slice/predictor
-git worktree add ../preflight-runtime              -b vertical-slice/runtime
-git worktree add ../preflight-qa                   -b vertical-slice/qa
+git worktree add ../auspex-contract-integrator -b vertical-slice/contract-integrator
+git worktree add ../auspex-foundation           -b vertical-slice/foundation
+git worktree add ../auspex-claude-provider      -b vertical-slice/claude-provider
+git worktree add ../auspex-checkpoint           -b vertical-slice/checkpoint
+git worktree add ../auspex-predictor            -b vertical-slice/predictor
+git worktree add ../auspex-runtime              -b vertical-slice/runtime
+git worktree add ../auspex-qa                   -b vertical-slice/qa
 ```
 
 `contract-integrator` lands the contract commit first. Every other branch rebases onto that exact commit before writing production code.
@@ -294,36 +294,36 @@ Use this order even when implementation occurs in parallel:
 The final branch should demonstrate:
 
 ```bash
-preflight version
-preflight init
+auspex version
+auspex init
 
 # Feed a Claude status-line fixture.
-preflight hook claude statusline < testdata/provider-events/claude/statusline-high-usage.json
+auspex hook claude statusline < testdata/provider-events/claude/statusline-high-usage.json
 
 # Evaluate a prompt without persisting raw prompt text.
-preflight evaluate \
+auspex evaluate \
   --provider claude \
   --prompt-file testdata/e2e/high-risk-prompt.txt \
   --json
 
 # Simulate UserPromptSubmit; high risk returns provider-compatible block output.
-preflight hook claude user-prompt-submit \
+auspex hook claude user-prompt-submit \
   < testdata/provider-events/claude/user-prompt-submit-high-risk.json
 
 # Create both state and repository evidence.
-preflight checkpoint create --evaluation <id> --json
+auspex checkpoint create --evaluation <id> --json
 
 # Issue a one-time allow decision and consume it once.
-preflight decision allow --evaluation <id> --json
+auspex decision allow --evaluation <id> --json
 
 # Persist a normal turn completion or rate-limit failure fixture.
-preflight hook claude stop < testdata/provider-events/claude/stop.json
-preflight hook claude stop-failure < testdata/provider-events/claude/stop-failure-rate-limit.json
+auspex hook claude stop < testdata/provider-events/claude/stop.json
+auspex hook claude stop-failure < testdata/provider-events/claude/stop-failure-rate-limit.json
 
 # Exercise pause/wake durability without depending on wall-clock sleep.
-preflight pause request --session <id> --reason runway --json
-preflight scheduler run-once --at <timestamp> --json
-preflight status --json
+auspex pause request --session <id> --reason runway --json
+auspex scheduler run-once --at <timestamp> --json
+auspex status --json
 ```
 
 ## 12. Cut order when integration slips
@@ -350,7 +350,7 @@ Never cut:
 ## 13. Final Fable review prompt
 
 ```text
-Review the merged Preflight day-one vertical slice against Preflight_ADD.md.
+Review the merged Auspex day-one vertical slice against Auspex_ADD.md.
 
 Focus only on:
 1. domain/schema contradictions;
@@ -383,7 +383,7 @@ two never drift out of sync.
 |---|---|---|---|
 | contract-integrator | [`agents/contract-integrator.md`](agents/contract-integrator.md) | Fable | Freeze compile-time/persistence contracts; integrate reviewed branches at the end. |
 | foundation | [`agents/foundation.md`](agents/foundation.md) | Cheaper model; Fable for migration/recovery review | Buildable Go application foundation and the SQLite runtime every other package depends on. |
-| claude-provider | [`agents/claude-provider.md`](agents/claude-provider.md) | Fable for hook semantics; cheaper model for parsers/fixtures | Fixture-backed Claude Code hook/status-line normalization into frozen Preflight events. |
+| claude-provider | [`agents/claude-provider.md`](agents/claude-provider.md) | Fable for hook semantics; cheaper model for parsers/fixtures | Fixture-backed Claude Code hook/status-line normalization into frozen Auspex events. |
 | checkpoint | [`agents/checkpoint.md`](agents/checkpoint.md) | Fable | Progress Tree + State Checkpointing (Part A) **and** Repository Checkpoint (Part B); no completion without verified artifact evidence, and checkpoints without mutating the active branch. |
 | predictor | [`agents/predictor.md`](agents/predictor.md) | Fable | Deterministic, explainable, cold-start-safe predictor/policy/authorization loop. |
 | runtime | [`agents/runtime.md`](agents/runtime.md) | Fable for Part A (pause/scheduler); cheaper model for most of Part B (CLI/API) | Graceful Pause + durable wake scheduling (Part A) **and** CLI/API/orchestration wiring the vertical slice (Part B). |

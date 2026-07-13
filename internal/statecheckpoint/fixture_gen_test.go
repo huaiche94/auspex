@@ -5,25 +5,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
 )
 
 // TestGenerateSampleManifestFixture is not a real assertion test; it is a
-// one-shot generator (skipped unless PREFLIGHT_GENERATE_FIXTURES=1) used to
+// one-shot generator (skipped unless AUSPEX_GENERATE_FIXTURES=1) used to
 // produce testdata/checkpoints/state/sample-manifest.json from an ACTUAL
 // Build+Seal+Marshal call, the same "generated from a real run, not
 // hand-typed" discipline checkpoint-b04 established for its own
 // sample-manifest.json fixture. Run once via:
 //
-//	PREFLIGHT_GENERATE_FIXTURES=1 go test ./internal/statecheckpoint/... -run TestGenerateSampleManifestFixture
+//	AUSPEX_GENERATE_FIXTURES=1 go test ./internal/statecheckpoint/... -run TestGenerateSampleManifestFixture
 //
 // then commit the resulting file. Left in the test suite (rather than a
 // throwaway script) so the fixture can be regenerated deterministically if
 // the Manifest shape ever changes.
 func TestGenerateSampleManifestFixture(t *testing.T) {
-	if os.Getenv("PREFLIGHT_GENERATE_FIXTURES") != "1" {
-		t.Skip("set PREFLIGHT_GENERATE_FIXTURES=1 to (re)generate testdata/checkpoints/state/sample-manifest.json")
+	if os.Getenv("AUSPEX_GENERATE_FIXTURES") != "1" {
+		t.Skip("set AUSPEX_GENERATE_FIXTURES=1 to (re)generate testdata/checkpoints/state/sample-manifest.json")
 	}
 
 	usedPct := 61.4
@@ -44,7 +44,7 @@ func TestGenerateSampleManifestFixture(t *testing.T) {
 		Artifacts: []statecheckpoint.ArtifactSummary{
 			{
 				ID:               "artifact-add",
-				URI:              "file:Preflight_ADD.md",
+				URI:              "file:Auspex_ADD.md",
 				MediaType:        "text/markdown",
 				Bytes:            128442,
 				SHA256:           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
@@ -55,7 +55,7 @@ func TestGenerateSampleManifestFixture(t *testing.T) {
 			RepositoryID:     "0198f5d8-0000-7000-8000-000000000001",
 			WorktreeID:       "0198f5d8-0000-7000-8000-000000000002",
 			GitHead:          "f1a83bc123",
-			Branch:           "docs/preflight-add",
+			Branch:           "docs/auspex-add",
 			IndexDiffHash:    "sha256:index-diff-hash",
 			WorktreeDiffHash: "sha256:worktree-diff-hash",
 		},

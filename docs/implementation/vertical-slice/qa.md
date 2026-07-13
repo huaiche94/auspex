@@ -35,7 +35,7 @@
   execution DAG). Not created this wave.
 - **Governance docs** (qa-08): `SECURITY.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `GOVERNANCE.md` at the repository root are
-  grounded in `Preflight_ADD.md` §30.7 (Governance) and §30.8 (Security
+  grounded in `Auspex_ADD.md` §30.7 (Governance) and §30.8 (Security
   disclosure) verbatim where the ADD specifies concrete content, and
   cross-reference each other rather than duplicating normative text —
   see that node's log below for exact provenance of each file's
@@ -139,7 +139,7 @@ findings:
     title: "No production code path connects a persisted claude-provider v1.Event to internal/progress.CompleteNode.Run — the two components qa-04 was asked to integrate-test are wired together only inside this test file's own TEST-ONLY glue, not in production"
     file: "internal/orchestrator/hooks.go (HandleStop/HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize+persist and stop there — HandleStop's own doc comment: 'Full Progress Tree/Git/artifact reconciliation... is outcome labeling depth beyond this node's scope'); internal/telemetry/claude/normalizer.go (no producer ever assigns Event.TaskID or Event.ProgressNodeID — every event's envelope() helper sets only SessionID); internal/progress/complete_node.go's CompleteNodeInput and internal/app/ports.go's CompleteNodeRequest (both frozen to exactly {NodeID, IdempotencyKey, Artifacts[, RepositoryCheckpointID]} — no v1.Event/EventID/EventType field anywhere); internal/progress/node_store.go's Node.ProviderNodeID field (stored and read back, confirmed via grep, but no code anywhere looks a node up BY ProviderNodeID); internal/app/wiring/wiring.go (wires no bridge between internal/telemetry/claude and internal/progress; Services.ProgressTree is still just the bare frozen interface, unimplemented, per that package's own doc comment)."
     reproduction: "go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v — parses+normalizes a real Stop fixture and asserts ev.TaskID==\"\" and ev.ProgressNodeID==\"\" (both true today); combined with a repo-wide grep (documented in this file's own package doc comment) for any file importing both internal/telemetry/claude and internal/progress (zero matches) or pkg/protocol/v1 and internal/progress (zero matches), and for any adapter/bridge/consumer/dispatcher file (none exist)."
-    expected_invariant: "Preflight_ADD.md's Progress Tree is meant to be driven forward by real provider observations (a provider.turn.completed signal is exactly the kind of real-world event that should be able to trigger a node's completion) — Constitution §6.1 ('Progress Tree is the canonical durable task state... never an agent's own claim of done') implies SOME real signal must be able to drive a real completion, not just a test harness hand-constructing a CompleteNodeInput. Today, nothing does: the event pipeline (claude-provider) and the completion pipeline (checkpoint/progress) are both individually correct and individually well-tested, but there is a genuine missing middle layer between them. This is exactly the kind of integration-only gap qa-04 was chartered to find, per its own task brief ('an event type or field mapping mismatch, a case where claude-provider's real events don't actually carry information checkpoint's ordering-check logic expects')."
+    expected_invariant: "Auspex_ADD.md's Progress Tree is meant to be driven forward by real provider observations (a provider.turn.completed signal is exactly the kind of real-world event that should be able to trigger a node's completion) — Constitution §6.1 ('Progress Tree is the canonical durable task state... never an agent's own claim of done') implies SOME real signal must be able to drive a real completion, not just a test harness hand-constructing a CompleteNodeInput. Today, nothing does: the event pipeline (claude-provider) and the completion pipeline (checkpoint/progress) are both individually correct and individually well-tested, but there is a genuine missing middle layer between them. This is exactly the kind of integration-only gap qa-04 was chartered to find, per its own task brief ('an event type or field mapping mismatch, a case where claude-provider's real events don't actually carry information checkpoint's ordering-check logic expects')."
     owning_role: "contract-integrator (a new cross-component port/field is needed on the frozen v1.Event/CompleteNodeRequest contract, or a documented decision that TaskID/ProgressNodeID resolution happens via a different, not-yet-built lookup path — Constitution §4.2 reserves pkg/protocol/v1/** and internal/app/ports.go exclusively to this role) in coordination with claude-provider (would need to populate TaskID/ProgressNodeID on produced events once a resolution mechanism exists) and checkpoint (whichever role builds the actual consumer/adapter). Not routed as P0: every individual component this gap spans is itself correct and passes its own tests, no existing invariant is violated, and vertical-slice's frozen DAG never assigned any node the explicit job of building this adapter this wave — it is a forward-looking integration gap this node exists to surface, not a regression."
   - severity: P2
     title: "checkpoint-a07's duplicate/out-of-order semantics hold correctly when driven by REAL claude-provider events end-to-end, not just hand-built CompleteNodeInput values — no defect found in either component's own logic"
@@ -228,7 +228,7 @@ findings:
     title: "Secret-shaped content in a TRACKED file's staged/unstaged diff is never filtered by internal/redact — only the UNTRACKED-file archive is scanned"
     file: "internal/repocheckpoint/capture.go (Capture calls gitClient.DiffPatch for staged/unstaged content with no redact.Scan* call anywhere in that path); internal/repocheckpoint/untracked.go's buildUntrackedArchive is the ONLY call site that invokes internal/redact"
     reproduction: "go test ./internal/integrationtest/... -run TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered -v — stages a tracked file whose new content is a GitHub-token-shaped string (`ghp_...` 38-char suffix), runs a real repocheckpoint.Capture, then scans the resulting staged.patch.gz directly; the secret-shaped string is found verbatim, unfiltered, confirmed by the github_token detector firing on the decompressed patch bytes."
-    expected_invariant: "Preflight_ADD.md §19.5/§27.8's secret-scan default policy and Constitution §7 rule 2 (raw prompts and sensitive content are not persisted/exposed by default) read most naturally as applying to everything a Repository Checkpoint captures, not only the untracked-file archive. A secret pasted into a tracked config file and staged (a completely ordinary accidental-commit scenario) currently survives, unredacted, in every checkpoint artifact from that point forward."
+    expected_invariant: "Auspex_ADD.md §19.5/§27.8's secret-scan default policy and Constitution §7 rule 2 (raw prompts and sensitive content are not persisted/exposed by default) read most naturally as applying to everything a Repository Checkpoint captures, not only the untracked-file archive. A secret pasted into a tracked config file and staged (a completely ordinary accidental-commit scenario) currently survives, unredacted, in every checkpoint artifact from that point forward."
     owning_role: "checkpoint (Part B / repocheckpoint) — note this is NOT a new discovery: internal/repocheckpoint/untracked_test.go's own TestCapture_Untracked_SecretScan_NeverAppliesToTrackedDiffContent already documents this exact boundary as a deliberate, acknowledged scope decision by checkpoint-b06, explicitly naming 'a future qa-05-style scan of patch content' as the follow-up. This qa-05 finding is that follow-up: independently re-confirming the gap is real at the integration layer (not just asserted in a unit test's comment) and formally routing it for a scope decision — either an ADR-backed accepted risk (patches are diff-of-tracked-content, a different problem from untracked-file capture) or a follow-up node extending internal/redact's scan to patch content before it is written to staged.patch.gz/unstaged.patch.gz. Not treated as P0 here because it is a pre-existing, already-documented, already-shipped scope boundary, not a new regression, and because ADD §19.5's secret-scan bullet appears under the untracked-file-archive section specifically, not the patch-capture section — so it is plausibly in-scope-as-designed rather than a broken invariant. contract-integrator should confirm which reading is correct; until then this is P1 (must resolve before demo, since 'checkpoint before a high-risk turn' is exactly the scenario where a user's tracked-file secret could realistically be present)."
   - severity: P2
     title: "claude-provider-07's own privacy gate correctly scoped itself to package-level unit-test access; qa-05 is the first node to validate the real on-disk SQLite file/WAL and a real Repository Checkpoint artifact directory end-to-end for raw-prompt/secret leakage — no gap found, but this closes a previously-open scope item, recorded here for traceability rather than as a defect."
@@ -248,7 +248,7 @@ validation:
   - "actionlint .github/workflows/ci.yml   # 0 findings (installed via go install github.com/rhysd/actionlint/cmd/actionlint@latest)"
   - "task fmt   # PASS, no unformatted files"
   - "task lint   # go vet + golangci-lint run ./... -> 0 issues"
-  - "task build   # go build -o bin/preflight ./cmd/preflight -> succeeds"
+  - "task build   # go build -o bin/auspex ./cmd/auspex -> succeeds"
   - "task test   # go test -race ./... -> all 18 packages PASS (14 with tests, 4 no-test-files packages)"
   - "task test:short   # go test ./... (no -race, the Windows-job path) -> all PASS"
 commit: c523650
@@ -345,8 +345,8 @@ artifacts:
   - GOVERNANCE.md
 validation:
   - "test -s SECURITY.md && test -s CONTRIBUTING.md && test -s CODE_OF_CONDUCT.md && test -s GOVERNANCE.md   # all four exist and are non-empty (113/136/140/124 lines respectively)"
-  - "manual doc review against Preflight_ADD.md §30.7 (Governance) and §30.8 (Security disclosure), and against README.md's existing 'Contributing' section and Tech stack table, for contradictions -> none found"
-  - "grep -rn \"CLA\" --include=*.md .   # only CONTRIBUTING.md/GOVERNANCE.md/Preflight_ADD.md mention it, all consistent ('no CLA')"
+  - "manual doc review against Auspex_ADD.md §30.7 (Governance) and §30.8 (Security disclosure), and against README.md's existing 'Contributing' section and Tech stack table, for contradictions -> none found"
+  - "grep -rn \"CLA\" --include=*.md .   # only CONTRIBUTING.md/GOVERNANCE.md/Auspex_ADD.md mention it, all consistent ('no CLA')"
 commit: a4ab0b2
 next_action: none — qa-01 and qa-08 were this wave's full qa assignment; STOP per task instruction
 assumptions:
@@ -367,7 +367,7 @@ assumptions:
     project's own existing internal bar."
   - "CONTRIBUTING.md requires DCO sign-off (`git commit -s`) and states
     'no CLA' per ADD §30.7 verbatim ('DCO sign-off; no CLA initially').
-    It also requires reading CONSTITUTION.md, Preflight_ADD.md, and
+    It also requires reading CONSTITUTION.md, Auspex_ADD.md, and
     AGENTS.md before proposing changes and describes the
     milestone-gating rule, both copied from README.md's existing
     'Contributing' section (not contradicted, only expanded with the
@@ -482,7 +482,7 @@ assumptions:
     using internal/redact.ScanContent, and on a match replaces the ENTIRE
     line body with a fixed, non-echoing placeholder constant:
     `redactedLinePlaceholder = \"[REDACTED: secret-shaped content removed
-    by preflight checkpoint capture]\"`. Line prefix byte and trailing
+    by auspex checkpoint capture]\"`. Line prefix byte and trailing
     terminator are preserved. This was a deliberate redact-in-place
     design choice (over skip-with-manifest-annotation) specifically so
     checkpoint-b08's restore-dry-run (`git apply --check`) keeps working
@@ -569,7 +569,7 @@ assumptions:
     quota pressure never actually improved) a Graceful Pause with full
     wake recovery — six steps that tell one story, not six independent
     fixtures stapled together."
-  - "Step 2 (prompt preflight block) reuses runtime-b06's own documented
+  - "Step 2 (prompt auspex block) reuses runtime-b06's own documented
     technique (internal/orchestrator/decision_realauth_test.go's
     newHighRiskDataSource) for reliably driving the REAL predictor
     pipeline (scope/token/quota/risk/policy, all real) into the critical
@@ -624,7 +624,7 @@ findings:
       role's work — no defect found in this pass."
     file: "internal/integrationtest/e2e_highrisk_test.go"
     reproduction: "N/A — not a defect. go test ./internal/integrationtest/... -run E2EHighRisk -v is the closure evidence."
-    expected_invariant: "The literal vertical-slice demo scenario (status-line -> preflight block -> checkpoint -> one-time allow -> Stop -> pause/wake recovery) works end-to-end against real implementations throughout."
+    expected_invariant: "The literal vertical-slice demo scenario (status-line -> auspex block -> checkpoint -> one-time allow -> Stop -> pause/wake recovery) works end-to-end against real implementations throughout."
     owning_role: "qa (this node) — informational; no action needed from another role."
 ```
 
@@ -874,42 +874,42 @@ go test ./... -race            -> ALL 34 packages PASS (32 with real
 Full per-package `go test ./... -race` output (this run):
 
 ```text
-ok  	github.com/huaiche94/preflight/cmd/preflight	1.449s
-?   	github.com/huaiche94/preflight/internal/app	[no test files]
-ok  	github.com/huaiche94/preflight/internal/app/wiring	11.339s
-ok  	github.com/huaiche94/preflight/internal/artifacts	1.968s
-?   	github.com/huaiche94/preflight/internal/buildinfo	[no test files]
-ok  	github.com/huaiche94/preflight/internal/cli	3.271s
-ok  	github.com/huaiche94/preflight/internal/clock	2.010s
-ok  	github.com/huaiche94/preflight/internal/config	2.547s
-ok  	github.com/huaiche94/preflight/internal/domain	1.422s
-ok  	github.com/huaiche94/preflight/internal/evaluation	127.047s
-ok  	github.com/huaiche94/preflight/internal/features	1.542s
-ok  	github.com/huaiche94/preflight/internal/gitx	26.602s
-ok  	github.com/huaiche94/preflight/internal/hooks/claude	1.719s
-ok  	github.com/huaiche94/preflight/internal/idgen	1.904s
-ok  	github.com/huaiche94/preflight/internal/integrationtest	(cached)
-ok  	github.com/huaiche94/preflight/internal/lock	2.823s
-ok  	github.com/huaiche94/preflight/internal/orchestrator	10.818s
-ok  	github.com/huaiche94/preflight/internal/paths	1.901s
-ok  	github.com/huaiche94/preflight/internal/pause	39.852s
-ok  	github.com/huaiche94/preflight/internal/policy	1.658s
-ok  	github.com/huaiche94/preflight/internal/predictor	1.969s
-ok  	github.com/huaiche94/preflight/internal/predictor/quota	1.498s
-ok  	github.com/huaiche94/preflight/internal/predictor/risk	1.608s
-ok  	github.com/huaiche94/preflight/internal/predictor/runway	1.403s
-ok  	github.com/huaiche94/preflight/internal/predictor/scope	1.455s
-ok  	github.com/huaiche94/preflight/internal/predictor/token	1.471s
-ok  	github.com/huaiche94/preflight/internal/progress	43.714s
-ok  	github.com/huaiche94/preflight/internal/providers/claude	1.335s
-ok  	github.com/huaiche94/preflight/internal/redact	37.609s
-ok  	github.com/huaiche94/preflight/internal/repocheckpoint	46.425s
-ok  	github.com/huaiche94/preflight/internal/scheduler	26.277s
-ok  	github.com/huaiche94/preflight/internal/statecheckpoint	25.590s
-ok  	github.com/huaiche94/preflight/internal/storage/sqlite	16.658s
-ok  	github.com/huaiche94/preflight/internal/telemetry/claude	9.739s
-ok  	github.com/huaiche94/preflight/internal/testutil/fakes	1.283s
-ok  	github.com/huaiche94/preflight/pkg/protocol/v1	1.269s
+ok  	github.com/huaiche94/auspex/cmd/auspex	1.449s
+?   	github.com/huaiche94/auspex/internal/app	[no test files]
+ok  	github.com/huaiche94/auspex/internal/app/wiring	11.339s
+ok  	github.com/huaiche94/auspex/internal/artifacts	1.968s
+?   	github.com/huaiche94/auspex/internal/buildinfo	[no test files]
+ok  	github.com/huaiche94/auspex/internal/cli	3.271s
+ok  	github.com/huaiche94/auspex/internal/clock	2.010s
+ok  	github.com/huaiche94/auspex/internal/config	2.547s
+ok  	github.com/huaiche94/auspex/internal/domain	1.422s
+ok  	github.com/huaiche94/auspex/internal/evaluation	127.047s
+ok  	github.com/huaiche94/auspex/internal/features	1.542s
+ok  	github.com/huaiche94/auspex/internal/gitx	26.602s
+ok  	github.com/huaiche94/auspex/internal/hooks/claude	1.719s
+ok  	github.com/huaiche94/auspex/internal/idgen	1.904s
+ok  	github.com/huaiche94/auspex/internal/integrationtest	(cached)
+ok  	github.com/huaiche94/auspex/internal/lock	2.823s
+ok  	github.com/huaiche94/auspex/internal/orchestrator	10.818s
+ok  	github.com/huaiche94/auspex/internal/paths	1.901s
+ok  	github.com/huaiche94/auspex/internal/pause	39.852s
+ok  	github.com/huaiche94/auspex/internal/policy	1.658s
+ok  	github.com/huaiche94/auspex/internal/predictor	1.969s
+ok  	github.com/huaiche94/auspex/internal/predictor/quota	1.498s
+ok  	github.com/huaiche94/auspex/internal/predictor/risk	1.608s
+ok  	github.com/huaiche94/auspex/internal/predictor/runway	1.403s
+ok  	github.com/huaiche94/auspex/internal/predictor/scope	1.455s
+ok  	github.com/huaiche94/auspex/internal/predictor/token	1.471s
+ok  	github.com/huaiche94/auspex/internal/progress	43.714s
+ok  	github.com/huaiche94/auspex/internal/providers/claude	1.335s
+ok  	github.com/huaiche94/auspex/internal/redact	37.609s
+ok  	github.com/huaiche94/auspex/internal/repocheckpoint	46.425s
+ok  	github.com/huaiche94/auspex/internal/scheduler	26.277s
+ok  	github.com/huaiche94/auspex/internal/statecheckpoint	25.590s
+ok  	github.com/huaiche94/auspex/internal/storage/sqlite	16.658s
+ok  	github.com/huaiche94/auspex/internal/telemetry/claude	9.739s
+ok  	github.com/huaiche94/auspex/internal/testutil/fakes	1.283s
+ok  	github.com/huaiche94/auspex/pkg/protocol/v1	1.269s
 ```
 
 Zero regressions, zero flaky failures observed across this run or the
@@ -1004,7 +1004,7 @@ unsafe.
      independently).
    - Reproduction: `ls LICENSE NOTICE 2>&1` at the repository root — both
      report "No such file or directory."
-   - Expected invariant: `Preflight_ADD.md` §30.1's "Required files" list
+   - Expected invariant: `Auspex_ADD.md` §30.1's "Required files" list
      and `CONTRIBUTING.md`/`GOVERNANCE.md` (both qa-08's own deliverables)
      name Apache-2.0 as the project license by name, consistent with
      `README.md`'s Tech stack table — but no actual `LICENSE` file backs

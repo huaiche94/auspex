@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/domain"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // fixedClock is a deterministic domain.Clock fake so tests never depend on

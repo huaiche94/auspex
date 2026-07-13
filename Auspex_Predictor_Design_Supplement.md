@@ -1,4 +1,4 @@
-# Preflight Predictor Design Supplement
+# Auspex Predictor Design Supplement
 
 > Status: Accepted — the Forecast-layer gap identified in this document
 > (Scope Estimation feeding Risk Estimation with no explicit Token/Quota
@@ -6,13 +6,13 @@
 > `docs/adr/0041-predictor-forecast-layer.md`. The four pipeline
 > interfaces below are frozen in `internal/app/ports.go`; no
 > implementation exists yet.\
-> Purpose: Companion document to `Preflight_ADD.md`\
+> Purpose: Companion document to `Auspex_ADD.md`\
 > Scope: Scope Estimation, Token Prediction, Risk Estimation, and
 > Checkpoint Decision
 
 # Overview
 
-This document defines the long-term design of the Preflight prediction
+This document defines the long-term design of the Auspex prediction
 system.
 
 The prediction engine is responsible for answering one question **before

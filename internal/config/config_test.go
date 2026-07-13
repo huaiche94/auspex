@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/config"
+	"github.com/huaiche94/auspex/internal/config"
 )
 
 const validDefaults = `
-schema_version: preflight.config.v1
+schema_version: auspex.config.v1
 runtime:
   daemon:
     enabled: true
@@ -35,7 +35,7 @@ func TestLoad_DefaultsOnly(t *testing.T) {
 
 func TestLoad_Precedence_HigherSourceWins(t *testing.T) {
 	defaults := `
-schema_version: preflight.config.v1
+schema_version: auspex.config.v1
 runtime:
   request_timeout_ms: 2000
 `
@@ -88,7 +88,7 @@ runtime:
 
 func TestLoad_Precedence_PartialOverride_LowerLayerFieldsSurvive(t *testing.T) {
 	defaults := `
-schema_version: preflight.config.v1
+schema_version: auspex.config.v1
 runtime:
   request_timeout_ms: 2000
 privacy:
@@ -155,7 +155,7 @@ func TestLoad_MissingSchemaVersion_Errors(t *testing.T) {
 
 func TestLoad_WrongSchemaVersion_Errors(t *testing.T) {
 	_, err := config.Load([]config.Layer{
-		{Source: config.SourceDefaults, Bytes: []byte("schema_version: preflight.config.v2\n")},
+		{Source: config.SourceDefaults, Bytes: []byte("schema_version: auspex.config.v2\n")},
 	}, config.Options{})
 	if !errors.Is(err, config.ErrInvalidSchemaVersion) {
 		t.Errorf("err = %v, want ErrInvalidSchemaVersion", err)
@@ -168,7 +168,7 @@ func TestLoad_WrongSchemaVersion_Errors(t *testing.T) {
 
 func TestLoad_UnknownField_WarnByDefault(t *testing.T) {
 	cfg, err := config.Load([]config.Layer{
-		{Source: config.SourceDefaults, Bytes: []byte("schema_version: preflight.config.v1\nfrobnicate: true\n")},
+		{Source: config.SourceDefaults, Bytes: []byte("schema_version: auspex.config.v1\nfrobnicate: true\n")},
 	}, config.Options{})
 	if err != nil {
 		t.Fatalf("Load: %v (want success under default warn policy)", err)
@@ -180,7 +180,7 @@ func TestLoad_UnknownField_WarnByDefault(t *testing.T) {
 
 func TestLoad_UnknownField_StrictErrors(t *testing.T) {
 	_, err := config.Load([]config.Layer{
-		{Source: config.SourceDefaults, Bytes: []byte("schema_version: preflight.config.v1\nfrobnicate: true\n")},
+		{Source: config.SourceDefaults, Bytes: []byte("schema_version: auspex.config.v1\nfrobnicate: true\n")},
 	}, config.Options{UnknownFieldPolicy: config.StrictUnknownFields})
 	if !errors.Is(err, config.ErrUnknownFields) {
 		t.Errorf("err = %v, want ErrUnknownFields", err)
@@ -189,7 +189,7 @@ func TestLoad_UnknownField_StrictErrors(t *testing.T) {
 
 func TestLoad_KnownSections_NoWarning(t *testing.T) {
 	full := `
-schema_version: preflight.config.v1
+schema_version: auspex.config.v1
 runtime:
   daemon:
     enabled: true
@@ -286,7 +286,7 @@ func TestLoad_EndToEnd_FileBackedPrecedenceChain(t *testing.T) {
 	repoConfigPath := filepath.Join(dir, "repo-config.yaml")
 	repoLocalPath := filepath.Join(dir, "repo-local.yaml") // intentionally not written: absent
 
-	mustWrite(t, globalPath, "schema_version: preflight.config.v1\nruntime:\n  request_timeout_ms: 111\n")
+	mustWrite(t, globalPath, "schema_version: auspex.config.v1\nruntime:\n  request_timeout_ms: 111\n")
 	mustWrite(t, repoConfigPath, "runtime:\n  request_timeout_ms: 222\n")
 
 	globalLayer, err := config.LoadFile(config.SourceGlobalUser, globalPath)

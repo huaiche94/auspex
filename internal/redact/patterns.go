@@ -1,4 +1,4 @@
-// patterns.go: the exact "Content detectors" list from Preflight_ADD.md
+// patterns.go: the exact "Content detectors" list from Auspex_ADD.md
 // §27.8, transcribed one detector per bullet:
 //
 //	bearer token

@@ -70,9 +70,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/scheduler"
 )
 
 // ResumeValidationReasonCode is this package's own closed vocabulary for
@@ -644,7 +644,7 @@ type WakeJobRescheduler interface {
 // precondition scheduler.Store.Fail itself requires (ErrCodeConflict
 // otherwise) — which in practice means this is called from within the
 // scheduler-driven wake pipeline (a09's own claim-then-drive loop), not
-// from an arbitrary manual `preflight resume` invocation that never
+// from an arbitrary manual `auspex resume` invocation that never
 // claimed a lease in the first place; a manual resume's quota-unsafe
 // verdict is still correctly reflected on the PAUSE RECORD via
 // Resume/Verdict regardless of whether a wake job reschedule applies.

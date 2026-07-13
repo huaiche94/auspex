@@ -18,8 +18,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
 )
 
 // CaptureRequest is the input to Capture.
@@ -40,7 +40,7 @@ type CaptureRequest struct {
 	// ArtifactsRoot is the directory under which this checkpoint's own
 	// artifact directory (ArtifactsRoot/CheckpointID/) is written,
 	// matching ADD §19.2's
-	// `<UserDataDir>/Preflight/repositories/<repo-id>/checkpoints/<id>/`
+	// `<UserDataDir>/Auspex/repositories/<repo-id>/checkpoints/<id>/`
 	// layout one level up — the caller (runtime role) owns resolving
 	// UserDataDir itself; this package only needs a root to write under.
 	ArtifactsRoot string

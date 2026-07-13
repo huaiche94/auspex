@@ -3,7 +3,7 @@ package pause
 import (
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Event names the reason a transition is being attempted. Events are this
@@ -263,7 +263,7 @@ func Apply(from domain.PauseStatus, event Event) (domain.PauseStatus, error) {
 
 // ValidEvents returns every event that has a defined transition from
 // status, in a deterministic (map-iteration-independent) order. Useful for
-// diagnostics (`preflight doctor`-style introspection) and tests that want
+// diagnostics (`auspex doctor`-style introspection) and tests that want
 // to assert the full outbound edge set for a state rather than probing one
 // event at a time.
 func ValidEvents(status domain.PauseStatus) []Event {

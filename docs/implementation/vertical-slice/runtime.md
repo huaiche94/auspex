@@ -57,7 +57,7 @@ touched by this artifact and has no entry here yet.
 
 - **CLI package shape**: `internal/cli.NewRootCmd() *cobra.Command` is the
   single exported entry point, mirroring the constructor convention
-  foundation-01 established directly in `cmd/preflight/main.go`
+  foundation-01 established directly in `cmd/auspex/main.go`
   (`newRootCmd()`/`newVersionCmd()`, unexported because that file is the
   binary's own package). Because `internal/cli` is a separate package
   intended for a future root-wiring step to import, `NewRootCmd` is
@@ -88,16 +88,16 @@ touched by this artifact and has no entry here yet.
   three-level subtree, not a single command, and had enough of its own
   naming-convention context — see below — to warrant its own file and its
   own package doc paragraph).
-- **`cmd/preflight/main.go` is untouched.** Per `agents/runtime.md`
-  ("Do not edit `cmd/preflight/main.go`; the contract-integrator and
+- **`cmd/auspex/main.go` is untouched.** Per `agents/runtime.md`
+  ("Do not edit `cmd/auspex/main.go`; the contract-integrator and
   foundation roles integrate root wiring. Add command constructors under
   owned paths.") and the Wave 3 task brief, this node only builds
-  `internal/cli`'s constructors. `cmd/preflight/main.go` still wires only
+  `internal/cli`'s constructors. `cmd/auspex/main.go` still wires only
   `version` (from foundation-01, Wave 1) and does not yet call
   `cli.NewRootCmd()` — that integration is explicitly out of scope for
   this role and belongs to `contract-integrator`/`foundation` in a later
   step. The DAG's validation command was run against the *existing*
-  `cmd/preflight` binary (still `version`-only) to confirm `internal/cli`
+  `cmd/auspex` binary (still `version`-only) to confirm `internal/cli`
   compiles cleanly into the module and does not break the existing build;
   `internal/cli`'s own `--help` behavior (the full P0 tree) is verified
   directly at the package level in `internal/cli/root_test.go`'s
@@ -110,7 +110,7 @@ touched by this artifact and has no entry here yet.
 ## Naming-convention judgment call: kebab-case hook subcommands
 
 `docs/implementation/vertical-slice/wave2-analysis/ADR_Recommendations.md` REC-03
-documents a real, still-open discrepancy: `Preflight_ADD.md` Appendix E.3
+documents a real, still-open discrepancy: `Auspex_ADD.md` Appendix E.3
 spells Claude Code hook subcommands in PascalCase (e.g. `UserPromptSubmit`,
 matching Claude's own hook-event-name casing), while `agents/runtime.md`'s
 own P0 command list, this node's DAG validation command
@@ -121,13 +121,13 @@ command tree as the first place this decision becomes real, and recommends
 resolving it via ADR before this node, not after — that ADR has not been
 authored as of this commit.
 
-This node follows **kebab-case** (`preflight hook claude
+This node follows **kebab-case** (`auspex hook claude
 user-prompt-submit`, `stop-failure`), for two independent reasons:
 
 1. Per Constitution §2's document priority order, `agents/runtime.md` (a
    role-scoped operational document, tier 4) is the most specific document
    that names this role's actual command surface, and it uses kebab-case
-   verbatim. `Preflight_ADD.md` (tier 2) is architecturally senior in
+   verbatim. `Auspex_ADD.md` (tier 2) is architecturally senior in
    general, but Constitution §1's "one authoritative document per subject"
    table names no single sole source of truth for CLI subcommand string
    casing specifically, and three independently-authored frozen documents
@@ -136,7 +136,7 @@ user-prompt-submit`, `stop-failure`), for two independent reasons:
    (`integrations/claude/hooks.json`, per REC-03, already uses kebab-case
    too).
 2. This node's own DAG validation command
-   (`go build ./internal/cli/... && preflight --help`) does not
+   (`go build ./internal/cli/... && auspex --help`) does not
    independently test subcommand casing, but the task brief that assigned
    this node was explicit: use kebab-case, matching agents/runtime.md's own
    P0 list, and document the call rather than silently inventing a third
@@ -144,7 +144,7 @@ user-prompt-submit`, `stop-failure`), for two independent reasons:
 
 **This is not a resolution of REC-03.** No ADR has been written; `runtime`
 has no authority to accept one (Constitution §3.2 — only
-`contract-integrator` accepts ADRs). If `Preflight_ADD.md` Appendix E.3 is
+`contract-integrator` accepts ADRs). If `Auspex_ADD.md` Appendix E.3 is
 later confirmed as the intended casing via an accepted ADR, the fix is
 mechanical: rename the four `Use` strings in
 `internal/cli/hook.go`'s `newHookClaudeCmd` and update
@@ -172,12 +172,12 @@ validation:
   - "go build ./internal/cli/...   # OK"
   - "go vet ./internal/cli/...   # OK"
   - "go test ./internal/cli/... -race -v   # all PASS"
-  - "go build -o <tmp> ./cmd/preflight && <tmp> --help   # OK (existing version-only binary; unaffected by this package)"
+  - "go build -o <tmp> ./cmd/auspex && <tmp> --help   # OK (existing version-only binary; unaffected by this package)"
   - "golangci-lint run ./...   # 0 issues, whole repo"
 commit: a6a3eaa
 next_action: runtime-b02 (App wiring) — blocked/not started this wave per explicit instruction to stop once runtime-b01 is Validated; Part A (internal/pause/**, internal/scheduler/**) also not started this wave, out of scope per task brief
 assumptions:
-  - "Kebab-case for `preflight hook claude ...` subcommands — see the
+  - "Kebab-case for `auspex hook claude ...` subcommands — see the
     dedicated section above. Documented, not silent; REC-03 remains open
     and should still be resolved by an accepted ADR."
   - "Every command below `version` is an honest stub returning
@@ -185,7 +185,7 @@ assumptions:
     any real behavior, per explicit task instruction: none of
     orchestrator/evaluation/checkpoint/pause services exist yet this wave,
     and the DAG's own validation command
-    (`go build ./internal/cli/... && preflight --help`) only requires
+    (`go build ./internal/cli/... && auspex --help`) only requires
     `go build` and `--help` to work, not working commands."
   - "internal/cli/root.go groups most P0 leaf commands (version, init,
     evaluate, decision, checkpoint, progress, state, pause, resume,
@@ -201,9 +201,9 @@ assumptions:
     real business logic lands behind each command in runtime-b02 onward
     and the single-file grouping stops being the natural shape."
   - "NewRootCmd is exported (capital N) unlike foundation-01's
-    unexported newRootCmd in cmd/preflight/main.go, because
+    unexported newRootCmd in cmd/auspex/main.go, because
     internal/cli is a separate package a future root-wiring step needs to
-    import; cmd/preflight/main.go's own newRootCmd stays package-private
+    import; cmd/auspex/main.go's own newRootCmd stays package-private
     since nothing outside that package needs it. Both conventions coexist
     correctly per Go visibility rules; this is not a contradiction of
     foundation's established pattern, just the same pattern applied at a
@@ -381,7 +381,7 @@ blockers:
   into this package if several suites independently need the same thing.
 - **For contract-integrator/foundation (root wiring)**: the intended
   binary composition is `wiring.New(Services{...real impls...})` followed
-  by `app.RootCmd()`. `cmd/preflight/main.go` remains untouched by this
+  by `app.RootCmd()`. `cmd/auspex/main.go` remains untouched by this
   role per agents/runtime.md.
 - **For runtime-b03+ (this role)**: replace `RootCmd`'s direct
   `cli.NewRootCmd()` call by passing `a.services`' interfaces into the
@@ -455,7 +455,7 @@ plumbing built on top of runtime-b02's existing wiring container.
 - `internal/pause/doc.go` — package doc reconciling three documents'
   state-name vocabularies onto the twelve frozen `domain.PauseStatus`
   wire strings: agents/runtime.md's "Required state path" prose,
-  `Preflight_ADD.md` §20.5's mermaid diagram, and the frozen enum
+  `Auspex_ADD.md` §20.5's mermaid diagram, and the frozen enum
   itself (`internal/domain/status.go`, verified by
   `CONTRACT_FREEZE.md`). Several of the prose documents' named steps
   (`observing`/`Active`, `safe_point_reached`, `persisting`, `wake_due`,
@@ -1518,7 +1518,7 @@ assumptions:
   - "RescheduleWakeJobOnQuotaUnsafe requires the caller to already hold the
     wake job's lease (scheduler.Store.Fail's own precondition) — correct
     for the scheduler-driven wake pipeline (a09's scope) but not applicable
-    to a manual `preflight resume` invocation that never claimed a lease;
+    to a manual `auspex resume` invocation that never claimed a lease;
     a manual resume's quota-unsafe verdict is still correctly reflected on
     the PAUSE RECORD via Resume/Verdict regardless."
   - "PausedWorkPaths (the paths RepositoryCompatibility's overlap check
@@ -1668,7 +1668,7 @@ blockers: []
 
 Researched first whether `app.TurnInterrupter`/`app.SessionResumer`
 (`internal/app/ports.go`) carry any additional frozen behavioral contract
-beyond their bare method signatures — checked `Preflight_ADD.md` §9.10,
+beyond their bare method signatures — checked `Auspex_ADD.md` §9.10,
 §20.6 Phase 4, §20.15, §28.4, `CONTRACT_FREEZE.md`, and
 `agents/claude-provider.md`'s own stretch-goal section. Confirmed: none.
 Both are deliberately narrow, single-method interfaces with no doc
@@ -1722,7 +1722,7 @@ next_action: none named for this node in the DAG ("None" in the Blockers column)
 assumptions:
   - "Neither interface has additional frozen behavioral invariants beyond
     the bare signature — confirmed by direct research against
-    Preflight_ADD.md/CONTRACT_FREEZE.md/agents/claude-provider.md before
+    Auspex_ADD.md/CONTRACT_FREEZE.md/agents/claude-provider.md before
     writing the suite, not assumed. The suite therefore deliberately tests
     only the properties internal/pause's own call sites actually rely on,
     not speculative invariants no document states."
@@ -1737,7 +1737,7 @@ blockers: []
 ### runtime-b06: decision allow/deny wired to real EvaluationService
 
 Wired the REAL `internal/evaluation.Service` (predictor-09/10, both
-integrated on `main`) into `preflight decision allow`/`decision deny`,
+integrated on `main`) into `auspex decision allow`/`decision deny`,
 replacing runtime-b03's fake — a hard dependency per the DAG note, since
 only real, storage-backed `ConsumeAuthorization` can prove the
 replay-rejection guarantee end to end rather than merely simulating it.
@@ -2027,7 +2027,7 @@ precision. Findings:
   `internal/cli/errors.go` had exactly one helper (`notImplemented`)
   before this node, no JSON-rendering path at all.
 - **Fix**: `internal/cli/errors.go` gained `SchemaVersionError`
-  (`"preflight.error.v1"`), `RenderErrorJSON` (any error -> the frozen
+  (`"auspex.error.v1"`), `RenderErrorJSON` (any error -> the frozen
   envelope, degrading a non-`*domain.Error` to `ErrCodeInternal` rather
   than producing nothing), and `WithJSONErrorRendering` (walks a command
   tree, wraps every leaf's `RunE` to ALSO write the JSON envelope to
@@ -2243,7 +2243,7 @@ The second gap, per the task's item 4 audit: agents/runtime.md Part B's
 (confirmed directly, file:line, before concluding "no gap" — not assumed).
 "process exit codes" is provably the same signal already exercised 38+
 times across this package's own tests (`Execute()`'s returned error, which
-`cmd/preflight/main.go` — not this role's path — mechanically converts to
+`cmd/auspex/main.go` — not this role's path — mechanically converts to
 `os.Exit(1)`); "no-TTY behavior" is structurally guaranteed already (zero
 TTY-detection code exists anywhere in `internal/cli`/`internal/orchestrator`
 — confirmed by grep — and every single existing test already drives every
@@ -2263,7 +2263,7 @@ exclusive path), covering `checkpoint create` (nested two-service result),
 element) — structural (`reflect.DeepEqual` on decoded JSON, not literal
 byte comparison, so insignificant formatting differences never cause
 spurious failures) comparison against checked-in fixtures, with a
-`PREFLIGHT_UPDATE_GOLDEN=1` escape hatch for a deliberate future output-
+`AUSPEX_UPDATE_GOLDEN=1` escape hatch for a deliberate future output-
 shape change (mirrors every golden-file testing setup's standard
 convention). Verified the comparison actually catches a real regression
 (temporarily corrupted a fixture, confirmed the test failed with a clear
@@ -2361,7 +2361,7 @@ call that ran after an earlier `decision allow ... --authorization-id X`
 call on the same reused tree was silently routed into the CONSUME flow
 instead, because the stale flag value was still set. Building a fresh
 `a.RootCmd()` per call sidesteps this entirely and is also the more
-faithful restart-safety proof: every real invocation of the `preflight`
+faithful restart-safety proof: every real invocation of the `auspex`
 binary is its own fresh process building its own fresh cobra tree exactly
 once, so a test that reuses one tree across calls is testing something the
 real binary never actually does.
@@ -2451,7 +2451,7 @@ in-source instrumentation, confirmed then deleted" (confirming a
 hypothesis before trusting it) both apply here, but the actual FIX
 required — re-executing the test binary as a real child process and
 SIGKILLing it — is a new addition to this role's technique inventory,
-worth naming explicitly for any FUTURE Preflight node (in this role or any
+worth naming explicitly for any FUTURE Auspex node (in this role or any
 other) that needs to test real process-crash recovery rather than an
 in-process approximation: **`database/sql`'s own connection-pool
 bookkeeping makes an in-process crash simulation actively misleading, not
@@ -2500,7 +2500,7 @@ start, not discover the same false-positive the hard way.
   and fourth time this wave (Part A's `PauseStore` gap, Part B's golden-
   test gap) — now confirmed across five total instances spanning two
   waves and, cross-role, at least three other roles' own equivalent final
-  nodes. This is the arc's strongest piece of process evidence: Preflight's
+  nodes. This is the arc's strongest piece of process evidence: Auspex's
   per-node, per-wave documented-gap discipline (Constitution §4.4's
   "request through the progress artifact, don't wait idle" + this role's
   own consistent practice of naming a deferred gap explicitly rather than
@@ -2576,7 +2576,7 @@ integration gate review caught: `grep -rn "var _ app.GracefulPauseService"`
 across the whole repository, before this addition, found only
 `internal/testutil/fakes.FakeGracefulPauseService` (a test double) and one
 inline test-local satisfaction — never a real, production implementation.
-This is also the reason `cmd/preflight/main.go` was never wired to real
+This is also the reason `cmd/auspex/main.go` was never wired to real
 services: the application root cannot compose against a frozen port with
 no concrete implementation, for any port.
 
@@ -2747,7 +2747,7 @@ golangci-lint run ./...                             # 0 issues
 the `tasks`/`provider_sessions` tables, owned by other roles' exclusive
 paths, and is exactly the kind of capability gap Constitution §7 rule 3
 requires be surfaced explicitly rather than silently assumed away. Wiring
-a real `pause.Service` into `cmd/preflight/main.go`/
+a real `pause.Service` into `cmd/auspex/main.go`/
 `internal/app/wiring/**` — including supplying a real
 `SessionContextResolver` — is the lead's root-wiring integration work,
 per this task's own explicit instruction, not this addition's.

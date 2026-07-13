@@ -3,8 +3,8 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // CheckpointCreateDeps bundles CheckpointCreate's two collaborators — the
@@ -17,7 +17,7 @@ type CheckpointCreateDeps struct {
 	RepositoryCheckpoint app.RepositoryCheckpointService
 }
 
-// CheckpointCreateRequest is `preflight checkpoint create`'s input.
+// CheckpointCreateRequest is `auspex checkpoint create`'s input.
 type CheckpointCreateRequest struct {
 	TaskID     domain.TaskID
 	WorktreeID domain.WorktreeID
@@ -45,7 +45,7 @@ type CheckpointCreateResult struct {
 // sequencing them and handling partial-sequence failure as a resumable
 // state, not a silent gap." The concrete failure mode this ordering
 // prevents: if Repository were created first (or unconditionally) and
-// State then failed, Preflight would be left with a Repository Checkpoint
+// State then failed, Auspex would be left with a Repository Checkpoint
 // that has no corresponding State Checkpoint recording what task/node it
 // belongs to — an orphaned repository checkpoint, exactly what this
 // node's task brief calls out by name. By calling State first and

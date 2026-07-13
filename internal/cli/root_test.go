@@ -47,13 +47,13 @@ func TestRootCommandTreeHasP0Surface(t *testing.T) {
 	}
 }
 
-// TestRootCommandUse confirms the root command's identity — "preflight
+// TestRootCommandUse confirms the root command's identity — "auspex
 // --help" (this node's DAG validation command) depends on Use being set
 // correctly for Cobra's default help output to be sensible.
 func TestRootCommandUse(t *testing.T) {
 	root := NewRootCmd()
-	if root.Use != "preflight" {
-		t.Fatalf("root.Use = %q, want %q", root.Use, "preflight")
+	if root.Use != "auspex" {
+		t.Fatalf("root.Use = %q, want %q", root.Use, "auspex")
 	}
 	if root.Short == "" {
 		t.Fatal("root.Short is empty")
@@ -61,24 +61,24 @@ func TestRootCommandUse(t *testing.T) {
 }
 
 // TestHelpSucceeds exercises exactly what the DAG validation command's
-// `preflight --help` invocation exercises, at the package level rather
+// `auspex --help` invocation exercises, at the package level rather
 // than via a built binary: help must not fail even though every command
 // underneath is a stub.
 func TestHelpSucceeds(t *testing.T) {
 	root := NewRootCmd()
 	root.SetArgs([]string{"--help"})
 	if err := root.Execute(); err != nil {
-		t.Fatalf("preflight --help: %v", err)
+		t.Fatalf("auspex --help: %v", err)
 	}
 }
 
-// TestVersionCommandIsReal confirms `preflight version` is the one command
+// TestVersionCommandIsReal confirms `auspex version` is the one command
 // in this tree that is NOT a stub (it has no service dependency).
 func TestVersionCommandIsReal(t *testing.T) {
 	root := NewRootCmd()
 	root.SetArgs([]string{"version"})
 	if err := root.Execute(); err != nil {
-		t.Fatalf("preflight version: %v", err)
+		t.Fatalf("auspex version: %v", err)
 	}
 }
 

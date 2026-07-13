@@ -17,7 +17,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // openMigrated returns a temp-file DB with every embedded migration

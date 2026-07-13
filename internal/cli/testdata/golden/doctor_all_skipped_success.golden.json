@@ -1,5 +1,5 @@
 {
-  "schema_version": "preflight.doctor.v1",
+  "schema_version": "auspex.doctor.v1",
   "healthy": true,
   "checks": [
     {

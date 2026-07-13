@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // DefaultMaxFileBytes is the untracked-file-inclusion cap (ADD §19.5: "per-
@@ -47,7 +47,7 @@ const (
 	SkipUnreadable    SkipReason = "unreadable"
 	// SkipSecretFilename and SkipSecretContent are checkpoint-b06's
 	// extension of this ledger (internal/redact): a candidate untracked
-	// file whose name matches Preflight_ADD.md §27.8's exact name-pattern
+	// file whose name matches Auspex_ADD.md §27.8's exact name-pattern
 	// list, or whose content matches one of internal/redact's content
 	// detectors, is never archived by default. Two distinct reasons (not
 	// one generic "secret") so a caller/operator can tell "we recognized

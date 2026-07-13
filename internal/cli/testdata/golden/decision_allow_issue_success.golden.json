@@ -1,5 +1,5 @@
 {
-  "schema_version": "preflight.decision-allow.v1",
+  "schema_version": "auspex.decision-allow.v1",
   "issued": true,
   "consumed": false,
   "authorization_id": "auth-golden-1",

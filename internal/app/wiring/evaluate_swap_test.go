@@ -11,12 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/app/wiring"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/app/wiring"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
-// TestApp_RootCmd_EvaluateIsRealNotStub drives `preflight evaluate
+// TestApp_RootCmd_EvaluateIsRealNotStub drives `auspex evaluate
 // --session-id ...` on the App-built tree against a configured
 // evaluation fake and expects the REAL handler's success output —
 // not root.go's ErrCodeUnavailable "not yet implemented" stub (which

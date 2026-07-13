@@ -4,7 +4,7 @@
 
 - **DB constructor**: `sqlite.Open(ctx, path) (*DB, error)`
   (`internal/storage/sqlite/db.go`, foundation-05). Opens (creating if
-  needed) a SQLite file via `modernc.org/sqlite` and applies Preflight's
+  needed) a SQLite file via `modernc.org/sqlite` and applies Auspex's
   fixed pragmas (ADD §12.1) both via DSN `_pragma` query parameters (so
   every pooled connection gets them) and via an explicit `applyPragmas`
   exec on open (belt-and-braces against driver DSN-parsing differences).
@@ -63,7 +63,7 @@
   merge — no section has a typed, consumed shape yet to design a deep-merge
   algorithm against. `Config.Raw` is the generic decoded map; roles needing
   a specific section decode it themselves once they have a real consumer.
-  `schema_version` must equal `preflight.config.v1` or Load errors.
+  `schema_version` must equal `auspex.config.v1` or Load errors.
   Unknown top-level fields warn by default and are collected in
   `Config.UnknownFields`; `Options.UnknownFieldPolicy = StrictUnknownFields`
   turns that into a Load error instead (ADD §26.2).
@@ -74,8 +74,8 @@
 node: foundation-01
 status: completed
 artifacts:
-  - cmd/preflight/main.go
-  - cmd/preflight/main_test.go
+  - cmd/auspex/main.go
+  - cmd/auspex/main_test.go
   - internal/buildinfo/buildinfo.go
   - internal/clock/clock.go
   - internal/clock/clock_test.go
@@ -85,10 +85,10 @@ artifacts:
   - go.sum
 validation:
   - "gofmt -l cmd internal/buildinfo internal/clock internal/idgen   # empty output"
-  - "go build ./cmd/preflight/... ./internal/buildinfo/... ./internal/clock/... ./internal/idgen/..."
-  - "go vet ./cmd/preflight/... ./internal/buildinfo/... ./internal/clock/... ./internal/idgen/..."
-  - "go test ./internal/clock/... ./internal/idgen/... ./cmd/preflight/... -v   # all PASS"
-  - "go build -o preflight ./cmd/preflight && ./preflight version   # prints 0.0.0-dev"
+  - "go build ./cmd/auspex/... ./internal/buildinfo/... ./internal/clock/... ./internal/idgen/..."
+  - "go vet ./cmd/auspex/... ./internal/buildinfo/... ./internal/clock/... ./internal/idgen/..."
+  - "go test ./internal/clock/... ./internal/idgen/... ./cmd/auspex/... -v   # all PASS"
+  - "go build -o auspex ./cmd/auspex && ./auspex version   # prints 0.0.0-dev"
 commit: 797c450
 next_action: foundation-02 (blocked - not started this wave; OS-correct config/data/cache/runtime paths)
 assumptions:
@@ -103,9 +103,9 @@ assumptions:
     evaluated since google/uuid is the de facto standard Go UUID package
     and already satisfies the requirement."
   - "Cobra was chosen over a plain flag-based stub per the task instruction
-    (\"a stub preflight version command using Cobra now is preferable\")
-    and matches Preflight_ADD.md's tech-stack table (CLI: Cobra, line ~192)."
-  - "cmd/preflight/main_test.go was added even though agents/foundation.md's
+    (\"a stub auspex version command using Cobra now is preferable\")
+    and matches Auspex_ADD.md's tech-stack table (CLI: Cobra, line ~192)."
+  - "cmd/auspex/main_test.go was added even though agents/foundation.md's
     Required Tests list only names \"version command\" abstractly with no
     file path — treated as satisfying that requirement without needing a
     separate internal/cli package, since runtime (not foundation) owns the
@@ -131,8 +131,8 @@ next_action: foundation-03 (YAML config load and precedence)
 assumptions:
   - "internal/paths resolves only the GLOBAL, non-repository-local
     directories (config/data/cache/runtime under the user's home or OS
-    convention). Repository-local .preflight/config.yaml,
-    .preflight/*.db, .preflight/checkpoints/, .preflight/runtime/ (ADD
+    convention). Repository-local .auspex/config.yaml,
+    .auspex/*.db, .auspex/checkpoints/, .auspex/runtime/ (ADD
     §26.3) are NOT resolved by this package — those are relative to a
     repository root, which is a different role's concern (repository
     scoping is out of scope for foundation per agents/foundation.md).
@@ -146,10 +146,10 @@ assumptions:
   - "Linux and all other non-darwin/non-windows GOOS values are resolved
     via one shared XDG Base Directory implementation (XDG_CONFIG_HOME /
     XDG_DATA_HOME / XDG_CACHE_HOME / XDG_RUNTIME_DIR with documented
-    fallbacks), since Preflight's portability goal is POSIX-general, not
+    fallbacks), since Auspex's portability goal is POSIX-general, not
     Linux-only, and no ADD text calls out per-BSD path differences."
   - "macOS has no OS convention distinct from XDG_CONFIG_HOME for
-    'config' vs 'data'; both map to ~/Library/Application Support/preflight,
+    'config' vs 'data'; both map to ~/Library/Application Support/auspex,
     matching common Go CLI practice on macOS. No XDG_RUNTIME_DIR
     equivalent exists on macOS or when XDG_RUNTIME_DIR is unset on Linux;
     both fall back to a `run/` subdirectory of the cache dir."
@@ -164,8 +164,8 @@ assumptions:
     risk note (\"Windows path behavior needs CI matrix\") anticipated —
     resolved without needing a CI matrix because the test fakes GOOS
     input rather than relying on the host's actual OS."
-  - "No PREFLIGHT_* environment variable convention for overriding these
-    directories is introduced yet (e.g. no PREFLIGHT_CONFIG_DIR) — ADD
+  - "No AUSPEX_* environment variable convention for overriding these
+    directories is introduced yet (e.g. no AUSPEX_CONFIG_DIR) — ADD
     and CONTRACT_FREEZE.md do not name one, and inventing one now would
     be speculative surface agents/foundation.md's Constitution §7 rule 10
     (no abstractions a later milestone would need but this one doesn't)
@@ -227,7 +227,7 @@ assumptions:
     user config, repo config, repo local config) is optional. Callers
     that need to distinguish 'file legitimately absent' from 'path wrong'
     do so before calling LoadFile; this package does not guess intent."
-  - "No CLI wiring (`preflight config show/validate`) was added — ADD's
+  - "No CLI wiring (`auspex config show/validate`) was added — ADD's
     CLI/API section places those commands under `runtime`'s ownership
     (agents/foundation.md: 'the runtime role owns user-facing commands'),
     and foundation-03's own DAG row scope is the load/precedence library
@@ -263,7 +263,7 @@ assumptions:
     instruction ('your call on the exact mechanism'). Chose a PID-file-
     style advisory lock (os.O_EXCL exclusive create + PID contents), not
     an OS-level flock/LockFileEx syscall, because: (1) it needs zero new
-    dependencies (no golang.org/x/sys), (2) Preflight_ADD.md SS1.4 fixes
+    dependencies (no golang.org/x/sys), (2) Auspex_ADD.md SS1.4 fixes
     the runtime architecture as a single-machine 'modular monolith', so
     only same-machine, not networked, mutual exclusion is required, and
     (3) it is trivially crash-recoverable (see next bullet), which matters
@@ -289,7 +289,7 @@ assumptions:
     exercised on this darwin host without a Windows CI matrix (`qa-01`)."
   - "internal/lock intentionally does not integrate with internal/storage/
     sqlite (foundation-05, not yet built) or wire an actual daemon
-    single-instance guard into cmd/preflight — that wiring belongs to
+    single-instance guard into cmd/auspex — that wiring belongs to
     whichever later node actually starts a long-lived daemon process
     (runtime role, out of scope for foundation per agents/foundation.md).
     This node delivers the reusable primitive only."
@@ -346,7 +346,7 @@ assumptions:
     Handoff section above and worth flagging explicitly to
     checkpoint/predictor/claude-provider/runtime, whichever role writes
     the first real store on top of this engine."
-  - "modernc.org/sqlite (pure Go, no CGO) was added per Preflight_ADD.md
+  - "modernc.org/sqlite (pure Go, no CGO) was added per Auspex_ADD.md
     SS1.4's explicit tech-stack decision, exactly as pre-authorized by the
     task instruction. go mod tidy pulled a substantial transitive tree
     (modernc.org/libc, cc/v4, ccgo/v4, etc.) — all standard for this
@@ -397,7 +397,7 @@ artifacts:
   - internal/idgen/idgen_test.go (same as above)
 validation:
   - "task lint   # go vet + golangci-lint run ./... -> 0 issues"
-  - "task build   # go build -o bin/preflight ./cmd/preflight; ./bin/preflight version -> 0.0.0-dev"
+  - "task build   # go build -o bin/auspex ./cmd/auspex; ./bin/auspex version -> 0.0.0-dev"
   - "task test    # go test -race ./... -> all packages PASS"
   - "make lint && make build   # Makefile mirror verified equivalent to Taskfile"
 commit: 2eac579
@@ -470,7 +470,7 @@ blockers: []
 Scope per `agents/foundation.md` deliverable 6 and `EXECUTION_DAG.md`'s
 foundation-06 row: the four core tables every later role's migration range
 FKs into — `repositories`, `worktrees`, `provider_sessions`, `tasks` — from
-`Preflight_ADD.md` §12.2's canonical logical schema, transcribed verbatim
+`Auspex_ADD.md` §12.2's canonical logical schema, transcribed verbatim
 (column-for-column) into forward-only `.sql` files under
 `internal/storage/sqlite/migrations/`, plus wiring `migrate.go`'s existing
 `LoadMigrationsFS`/`Migrate` engine (foundation-05) to actually load and

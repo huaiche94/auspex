@@ -1,6 +1,6 @@
 -- 0004_tasks.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `tasks`. FKs into
+-- Auspex_ADD.md §12.2 canonical schema: `tasks`. FKs into
 -- provider_sessions (0003, nullable — a task can outlive the session that
 -- started it, per ON DELETE SET NULL) and worktrees (0002, required).
 --

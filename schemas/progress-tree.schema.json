@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://preflight.dev/schemas/progress-tree.schema.json",
-  "title": "Preflight Progress Tree",
-  "description": "Wire/export shape of a Progress Tree (Preflight_ADD.md Appendix A, §18). Mirrors internal/progress's Node/Edge Go types and the progress_nodes/progress_edges tables (migrations/0020-0021). schema_version pins this document to preflight.progress-tree.v1 (CONTRACT_FREEZE.md).",
+  "$id": "https://auspex.dev/schemas/progress-tree.schema.json",
+  "title": "Auspex Progress Tree",
+  "description": "Wire/export shape of a Progress Tree (Auspex_ADD.md Appendix A, §18). Mirrors internal/progress's Node/Edge Go types and the progress_nodes/progress_edges tables (migrations/0020-0021). schema_version pins this document to auspex.progress-tree.v1 (CONTRACT_FREEZE.md).",
   "type": "object",
   "required": ["schema_version", "task", "nodes"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "preflight.progress-tree.v1"
+      "const": "auspex.progress-tree.v1"
     },
     "task": {
       "type": "object",

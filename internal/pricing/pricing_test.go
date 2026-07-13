@@ -3,7 +3,7 @@ package pricing_test
 import (
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/pricing"
+	"github.com/huaiche94/auspex/internal/pricing"
 )
 
 // TestDefaultTable_FamilyResolution proves the case-insensitive

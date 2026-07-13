@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // TestNotImplementedShape confirms notImplemented produces the frozen
@@ -69,15 +69,15 @@ func TestStubCommandsReturnNotImplemented(t *testing.T) {
 
 			err := root.Execute()
 			if err == nil {
-				t.Fatalf("preflight %s: expected an error, got nil", joinPath(args))
+				t.Fatalf("auspex %s: expected an error, got nil", joinPath(args))
 			}
 
 			var domainErr *domain.Error
 			if !errors.As(err, &domainErr) {
-				t.Fatalf("preflight %s: error %v is not a *domain.Error", joinPath(args), err)
+				t.Fatalf("auspex %s: error %v is not a *domain.Error", joinPath(args), err)
 			}
 			if domainErr.Code != domain.ErrCodeUnavailable {
-				t.Errorf("preflight %s: Code = %q, want %q", joinPath(args), domainErr.Code, domain.ErrCodeUnavailable)
+				t.Errorf("auspex %s: Code = %q, want %q", joinPath(args), domainErr.Code, domain.ErrCodeUnavailable)
 			}
 		})
 	}

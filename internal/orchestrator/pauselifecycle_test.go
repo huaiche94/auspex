@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/idgen"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/idgen"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
-// --- preflight pause request ---------------------------------------------
+// --- auspex pause request ---------------------------------------------
 
 func TestPauseRequestCmd_FirstCallCreatesRecord(t *testing.T) {
 	store := pause.NewMemStore()
@@ -75,7 +75,7 @@ func TestPauseRequestCmd_NilDepsFailClosed(t *testing.T) {
 	}
 }
 
-// --- preflight pause cancel ------------------------------------------------
+// --- auspex pause cancel ------------------------------------------------
 
 func TestPauseCancelCmd_CancelsInFlightPause(t *testing.T) {
 	store := pause.NewMemStore()
@@ -114,7 +114,7 @@ func TestPauseCancelCmd_NilStoreFailsClosed(t *testing.T) {
 	}
 }
 
-// --- preflight resume ------------------------------------------------------
+// --- auspex resume ------------------------------------------------------
 
 func seedWakePendingRecord(t *testing.T, store *pause.MemStore, id domain.PauseID) {
 	t.Helper()
@@ -178,12 +178,12 @@ func TestResumeCmd_NilStoreFailsClosed(t *testing.T) {
 	}
 }
 
-// --- preflight scheduler run-once -----------------------------------------
+// --- auspex scheduler run-once -----------------------------------------
 
 func openMigratedSchedulerDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)

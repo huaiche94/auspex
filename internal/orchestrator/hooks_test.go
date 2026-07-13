@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- fixtures ----------------------------------------------------------

@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/progress"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/progress"
 )
 
 func TestCompleteNode_ConcurrentCompletion_SameKey_ExactlyOneRealCompletionAllReplaySafely(t *testing.T) {

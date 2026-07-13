@@ -7,8 +7,8 @@ Approved by: repository owner, 2026-07-12
 
 ## Context
 
-`Preflight_ADD.md` §2.2 already names `TokenForecast` and `QuotaForecast`
-as fields of the canonical `PreflightDecision` struct, and §15.1–15.3/§15.9
+`Auspex_ADD.md` §2.2 already names `TokenForecast` and `QuotaForecast`
+as fields of the canonical `AuspexDecision` struct, and §15.1–15.3/§15.9
 already fully specify their formulas (token decomposition + multiplier
 model; quota/context percentage-delta projection). But neither type was
 ever added to the frozen contract layer during Bootstrap: `internal/domain`
@@ -20,7 +20,7 @@ specified in the ADD but likewise never implemented.
 The frozen execution DAG (`docs/implementation/vertical-slice/EXECUTION_DAG.md`)
 inherited the same gap: `predictor-05` (Scope Estimator) feeds directly
 into `predictor-07` (Risk Combiner), with `predictor-06` (Runway Forecaster)
-also listed as a `predictor-07` dependency. But `Preflight_ADD.md` §16.2's
+also listed as a `predictor-07` dependency. But `Auspex_ADD.md` §16.2's
 own risk formulas need `projected_quota_p90` and `projected_context_p90` —
 outputs of the quota-delta model (§15.3) and context projection (§15.9) —
 neither of which any DAG node produces. `predictor-06`'s Runway Forecaster
@@ -28,11 +28,11 @@ answers a different question (imminent 10-minute quota-exhaustion hazard,
 §15.5, consumed directly by Graceful Pause) and was never a valid source
 for `quota_risk`/`context_risk`. The DAG's `predictor-07` dependency on
 `predictor-06` was itself a byproduct of the same underspecified pipeline,
-not a deliberate design choice — `Preflight_ADD.md` §7.3's own C4
+not a deliberate design choice — `Auspex_ADD.md` §7.3's own C4
 Evaluation Components diagram shows the same conflation (`TOK --> RUNWAY
 --> RISK`), which is corrected by this ADR.
 
-This was discovered via `Preflight_Predictor_Design_Supplement.md` (a
+This was discovered via `Auspex_Predictor_Design_Supplement.md` (a
 companion design document identifying the same gap independently) before
 any Wave 2 predictor implementation began. Per Constitution §6/§7 and this
 project's own "no blind resume" discipline for architecture: a real gap
@@ -56,18 +56,18 @@ Risk Combiner
 Policy
 
 Runway Predictor — independent, not part of this chain. Feeds Graceful
-Pause directly (as it always correctly did — Preflight_ADD.md §7.4's
+Pause directly (as it always correctly did — Auspex_ADD.md §7.4's
 Continuity Components diagram already modeled this independence via
 `Runway Hazard Monitor`; only §7.3's per-turn evaluation diagram and this
 DAG's `predictor-07` edge incorrectly wired it into the risk path).
 ```
 
 Four new narrow, swappable interfaces are frozen in `internal/app/ports.go`
-(mirrored in `Preflight_ADD.md` §9.9), so a Rule/Statistical/ML
+(mirrored in `Auspex_ADD.md` §9.9), so a Rule/Statistical/ML
 implementation of any single stage can replace it without touching the
 others — the same evolutionary-roadmap intent already stated in
-`Preflight_ADD.md` §1.4 and formalized in
-`Preflight_Predictor_Design_Supplement.md`'s Version 1/2/3 roadmap:
+`Auspex_ADD.md` §1.4 and formalized in
+`Auspex_Predictor_Design_Supplement.md`'s Version 1/2/3 roadmap:
 
 ```go
 type ScopeEstimator interface {
@@ -131,9 +131,9 @@ or reads that field yet.
 
 ### Terminology note
 
-`Preflight_Predictor_Design_Supplement.md`'s "Risk Estimation" section
+`Auspex_Predictor_Design_Supplement.md`'s "Risk Estimation" section
 calls the third risk term `execution_risk = P(task_requires_multiple_turns)`.
-`Preflight_ADD.md` §16.1 already names and formalizes the same concept as
+`Auspex_ADD.md` §16.1 already names and formalizes the same concept as
 `completion_risk` ("即使 quota/context 足夠，仍需要多輪或未滿足 acceptance
 criteria 的風險"), with a complete formula in §16.2. This ADR keeps the
 ADD's existing name — `completion_risk` — as the frozen term, since it is
@@ -148,7 +148,7 @@ ADR removes it.
 - `internal/domain/forecast.go` and `internal/app/ports.go` gain new frozen
   types/interfaces (contract only — no implementation yet, per explicit
   instruction; "approve the ADR, not require a stub first").
-- `Preflight_ADD.md` §7.3's C4 diagram, §9.9's interface list, and §33's
+- `Auspex_ADD.md` §7.3's C4 diagram, §9.9's interface list, and §33's
   ADR list are updated to reflect this decision.
 - `CONTRACT_FREEZE.md` gains a new section documenting the four interfaces,
   the reason-code taxonomy, and the `Evaluation.ReasonCodes` type change.
@@ -162,5 +162,5 @@ ADR removes it.
   not fall under any of Constitution §3's mandatory-ADR triggers on its own
   merits (it implements, rather than changes, an already-committed ADD
   decision) — it is written anyway because the repository owner's Phase 2
-  directive freezes `Preflight_ADD.md`, `CONTRACT_FREEZE.md`, and the DAG
+  directive freezes `Auspex_ADD.md`, `CONTRACT_FREEZE.md`, and the DAG
   pending explicit ADR approval, which is what this document provides.

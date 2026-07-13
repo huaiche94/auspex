@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // EdgeKind is the frozen (for this package's own vocabulary) set of

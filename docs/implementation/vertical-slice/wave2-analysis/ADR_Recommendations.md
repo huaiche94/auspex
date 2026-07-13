@@ -94,25 +94,25 @@ valid answer, but don't leave a gap uninvestigated" ethos.
 
 ## ADR-REC-03: Resolve the CLI hook-subcommand casing inconsistency
 
-**Problem:** `Preflight_ADD.md` Appendix E.3 specifies Claude Code hook
-subcommands in PascalCase (`preflight hook claude UserPromptSubmit`,
+**Problem:** `Auspex_ADD.md` Appendix E.3 specifies Claude Code hook
+subcommands in PascalCase (`auspex hook claude UserPromptSubmit`,
 matching Claude's own hook-event-name casing). `agents/runtime.md`'s P0
 command list, `docs/implementation/vertical-slice/EXECUTION_DAG.md`'s
 `claude-provider-06` validation command, and
-`Preflight_Parallel_Execution_Plan.md`'s demo script all
-independently use kebab-case (`preflight hook claude user-prompt-submit`).
+`Auspex_Parallel_Execution_Plan.md`'s demo script all
+independently use kebab-case (`auspex hook claude user-prompt-submit`).
 This was discovered by `claude-provider-06` and independently confirmed
 by the lead reading the ADD text directly during Wave 2 review — it is
 real, not a misread.
 
 **Evidence:** `Wave2_Lessons.md` §1, issue #4; the underlying text
-exists in `Preflight_ADD.md` lines ~6152-6157 (PascalCase) vs. three
+exists in `Auspex_ADD.md` lines ~6152-6157 (PascalCase) vs. three
 other documents (kebab-case), all currently frozen.
 
 **Affected packages:** `integrations/claude/hooks.json` (already built,
 following kebab-case as a documented judgment call), and — not yet built
 — `runtime-b01`'s real CLI command tree (`internal/cli`), which will need
-to pick one convention when it actually implements `preflight hook claude
+to pick one convention when it actually implements `auspex hook claude
 ...` as a Cobra command.
 
 **Compatibility impact:** Low if resolved now (nothing external depends
@@ -138,7 +138,7 @@ has a named table; `Event` does not.
 **Evidence:** `Feature_Registry.md` §8b, flagged directly: "`events` table
 implied by ADD §11 but not named in §12.2's explicit table list."
 
-**Affected packages:** `Preflight_ADD.md` §12.2 (schema definition,
+**Affected packages:** `Auspex_ADD.md` §12.2 (schema definition,
 contract-integrator-owned), eventually `foundation-06`'s migration range
 (0000-0009) or a feature-owning role's migration range, depending on
 which role ends up owning event storage.

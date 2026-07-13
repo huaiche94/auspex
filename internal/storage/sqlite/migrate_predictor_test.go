@@ -15,7 +15,7 @@
 // feature_vectors/predictions/runway_forecasts/authorizations all reference
 // `turns` (claude-provider's 0010-0019 range) and authorizations also
 // references `repository_checkpoints` (checkpoint Part B's 0030-0039
-// range) conceptually, per Preflight_ADD.md §12.2 — but neither table
+// range) conceptually, per Auspex_ADD.md §12.2 — but neither table
 // exists as a migration on this branch yet, and none of the four
 // migration files in this range declares a SQL-level FK constraint against
 // them: a forward REFERENCES clause is not merely inert until the target
@@ -36,7 +36,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // TestMigration0040_PredictorRangeLoadsAndApplies confirms all five files in
@@ -92,7 +92,7 @@ func TestMigration0040_PredictorRangeLoadsAndApplies(t *testing.T) {
 }
 
 // TestMigration0040_TablesHaveExpectedColumns spot-checks each predictor
-// table's column set against Preflight_ADD.md §12.2's canonical schema,
+// table's column set against Auspex_ADD.md §12.2's canonical schema,
 // using PRAGMA table_info (cheap structural check, does not require the
 // forward-referenced tables in other roles' ranges to exist).
 func TestMigration0040_TablesHaveExpectedColumns(t *testing.T) {

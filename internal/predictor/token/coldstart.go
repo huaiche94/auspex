@@ -1,6 +1,6 @@
 package token
 
-import "github.com/huaiche94/preflight/internal/features"
+import "github.com/huaiche94/auspex/internal/features"
 
 // baseTurnTokens is the cold-start "typical turn" token cost before any
 // task-class relative multiplier is applied. ADD §14.6's table gives a

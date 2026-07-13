@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 func readFixture(t *testing.T, name string) []byte {
@@ -188,8 +188,8 @@ func TestEncodeUserPromptSubmitResponse_Allow(t *testing.T) {
 func TestEncodeUserPromptSubmitResponse_Block(t *testing.T) {
 	got, err := EncodeUserPromptSubmitResponse(UserPromptSubmitResponse{
 		Decision:          HookDecisionBlock,
-		Reason:            "Preflight evaluation eval_123 requires a checkpoint or explicit override before this task starts.",
-		AdditionalContext: "Use the durable Preflight Progress Tree and checkpoint policy.",
+		Reason:            "Auspex evaluation eval_123 requires a checkpoint or explicit override before this task starts.",
+		AdditionalContext: "Use the durable Auspex Progress Tree and checkpoint policy.",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 func openTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
@@ -75,7 +75,7 @@ func TestStore_InsertGet(t *testing.T) {
 		ID:                  "checkpoint-1",
 		TaskID:              taskID,
 		ProgressTreeVersion: 1,
-		ManifestJSON:        `{"schema_version":"preflight.state-checkpoint.v1"}`,
+		ManifestJSON:        `{"schema_version":"auspex.state-checkpoint.v1"}`,
 		IntegritySHA256:     "abc123",
 		CreatedAt:           time.Now().UTC().Format(time.RFC3339),
 	}

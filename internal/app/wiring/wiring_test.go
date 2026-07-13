@@ -10,14 +10,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/app/wiring"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/app/wiring"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // fullFakeServices returns a Services struct with every field populated by
@@ -213,8 +213,8 @@ func TestApp_RootCmd_BuildsP0CommandTree(t *testing.T) {
 	if root == nil {
 		t.Fatal("RootCmd returned nil")
 	}
-	if root.Use != "preflight" {
-		t.Errorf("root.Use = %q, want %q", root.Use, "preflight")
+	if root.Use != "auspex" {
+		t.Errorf("root.Use = %q, want %q", root.Use, "auspex")
 	}
 
 	want := []string{
@@ -233,7 +233,7 @@ func TestApp_RootCmd_BuildsP0CommandTree(t *testing.T) {
 }
 
 // TestApp_RootCmd_HookClaudeIsRealNotStub proves runtime-b04's wiring:
-// `preflight hook claude user-prompt-submit` on the App-built tree is
+// `auspex hook claude user-prompt-submit` on the App-built tree is
 // internal/cli.NewHookClaudeCmd's real handler (which renders a
 // provider-compatible JSON response and returns nil), not
 // internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub.
@@ -287,7 +287,7 @@ func TestApp_RootCmd_HookClaudeFallsBackToRealClockWhenHooksUnset(t *testing.T) 
 }
 
 // TestApp_RootCmd_HookClaudeMalformedInputStillProducesValidJSON proves
-// "hook fallback remains syntactically valid when Preflight fails"
+// "hook fallback remains syntactically valid when Auspex fails"
 // end-to-end through the wired CLI tree, not just at the orchestrator
 // unit level (internal/orchestrator/hooks_test.go already covers the
 // orchestrator function directly) — malformed stdin on
@@ -316,7 +316,7 @@ func TestApp_RootCmd_HookClaudeMalformedInputStillProducesValidJSON(t *testing.T
 }
 
 // TestApp_RootCmd_CheckpointCreateIsRealNotStub proves runtime-b05's
-// wiring: `preflight checkpoint create` on the App-built tree calls
+// wiring: `auspex checkpoint create` on the App-built tree calls
 // through to the injected StateCheckpoint/RepositoryCheckpoint fakes (in
 // state-then-repository order) and renders a real JSON result, not
 // internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub.
@@ -367,7 +367,7 @@ func TestApp_RootCmd_CheckpointCreateIsRealNotStub(t *testing.T) {
 }
 
 // TestApp_RootCmd_StatusIsRealNotStub proves runtime-b08's wiring:
-// `preflight status` on the App-built tree calls through to the injected
+// `auspex status` on the App-built tree calls through to the injected
 // ProgressTree fake and renders real JSON, not the standalone stub.
 func TestApp_RootCmd_StatusIsRealNotStub(t *testing.T) {
 	services := fullFakeServices()
@@ -400,7 +400,7 @@ func TestApp_RootCmd_StatusIsRealNotStub(t *testing.T) {
 }
 
 // TestApp_RootCmd_ProgressCompleteIsRealNotStub proves issue #1's wiring:
-// `preflight progress complete` on the App-built tree calls through to the
+// `auspex progress complete` on the App-built tree calls through to the
 // injected ProgressTree fake's CompleteNode and renders real JSON, not
 // internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub — while
 // `progress show` in the SAME swapped subtree deliberately remains a stub
@@ -455,7 +455,7 @@ func TestApp_RootCmd_ProgressCompleteIsRealNotStub(t *testing.T) {
 }
 
 // TestApp_RootCmd_DoctorIsRealNotStub proves runtime-b08's wiring:
-// `preflight doctor` on the App-built tree runs real checks (here, all
+// `auspex doctor` on the App-built tree runs real checks (here, all
 // skipped since Diagnostics was left at its zero value) and renders real
 // JSON, not the standalone stub's ErrCodeUnavailable.
 func TestApp_RootCmd_DoctorIsRealNotStub(t *testing.T) {
@@ -568,7 +568,7 @@ func TestApp_RootCmd_PauseRequestThenCancel_RealEndToEnd(t *testing.T) {
 	}
 }
 
-// TestApp_RootCmd_Resume_RealEndToEnd proves `preflight resume` reaches the
+// TestApp_RootCmd_Resume_RealEndToEnd proves `auspex resume` reaches the
 // real internal/pause.Resume through the wired CLI tree.
 func TestApp_RootCmd_Resume_RealEndToEnd(t *testing.T) {
 	store := pause.NewMemStore()
@@ -604,12 +604,12 @@ func TestApp_RootCmd_Resume_RealEndToEnd(t *testing.T) {
 	}
 }
 
-// TestApp_RootCmd_SchedulerRunOnce_RealEndToEnd proves `preflight scheduler
+// TestApp_RootCmd_SchedulerRunOnce_RealEndToEnd proves `auspex scheduler
 // run-once` reaches the real internal/scheduler.Store.Claim through the
 // wired CLI tree, against a real migrated temp-file SQLite database.
 func TestApp_RootCmd_SchedulerRunOnce_RealEndToEnd(t *testing.T) {
 	dir := t.TempDir()
-	db, err := sqlite.Open(context.Background(), filepath.Join(dir, "preflight.db"))
+	db, err := sqlite.Open(context.Background(), filepath.Join(dir, "auspex.db"))
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
 	}

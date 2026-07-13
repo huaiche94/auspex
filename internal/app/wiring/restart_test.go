@@ -80,24 +80,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/app/wiring"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/predictor/quota"
-	"github.com/huaiche94/preflight/internal/predictor/risk"
-	"github.com/huaiche94/preflight/internal/predictor/scope"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/app/wiring"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor/quota"
+	"github.com/huaiche94/auspex/internal/predictor/risk"
+	"github.com/huaiche94/auspex/internal/predictor/scope"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // --- shared restart-test fixtures: real Git repo + seeded FK chain --------
@@ -117,7 +117,7 @@ type restartRepo struct {
 func newRestartRepo(t *testing.T) *restartRepo {
 	t.Helper()
 	runner := gitx.ExecRunner{}
-	dir, err := os.MkdirTemp("", "preflight-restart-*")
+	dir, err := os.MkdirTemp("", "auspex-restart-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -131,8 +131,8 @@ func newRestartRepo(t *testing.T) *restartRepo {
 		t.Skipf("git not available: %v", err)
 	}
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight Test")
-	rb.git("config", "user.email", "test@preflight.invalid")
+	rb.git("config", "user.name", "Auspex Test")
+	rb.git("config", "user.email", "test@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	if err := os.WriteFile(filepath.Join(rb.dir, "a.txt"), []byte("content\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -385,7 +385,7 @@ func (f *restartFixture) openAndMigrate(t *testing.T) *sqlite.DB {
 // inside the App) because DecisionAllowCmd's issue flow requires a real,
 // already-computed EvaluationID (agents/runtime.md Part B pipeline step 5,
 // "Evaluate through the predictor role," happens BEFORE step 10, "decision
-// allow issues authorization") — there is no `preflight evaluate` CLI
+// allow issues authorization") — there is no `auspex evaluate` CLI
 // command yet (runtime-b09's own documented, permanent gap: no real
 // constructor exists for it), so this test drives EvaluateTurn/Decide
 // directly against the same real Service the CLI's `decision` commands
@@ -452,7 +452,7 @@ func (restartTreeReader) ListArtifacts(context.Context, domain.TaskID) ([]statec
 // output. Building a fresh command tree per call (rather than reusing one
 // *cobra.Command across multiple Execute() calls) is deliberate, not
 // incidental: it mirrors what actually happens for every real invocation of
-// the preflight binary (main() builds one fresh cobra tree per process,
+// the auspex binary (main() builds one fresh cobra tree per process,
 // runs it once, exits) — and, this file's own first draft found the hard
 // way, reusing one root across two different flag combinations of the SAME
 // subcommand (`decision allow` with vs. without --authorization-id) leaks
@@ -518,7 +518,7 @@ func execCmdExpectError(t *testing.T, a *wiring.App, args []string) error {
 func TestRestart_SameSQLiteFile_FullLifecycleSurvivesProcessRestart(t *testing.T) {
 	dir := t.TempDir()
 	f := &restartFixture{
-		dbPath:     filepath.Join(dir, "preflight.db"),
+		dbPath:     filepath.Join(dir, "auspex.db"),
 		worktreeID: "wt1",
 		taskID:     "task1",
 		sessionID:  "sess1",
@@ -552,7 +552,7 @@ func TestRestart_SameSQLiteFile_FullLifecycleSurvivesProcessRestart(t *testing.T
 
 	// Evaluate + Decide (agents/runtime.md Part B pipeline steps 5/6, ahead
 	// of step 10's decision allow) — driven directly against the real
-	// *evaluation.Service the App itself wires (no `preflight evaluate` CLI
+	// *evaluation.Service the App itself wires (no `auspex evaluate` CLI
 	// command exists yet, runtime-b09's own documented permanent gap), the
 	// same precedent decision_realauth_test.go established.
 	eval1, err := evalSvc1.EvaluateTurn(context.Background(), app.EvaluateTurnRequest{
@@ -774,8 +774,8 @@ func TestRestart_SameSQLiteFile_FullLifecycleSurvivesProcessRestart(t *testing.T
 // print ready, block until killed) and every other Test* function is
 // skipped via -test.run in the parent's exec.Command args.
 const (
-	restartCrashWriterDBPathEnv  = "PREFLIGHT_RESTART_CRASH_WRITER_DB_PATH"
-	restartCrashWriterPauseIDEnv = "PREFLIGHT_RESTART_CRASH_WRITER_PAUSE_ID"
+	restartCrashWriterDBPathEnv  = "AUSPEX_RESTART_CRASH_WRITER_DB_PATH"
+	restartCrashWriterPauseIDEnv = "AUSPEX_RESTART_CRASH_WRITER_PAUSE_ID"
 )
 
 // TestZZZCrashWriterHelper is not a real test in the normal sense — it is
@@ -848,7 +848,7 @@ func TestRestart_SameSQLiteFile_UncleanShutdown_UncommittedWriteDoesNotCorruptFi
 
 	dir := t.TempDir()
 	f := &restartFixture{
-		dbPath:     filepath.Join(dir, "preflight.db"),
+		dbPath:     filepath.Join(dir, "auspex.db"),
 		worktreeID: "wt1",
 		taskID:     "task1",
 		sessionID:  "sess1",

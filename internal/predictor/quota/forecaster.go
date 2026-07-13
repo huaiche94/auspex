@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // RuleQuotaForecaster is the Wave 4 (Version 1, deterministic/rule-based)

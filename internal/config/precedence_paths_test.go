@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/config"
-	"github.com/huaiche94/preflight/internal/paths"
+	"github.com/huaiche94/auspex/internal/config"
+	"github.com/huaiche94/auspex/internal/paths"
 )
 
 // pathsFakeEnv is a local, minimal paths.Env fake (internal/paths' own
@@ -70,7 +70,7 @@ func TestPrecedence_PathsEnvOverride_ChangesWhichConfigFileLoads(t *testing.T) {
 	assertRequestTimeout(t, cfgNoOverride, 500) // default value, see writeDefaultsLayer
 
 	// Case 2: XDG_CONFIG_HOME points at overrideConfigRoot -> paths.Resolve
-	// must resolve Config to overrideConfigRoot/preflight, and loading
+	// must resolve Config to overrideConfigRoot/auspex, and loading
 	// from THAT resolved path must surface the override file's value
 	// (2222), not the default-root file's value (1111) which was never
 	// consulted, and not the config-package default (500).
@@ -82,7 +82,7 @@ func TestPrecedence_PathsEnvOverride_ChangesWhichConfigFileLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve (override): %v", err)
 	}
-	wantConfigDir := filepath.Join(overrideConfigRoot, "preflight")
+	wantConfigDir := filepath.Join(overrideConfigRoot, "auspex")
 	if dirsOverride.Config != wantConfigDir {
 		t.Fatalf("Resolve Config = %q, want %q", dirsOverride.Config, wantConfigDir)
 	}
@@ -123,7 +123,7 @@ func TestPrecedence_PathsResolvedGlobal_LosesToRepoAndEnvLayers(t *testing.T) {
 	// file) only overrides the fields it cares about, not the envelope.
 	defaultsLayer := config.Layer{
 		Source: config.SourceDefaults,
-		Bytes:  []byte("schema_version: preflight.config.v1\n"),
+		Bytes:  []byte("schema_version: auspex.config.v1\n"),
 	}
 	repoConfigLayer := config.Layer{
 		Source: config.SourceRepoConfig,
@@ -179,7 +179,7 @@ func TestPrecedence_PathsRuntimeDirEnvOverride_IndependentOfConfigPrecedence(t *
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dirs.Runtime != "/run/user/9999/preflight" {
+	if dirs.Runtime != "/run/user/9999/auspex" {
 		t.Fatalf("Runtime = %q, want override honored", dirs.Runtime)
 	}
 
@@ -193,7 +193,7 @@ func TestPrecedence_PathsRuntimeDirEnvOverride_IndependentOfConfigPrecedence(t *
 
 // --- helpers -----------------------------------------------------------
 
-// writeGlobalConfig writes a config.yaml under configRoot/preflight/ (the
+// writeGlobalConfig writes a config.yaml under configRoot/auspex/ (the
 // AppName-suffixed layout paths.Resolve's XDG branch produces) with the
 // given request_timeout_ms value, so tests can distinguish "which file did
 // paths.Resolve actually point at" by the value each contains.
@@ -218,7 +218,7 @@ func loadWithGlobalLayer(t *testing.T, resolvedConfigDir string) config.Config {
 	t.Helper()
 	defaultsLayer := config.Layer{
 		Source: config.SourceDefaults,
-		Bytes:  []byte("schema_version: preflight.config.v1\nruntime:\n  request_timeout_ms: 500\n"),
+		Bytes:  []byte("schema_version: auspex.config.v1\nruntime:\n  request_timeout_ms: 500\n"),
 	}
 	globalLayer, err := config.LoadFile(config.SourceGlobalUser, filepath.Join(resolvedConfigDir, "config.yaml"))
 	if err != nil {

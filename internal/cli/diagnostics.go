@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// NewStatusCmd builds the REAL `preflight status` command, wired against
+// NewStatusCmd builds the REAL `auspex status` command, wired against
 // deps (internal/orchestrator.StatusDeps). This is the runtime-b08
 // constructor internal/app/wiring.App.RootCmd() uses in place of the
 // package-private `status` stub in root.go. Exported for the same reason
@@ -22,7 +22,7 @@ func NewStatusCmd(deps orchestrator.StatusDeps) *cobra.Command {
 	var sessionID, taskID string
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show a summary of the current Preflight-managed session",
+		Short: "Show a summary of the current Auspex-managed session",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if sessionID == "" {
@@ -44,7 +44,7 @@ func NewStatusCmd(deps orchestrator.StatusDeps) *cobra.Command {
 			}
 
 			out := statusOutput{
-				SchemaVersion:   "preflight.status.v1",
+				SchemaVersion:   "auspex.status.v1",
 				SessionID:       string(result.SessionID),
 				HasProgressTree: result.HasProgressTree,
 			}
@@ -75,7 +75,7 @@ type statusOutput struct {
 	ProgressTreeNodeCount int    `json:"progress_tree_node_count,omitempty"`
 }
 
-// NewDoctorCmd builds the REAL `preflight doctor` command, wired against
+// NewDoctorCmd builds the REAL `auspex doctor` command, wired against
 // deps (internal/orchestrator.DoctorDeps). This is the runtime-b08
 // constructor internal/app/wiring.App.RootCmd() uses in place of the
 // package-private `doctor` stub in root.go.
@@ -90,13 +90,13 @@ type statusOutput struct {
 func NewDoctorCmd(deps orchestrator.DoctorDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Diagnose the local Preflight installation and provider setup",
+		Short: "Diagnose the local Auspex installation and provider setup",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result := orchestrator.Doctor(cmd.Context(), deps)
 
 			out := doctorOutput{
-				SchemaVersion: "preflight.doctor.v1",
+				SchemaVersion: "auspex.doctor.v1",
 				Healthy:       result.Healthy,
 			}
 			for _, c := range result.Checks {

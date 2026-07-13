@@ -1,6 +1,6 @@
 -- 0021_progress_edges.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `progress_edges` — explicit
+-- Auspex_ADD.md §12.2 canonical schema: `progress_edges` — explicit
 -- dependency/relationship edges between Progress Tree nodes, beyond the
 -- parent/child shape already carried by progress_nodes.parent_id
 -- (checkpoint Part A range 0020-0029 per CONTRACT_FREEZE.md), transcribed

@@ -10,7 +10,7 @@
 // the real implementation is explicitly documented as "a future wiring
 // node's job, run by whichever role has the relevant tables in its
 // exclusive paths" (internal/pause/service.go's SessionContextResolver
-// doc comment, verbatim). That role is cmd/preflight: this file contains
+// doc comment, verbatim). That role is cmd/auspex: this file contains
 // no new business logic, only DTO-shape translation and direct
 // read-only SQL against tables owned by foundation/claude-provider/
 // checkpoint, exactly mirroring the technique internal/evaluation.
@@ -24,16 +24,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // treeReaderAdapter satisfies internal/statecheckpoint.TreeReader by
@@ -150,7 +150,7 @@ func (a sessionContextResolverAdapter) ResolveSessionContext(ctx context.Context
 	if resolved.TaskID == nil {
 		return pause.SessionContext{}, &domain.Error{
 			Code:      domain.ErrCodeNotFound,
-			Message:   "cmd/preflight: session has no associated task to pause",
+			Message:   "cmd/auspex: session has no associated task to pause",
 			Retryable: false,
 			Details:   map[string]string{"session_id": string(sessionID)},
 		}
@@ -162,13 +162,13 @@ func (a sessionContextResolverAdapter) ResolveSessionContext(ctx context.Context
 	if errors.Is(err, sql.ErrNoRows) {
 		return pause.SessionContext{}, &domain.Error{
 			Code:      domain.ErrCodeNotFound,
-			Message:   "cmd/preflight: no provider_sessions row for session",
+			Message:   "cmd/auspex: no provider_sessions row for session",
 			Retryable: false,
 			Details:   map[string]string{"session_id": string(sessionID)},
 		}
 	}
 	if err != nil {
-		return pause.SessionContext{}, fmt.Errorf("cmd/preflight: resolve session context %s: %w", sessionID, err)
+		return pause.SessionContext{}, fmt.Errorf("cmd/auspex: resolve session context %s: %w", sessionID, err)
 	}
 
 	return pause.SessionContext{
@@ -187,13 +187,13 @@ func resolveWorktreeLocation(ctx context.Context, db *sqlite.DB, worktreeID doma
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", &domain.Error{
 			Code:      domain.ErrCodeNotFound,
-			Message:   "cmd/preflight: no worktrees row for worktree",
+			Message:   "cmd/auspex: no worktrees row for worktree",
 			Retryable: false,
 			Details:   map[string]string{"worktree_id": string(worktreeID)},
 		}
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("cmd/preflight: resolve worktree %s: %w", worktreeID, err)
+		return "", "", fmt.Errorf("cmd/auspex: resolve worktree %s: %w", worktreeID, err)
 	}
 	return root, repositoryID, nil
 }
@@ -221,7 +221,7 @@ func (a quotaSnapshotReaderAdapter) ReadCurrentQuota(ctx context.Context, sessio
 	}
 	return domain.QuotaObservation{}, &domain.Error{
 		Code:      domain.ErrCodeNotFound,
-		Message:   "cmd/preflight: no current quota observation for limit",
+		Message:   "cmd/auspex: no current quota observation for limit",
 		Retryable: false,
 		Details:   map[string]string{"session_id": string(sessionID), "limit_id": limitID},
 	}
@@ -244,7 +244,7 @@ func (a repoFingerprintReaderAdapter) ReadCurrentFingerprint(ctx context.Context
 	}
 	fp, err := a.git.Fingerprint(ctx, root)
 	if err != nil {
-		return pause.RepoFingerprint{}, fmt.Errorf("cmd/preflight: fingerprint worktree %s: %w", worktreeID, err)
+		return pause.RepoFingerprint{}, fmt.Errorf("cmd/auspex: fingerprint worktree %s: %w", worktreeID, err)
 	}
 	changed := make([]string, 0, len(fp.Entries))
 	for _, e := range fp.Entries {
@@ -291,7 +291,7 @@ type stubTurnInterrupter struct{}
 func (stubTurnInterrupter) Interrupt(_ context.Context, locator app.RunLocator) error {
 	return &domain.Error{
 		Code:      domain.ErrCodeUnavailable,
-		Message:   "cmd/preflight: managed provider interrupt is not implemented in this vertical slice (stretch goal, see claude-provider/runtime role docs)",
+		Message:   "cmd/auspex: managed provider interrupt is not implemented in this vertical slice (stretch goal, see claude-provider/runtime role docs)",
 		Retryable: false,
 		Details:   map[string]string{"session_id": string(locator.SessionID), "turn_id": string(locator.TurnID)},
 	}

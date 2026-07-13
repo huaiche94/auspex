@@ -46,7 +46,7 @@ package pause
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // WakeRequest is Wake's input: the PauseID a claimed wake job names.

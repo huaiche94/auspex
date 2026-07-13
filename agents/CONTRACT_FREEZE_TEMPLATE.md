@@ -1,4 +1,4 @@
-# Preflight Vertical-Slice Contract Freeze
+# Auspex Vertical-Slice Contract Freeze
 
 Status: DRAFT — contract-integrator must replace every placeholder before other roles' branches rebase.
 Contract commit: `<sha>`
@@ -17,12 +17,12 @@ Schema baseline: `<version>`
 ## Schema-version strings
 
 ```text
-preflight.event.v1
-preflight.progress-tree.v1
-preflight.state-checkpoint.v1
-preflight.repository-checkpoint.v1
-preflight.pause.v1
-preflight.api.v1
+auspex.event.v1
+auspex.progress-tree.v1
+auspex.state-checkpoint.v1
+auspex.repository-checkpoint.v1
+auspex.pause.v1
+auspex.api.v1
 ```
 
 ## ID and idempotency rules

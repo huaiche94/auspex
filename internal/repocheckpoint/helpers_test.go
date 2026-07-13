@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // fixedClock is a deterministic domain.Clock test double.
@@ -51,7 +51,7 @@ func newRepoBuilder(t *testing.T) *repoBuilder {
 	t.Helper()
 	rb := &repoBuilder{t: t, runner: gitx.ExecRunner{}}
 
-	dir, err := os.MkdirTemp("", "preflight-repocheckpoint-*")
+	dir, err := os.MkdirTemp("", "auspex-repocheckpoint-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -67,8 +67,8 @@ func newRepoBuilder(t *testing.T) *repoBuilder {
 	}
 
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight Test")
-	rb.git("config", "user.email", "test@preflight.invalid")
+	rb.git("config", "user.name", "Auspex Test")
+	rb.git("config", "user.email", "test@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	return rb
 }
@@ -99,7 +99,7 @@ func (rb *repoBuilder) write(rel, content string) {
 func openTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)

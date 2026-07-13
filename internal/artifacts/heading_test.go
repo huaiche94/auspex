@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/artifacts"
 )
 
 // fixturePath resolves a path under testdata/checkpoints/state, the real
@@ -73,7 +73,7 @@ func TestHeadingExists_HeadingTextInsideFence_NotCountedAsHeading(t *testing.T) 
 	v := artifacts.HeadingExistsValidator{}
 	res, err := v.Validate(context.Background(), artifacts.Candidate{
 		Path:    fixturePath(t, "add-section-18-valid.md"),
-		Heading: "Task: Build Preflight ADD",
+		Heading: "Task: Build Auspex ADD",
 	})
 	if err != nil {
 		t.Fatalf("Validate: %v", err)

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // notImplemented builds the frozen domain.Error shape (CONTRACT_FREEZE.md
@@ -19,7 +19,7 @@ import (
 func notImplemented(command string) error {
 	return &domain.Error{
 		Code:      domain.ErrCodeUnavailable,
-		Message:   "preflight " + command + ": not yet implemented",
+		Message:   "auspex " + command + ": not yet implemented",
 		Retryable: true,
 		Details: map[string]string{
 			"command": command,
@@ -31,11 +31,11 @@ func notImplemented(command string) error {
 // must emit (agents/runtime.md Part B "JSON and errors": "typed error
 // code, message, retryable, details"; CONTRACT_FREEZE.md "Error contract").
 // Distinct from any single command's own success-output schema-version
-// string (e.g. "preflight.checkpoint-create.v1") — this ONE shared
+// string (e.g. "auspex.checkpoint-create.v1") — this ONE shared
 // envelope covers every command's error path uniformly, since an error is
 // not command-specific data, it is the same typed domain.Error shape
 // regardless of which command produced it.
-const SchemaVersionError = "preflight.error.v1"
+const SchemaVersionError = "auspex.error.v1"
 
 // errorEnvelope is SchemaVersionError's wire shape: a schema-versioned
 // wrapper around the frozen domain.Error fields, never a bare Go error
@@ -75,7 +75,7 @@ func RenderErrorJSON(err error) []byte {
 		// Marshal can only fail here on a non-UTF8 Details value or
 		// similar pathological input; fall back to a minimal, always-valid
 		// envelope rather than emitting nothing (agents/runtime.md: "hook
-		// fallback remains syntactically valid when Preflight fails" — the
+		// fallback remains syntactically valid when Auspex fails" — the
 		// same discipline applies to every command's error JSON, not just
 		// hook responses).
 		return []byte(`{"schema_version":"` + SchemaVersionError + `","code":"internal","message":"failed to encode error","retryable":false}`)
@@ -92,7 +92,7 @@ func RenderErrorJSON(err error) []byte {
 // (cli.NewHookClaudeCmd and friends) has no such annotation, so it is
 // wrapped exactly once by whichever WithJSONErrorRendering call runs
 // after it was attached to the tree.
-const jsonErrorWrappedAnnotation = "preflight.jsonErrorWrapped"
+const jsonErrorWrappedAnnotation = "auspex.jsonErrorWrapped"
 
 // WithJSONErrorRendering walks root's entire command tree and wraps every
 // not-yet-wrapped leaf's RunE so that, in addition to returning the

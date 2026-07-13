@@ -1,6 +1,6 @@
 -- 0041_predictions.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `predictions`. The durable form
+-- Auspex_ADD.md §12.2 canonical schema: `predictions`. The durable form
 -- of the predictor pipeline's per-turn output (app.Evaluation plus the
 -- Stage 1-4 forecast/risk fields backing it — domain.ScopeEstimate,
 -- domain.TokenForecast, domain.RiskComponent per ADR-041).

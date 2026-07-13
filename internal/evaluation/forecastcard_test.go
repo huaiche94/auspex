@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/pricing"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/pricing"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // TestForecastCard_ReadsBackPersistedEvaluation drives a REAL

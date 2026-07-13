@@ -3,7 +3,7 @@ package redact_test
 import (
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/redact"
+	"github.com/huaiche94/auspex/internal/redact"
 )
 
 func TestMatchesSecretFilename_ADD278NamePatterns(t *testing.T) {

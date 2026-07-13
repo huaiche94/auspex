@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/lock"
+	"github.com/huaiche94/auspex/internal/lock"
 )
 
 func TestAcquire_Release_RoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	l, err := lock.Acquire(path)
 	if err != nil {
@@ -35,7 +35,7 @@ func TestAcquire_Release_RoundTrip(t *testing.T) {
 }
 
 func TestAcquire_Release_Idempotent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	l, err := lock.Acquire(path)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestAcquire_Release_Idempotent(t *testing.T) {
 // --- locked/busy behavior (agents/foundation.md "Required tests") ---------
 
 func TestAcquire_HeldByLiveProcess_ReturnsErrLocked(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	first, err := lock.Acquire(path)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestAcquire_HeldByLiveProcess_ReturnsErrLocked(t *testing.T) {
 }
 
 func TestAcquire_StaleLock_FromDeadProcess_IsReclaimed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	deadPID := spawnAndWaitForExit(t)
 
@@ -94,7 +94,7 @@ func TestAcquire_StaleLock_FromDeadProcess_IsReclaimed(t *testing.T) {
 }
 
 func TestAcquire_CorruptLockFile_IsReclaimed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	if err := os.WriteFile(path, []byte("not-a-pid"), 0o644); err != nil {
 		t.Fatalf("seeding corrupt lock file: %v", err)
@@ -108,7 +108,7 @@ func TestAcquire_CorruptLockFile_IsReclaimed(t *testing.T) {
 }
 
 func TestAcquire_EmptyLockFile_IsReclaimed(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatalf("seeding empty lock file: %v", err)
@@ -122,7 +122,7 @@ func TestAcquire_EmptyLockFile_IsReclaimed(t *testing.T) {
 }
 
 func TestAcquire_ReacquireAfterRelease_Succeeds(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "preflight.lock")
+	path := filepath.Join(t.TempDir(), "auspex.lock")
 
 	l1, err := lock.Acquire(path)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestAcquire_ReacquireAfterRelease_Succeeds(t *testing.T) {
 }
 
 func TestAcquire_MissingParentDir_Errors(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "does-not-exist", "preflight.lock")
+	path := filepath.Join(t.TempDir(), "does-not-exist", "auspex.lock")
 
 	_, err := lock.Acquire(path)
 	if err == nil {

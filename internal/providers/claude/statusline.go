@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // StatusLineSnapshot is the parsed, unknown-field-tolerant representation of

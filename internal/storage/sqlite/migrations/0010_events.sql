@@ -1,6 +1,6 @@
 -- 0010_events.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `events`. This is claude-provider's
+-- Auspex_ADD.md §12.2 canonical schema: `events`. This is claude-provider's
 -- migration range (0010-0019 per CONTRACT_FREEZE.md's migration-range table)
 -- and this is its first migration: the durable event log every normalized
 -- pkg/protocol/v1.Event value (claude-provider-04's normalizer.go output) is

@@ -18,7 +18,7 @@
 // internal/testutil/fakes.FakeGracefulPauseService (a test double) — no
 // concrete production type ever composed these pieces into the frozen
 // six-method app.GracefulPauseService shape. That is why
-// cmd/preflight/main.go was never wired to a real pause service: the root
+// cmd/auspex/main.go was never wired to a real pause service: the root
 // composition cannot instantiate a port that has no real implementation.
 //
 // This file is pure composition and DTO-shape translation, per the task
@@ -104,10 +104,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/predictor/runway"
-	"github.com/huaiche94/preflight/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/predictor/runway"
+	"github.com/huaiche94/auspex/internal/scheduler"
 )
 
 // SessionContextResolver bridges app.PauseRequest's {SessionID, Reason}

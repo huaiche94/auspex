@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://preflight.dev/schemas/state-checkpoint.schema.json",
-  "title": "Preflight State Checkpoint Manifest",
-  "description": "Wire shape of a State Checkpoint manifest (Preflight_ADD.md §18.8, Appendix B). Mirrors internal/statecheckpoint.Manifest and the state_checkpoints table (migrations/0023). schema_version pins this document to preflight.state-checkpoint.v1 (CONTRACT_FREEZE.md). integrity_sha256 is a SHA-256 over the canonical JSON encoding of every other field (internal/statecheckpoint/serialize.go's Digest) and MUST be independently recomputed and compared before trusting a stored manifest (never trust the stored string alone).",
+  "$id": "https://auspex.dev/schemas/state-checkpoint.schema.json",
+  "title": "Auspex State Checkpoint Manifest",
+  "description": "Wire shape of a State Checkpoint manifest (Auspex_ADD.md §18.8, Appendix B). Mirrors internal/statecheckpoint.Manifest and the state_checkpoints table (migrations/0023). schema_version pins this document to auspex.state-checkpoint.v1 (CONTRACT_FREEZE.md). integrity_sha256 is a SHA-256 over the canonical JSON encoding of every other field (internal/statecheckpoint/serialize.go's Digest) and MUST be independently recomputed and compared before trusting a stored manifest (never trust the stored string alone).",
   "type": "object",
   "required": [
     "schema_version",
@@ -20,7 +20,7 @@
   ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "preflight.state-checkpoint.v1" },
+    "schema_version": { "const": "auspex.state-checkpoint.v1" },
     "checkpoint_id": { "type": "string", "minLength": 1 },
     "task_id": { "type": "string", "minLength": 1 },
     "created_at": { "type": "string", "format": "date-time" },

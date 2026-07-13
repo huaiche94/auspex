@@ -1,6 +1,6 @@
 -- 0052_resume_attempts.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `resume_attempts` — the audit
+-- Auspex_ADD.md §12.2 canonical schema: `resume_attempts` — the audit
 -- trail of every attempt to resume a paused session (agents/runtime.md
 -- Part A P0 deliverable 8: resume validation — quota safe, repository
 -- fingerprint compatible, session/provider capability valid,
@@ -11,7 +11,7 @@
 -- on pause_records.
 --
 -- wake_job_id is nullable with ON DELETE SET NULL: a manual
--- `preflight resume` produces an attempt with no wake job, and an
+-- `auspex resume` produces an attempt with no wake job, and an
 -- attempt's audit row must survive its wake job — only the pause itself
 -- (ON DELETE CASCADE) owns the attempt's lifetime.
 --

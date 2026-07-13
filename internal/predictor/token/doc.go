@@ -7,7 +7,7 @@
 // explosion).
 //
 // This is a Version 1 (rule-based/heuristic) implementation per
-// Preflight_Predictor_Design_Supplement.md's Evolution Roadmap. No durable
+// Auspex_Predictor_Design_Supplement.md's Evolution Roadmap. No durable
 // historical telemetry store exists yet this wave (the same gap already
 // noted for predictor-05/predictor-06's cold-start-only implementations),
 // so RuleTokenForecaster's "count(similar) >= 8" branch is reachable only

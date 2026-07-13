@@ -8,7 +8,7 @@
 // interface — confirmed by grepping the whole repo for
 // `var _ app.ProgressTreeService` before writing this file: only
 // internal/testutil/fakes.FakeProgressTreeService (a test double) existed.
-// That gap is why cmd/preflight/main.go could never be wired to real
+// That gap is why cmd/auspex/main.go could never be wired to real
 // services: composing the app's root requires a real implementation of
 // every frozen port, and this one never existed until now.
 //
@@ -31,8 +31,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Service implements app.ProgressTreeService (internal/app/ports.go, frozen

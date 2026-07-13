@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // RestartReport summarizes what a single Restart call recovered, for the

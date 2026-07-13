@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// NewCheckpointCmd builds the REAL `preflight checkpoint create` command,
+// NewCheckpointCmd builds the REAL `auspex checkpoint create` command,
 // wired against deps (internal/orchestrator.CheckpointCreateDeps). This is
 // the runtime-b05 constructor internal/app/wiring.App.RootCmd() uses in
 // place of the package-private `checkpoint create` stub in root.go.
@@ -25,7 +25,7 @@ import (
 func NewCheckpointCmd(deps orchestrator.CheckpointCreateDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
-		Short: "Manage Preflight checkpoints",
+		Short: "Manage Auspex checkpoints",
 	}
 
 	var taskID, worktreeID string
@@ -63,7 +63,7 @@ func NewCheckpointCmd(deps orchestrator.CheckpointCreateDeps) *cobra.Command {
 			// requirement's "machine mode never emits decorative text
 			// to stdout".
 			out := checkpointCreateOutput{
-				SchemaVersion:               "preflight.checkpoint-create.v1",
+				SchemaVersion:               "auspex.checkpoint-create.v1",
 				StateCheckpointID:           string(result.State.ID),
 				RepositoryCheckpointID:      string(result.Repository.ID),
 				RepositoryCheckpointGitHead: result.Repository.GitHead,

@@ -1,13 +1,13 @@
 // Package idgen provides the real implementation of internal/domain's
 // IDGenerator interface. Per docs/implementation/vertical-slice/CONTRACT_FREEZE.md,
-// all Preflight-owned entity IDs are UUIDv7 at generation time, generated
+// all Auspex-owned entity IDs are UUIDv7 at generation time, generated
 // here and never parsed for meaning by callers.
 package idgen
 
 import (
 	"github.com/google/uuid"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // UUIDv7 is the real IDGenerator implementation backed by

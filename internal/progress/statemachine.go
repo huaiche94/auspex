@@ -1,7 +1,7 @@
 // Package progress implements the Progress Tree domain service (checkpoint
 // role, Part A): the node/edge/artifact stores and the node state machine
 // that make the Progress Tree the canonical durable task state
-// (Constitution §6, Preflight_ADD.md §18).
+// (Constitution §6, Auspex_ADD.md §18).
 //
 // This file (statemachine.go) is the node lifecycle: the fixed set of valid
 // domain.ProgressNodeStatus transitions and the single entry point
@@ -16,7 +16,7 @@ package progress
 import (
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // transitions is the frozen adjacency list of valid

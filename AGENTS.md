@@ -1,12 +1,12 @@
-# Preflight contributor instructions
+# Auspex contributor instructions
 
-Preflight is a local-first predictive runtime guard for AI coding agents.
+Auspex is a local-first predictive runtime guard for AI coding agents.
 
 ## Source of truth
 
 Read `CONSTITUTION.md` first — it is the supreme process authority for this
 repository (single-source-of-truth hierarchy, ADR rules, path ownership,
-Progress Tree invariants). Read `Preflight_ADD.md` before architectural
+Progress Tree invariants). Read `Auspex_ADD.md` before architectural
 work. Accepted ADRs under `docs/adr/` may amend it. If a role is assigned,
 also read its file under `agents/`.
 
@@ -56,7 +56,7 @@ Run relevant commands:
 - `gofmt`
 - `go vet ./...`
 - `go test ./...`
-- `go build ./cmd/preflight`
+- `go build ./cmd/auspex`
 - milestone-specific acceptance checks
 
 Report tests not run.

@@ -7,14 +7,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
-// --- preflight status --------------------------------------------------
+// --- auspex status --------------------------------------------------
 
 func TestStatusCmd_RequiresSessionIDFlag(t *testing.T) {
 	cmd := cli.NewStatusCmd(orchestrator.StatusDeps{})
@@ -86,7 +86,7 @@ func TestStatusCmd_ReportsProgressTreeWhenTaskIDGiven(t *testing.T) {
 	}
 }
 
-// --- preflight doctor ----------------------------------------------------
+// --- auspex doctor ----------------------------------------------------
 
 func TestDoctorCmd_ProducesValidJSON_NoDepsConfigured(t *testing.T) {
 	cmd := cli.NewDoctorCmd(orchestrator.DoctorDeps{})
@@ -112,7 +112,7 @@ func TestDoctorCmd_ProducesValidJSON_NoDepsConfigured(t *testing.T) {
 }
 
 func TestDoctorCmd_ReportsFailingRequiredDir(t *testing.T) {
-	cmd := cli.NewDoctorCmd(orchestrator.DoctorDeps{RequiredDirs: []string{"/definitely/does/not/exist/preflight-doctor-test"}})
+	cmd := cli.NewDoctorCmd(orchestrator.DoctorDeps{RequiredDirs: []string{"/definitely/does/not/exist/auspex-doctor-test"}})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)

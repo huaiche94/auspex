@@ -25,8 +25,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // NodeSnapshot is the narrow view of one progress_nodes row Create needs to

@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 func readStopFixture(t *testing.T, dir, name string) []byte {

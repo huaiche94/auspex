@@ -41,7 +41,7 @@ internal/testutil/fakes/** (coordinate with the qa role)
 docs/implementation/vertical-slice/runtime.md
 ```
 
-Do not edit `cmd/preflight/main.go`; the contract-integrator and foundation
+Do not edit `cmd/auspex/main.go`; the contract-integrator and foundation
 roles integrate root wiring. Add command constructors under owned paths.
 Part B does not add schema unless the contract-integrator explicitly
 assigns a range.
@@ -130,24 +130,24 @@ Wire the frozen ports into an in-process-first application and expose the day-on
 ### P0 commands
 
 ```text
-preflight version
-preflight init
-preflight hook claude statusline
-preflight hook claude user-prompt-submit
-preflight hook claude stop
-preflight hook claude stop-failure
-preflight evaluate
-preflight decision allow
-preflight decision deny
-preflight checkpoint create
-preflight progress show
-preflight state show
-preflight pause request
-preflight pause cancel
-preflight resume
-preflight scheduler run-once
-preflight status
-preflight doctor
+auspex version
+auspex init
+auspex hook claude statusline
+auspex hook claude user-prompt-submit
+auspex hook claude stop
+auspex hook claude stop-failure
+auspex evaluate
+auspex decision allow
+auspex decision deny
+auspex checkpoint create
+auspex progress show
+auspex state show
+auspex pause request
+auspex pause cancel
+auspex resume
+auspex scheduler run-once
+auspex status
+auspex doctor
 ```
 
 ### Pipeline behavior
@@ -171,7 +171,7 @@ preflight doctor
 - typed error code, message, retryable, details;
 - no raw prompt in logs/errors;
 - machine mode never emits decorative text to stdout;
-- hook fallback remains syntactically valid when Preflight fails.
+- hook fallback remains syntactically valid when Auspex fails.
 
 ### HTTP stretch
 

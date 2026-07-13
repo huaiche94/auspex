@@ -24,7 +24,7 @@ These are Observed, not predicted, and safe to trust as-is.
 context-dependent, not a single number — 1.00 against the fixtures it has
 been tested with, 0.00 against a live session it has never seen. This
 report lists it here because the *parser* is high-confidence; a future
-reader must not mistake this for "Preflight has high-confidence real
+reader must not mistake this for "Auspex has high-confidence real
 usage data," which is false (see §2).
 
 ## 2. Medium-confidence features (0.30 ≤ confidence < 0.80)
@@ -124,7 +124,7 @@ statement that training can begin now.
 | Low confidence (<0.30, nonzero) | ~9 | ~9% |
 | Zero confidence / Unknown | ~41 | ~43% (matches Registry §9's ~31% Unknown + ~16% fixture-scoped-only, reclassified here by confidence rather than availability status) |
 
-This confidence distribution is the honest current state of Preflight's
+This confidence distribution is the honest current state of Auspex's
 predictor: a solid, well-tested Rule Predictor foundation (§1-2 above)
 sitting on top of a large majority of features that either don't exist
 yet or have never been checked against reality. Neither half of that

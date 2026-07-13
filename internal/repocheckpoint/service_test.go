@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
 )
 
 func newTestService(t *testing.T, worktreeID domain.WorktreeID, rb *repoBuilder) (*repocheckpoint.Service, *repocheckpoint.Store) {

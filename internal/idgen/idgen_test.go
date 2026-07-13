@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/idgen"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/idgen"
 )
 
 // uuidPattern matches the canonical 8-4-4-4-12 hex UUID string shape.

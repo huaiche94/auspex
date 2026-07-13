@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/buildinfo"
+	"github.com/huaiche94/auspex/internal/buildinfo"
 )
 
 func TestVersionCommandPrintsVersionString(t *testing.T) {
@@ -17,7 +17,7 @@ func TestVersionCommandPrintsVersionString(t *testing.T) {
 	root.SetArgs([]string{"version"})
 
 	if err := root.Execute(); err != nil {
-		t.Fatalf("execute `preflight version`: %v", err)
+		t.Fatalf("execute `auspex version`: %v", err)
 	}
 
 	got := strings.TrimSpace(out.String())

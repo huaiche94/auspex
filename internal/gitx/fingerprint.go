@@ -14,7 +14,7 @@ import (
 // field hashed into every digest, so any future change to the encoding (new
 // fields, different ordering) must bump this string — two digests are only
 // comparable when they were computed under the same schema.
-const FingerprintSchema = "preflight.gitx.fingerprint.v1"
+const FingerprintSchema = "auspex.gitx.fingerprint.v1"
 
 // UntrackedPolicy records how untracked files were enumerated when a
 // fingerprint was taken. It is part of the digest: two snapshots that

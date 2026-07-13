@@ -1,7 +1,7 @@
-// Package config loads Preflight's YAML configuration per the precedence
-// chain fixed by Preflight_ADD.md §26.1:
+// Package config loads Auspex's YAML configuration per the precedence
+// chain fixed by Auspex_ADD.md §26.1:
 //
-//	CLI flags > environment > .preflight/local.yaml > .preflight/config.yaml
+//	CLI flags > environment > .auspex/local.yaml > .auspex/config.yaml
 //	> global user config > defaults
 //
 // This package deliberately does NOT model every field in ADD §26.4's
@@ -31,8 +31,8 @@ import (
 
 // SchemaVersion is the only schema_version value this package accepts
 // (ADD §26.2). A config file declaring a different value is a validation
-// error — Preflight has no migration story for config schema versions yet.
-const SchemaVersion = "preflight.config.v1"
+// error — Auspex has no migration story for config schema versions yet.
+const SchemaVersion = "auspex.config.v1"
 
 // UnknownFieldPolicy controls how Load handles YAML keys it does not
 // recognize at the top level (ADD §26.2: "Unknown fields: default warn;
@@ -67,7 +67,7 @@ var knownTopLevelFields = map[string]bool{
 }
 
 // Source identifies where a layer in the precedence chain came from, for
-// diagnostics (e.g. a future `preflight config show --effective`, owned by
+// diagnostics (e.g. a future `auspex config show --effective`, owned by
 // `runtime`, not this package).
 type Source string
 
@@ -131,7 +131,7 @@ type Options struct {
 	UnknownFieldPolicy UnknownFieldPolicy
 }
 
-// Load merges layers in Preflight's fixed precedence order (ADD §26.1),
+// Load merges layers in Auspex's fixed precedence order (ADD §26.1),
 // regardless of the order they are passed in — Load sorts by
 // precedenceOrder internally, so callers may pass layers in any order.
 // Passing the same Source twice is a caller error (ErrDuplicateSource).

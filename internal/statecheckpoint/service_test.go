@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // fixedClock is a deterministic domain.Clock test double.
@@ -235,7 +235,7 @@ func TestService_Verify_TamperedManifest_Invalid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	tamperedManifestJSON := `{"schema_version":"preflight.state-checkpoint.v1","task_id":"tampered","integrity_sha256":"` + row.IntegritySHA256 + `"}`
+	tamperedManifestJSON := `{"schema_version":"auspex.state-checkpoint.v1","task_id":"tampered","integrity_sha256":"` + row.IntegritySHA256 + `"}`
 	q := sqlite.QuerierFromContext(ctx, db)
 	if _, err := q.ExecContext(ctx, `UPDATE state_checkpoints SET manifest_json = ? WHERE id = ?`, tamperedManifestJSON, string(cp.ID)); err != nil {
 		t.Fatalf("corrupt manifest_json: %v", err)

@@ -1,6 +1,6 @@
 package paths_test
 
-import "github.com/huaiche94/preflight/internal/paths"
+import "github.com/huaiche94/auspex/internal/paths"
 
 // fakeEnv is a deterministic, in-memory Env for tests. It never touches the
 // real process environment or home directory, so path-table tests can

@@ -1,4 +1,4 @@
-// Command preflight is the Preflight CLI entrypoint. Per Preflight_ADD.md
+// Command auspex is the Auspex CLI entrypoint. Per Auspex_ADD.md
 // §10.1, this package only does wiring and process exit — no business
 // logic lives here or in Cobra command handlers. The real command tree
 // (evaluate, decision, checkpoint, pause/resume/scheduler, status,
@@ -15,7 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/buildinfo"
+	"github.com/huaiche94/auspex/internal/buildinfo"
 )
 
 func main() {
@@ -30,7 +30,7 @@ func main() {
 func run() int {
 	root, closeFn, err := buildRootCmd(context.Background())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "preflight:", err)
+		fmt.Fprintln(os.Stderr, "auspex:", err)
 		return 1
 	}
 	defer func() { _ = closeFn() }()
@@ -45,8 +45,8 @@ func run() int {
 // tests can exercise command wiring without invoking os.Exit.
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "preflight",
-		Short:         "Preflight is a local-first predictive runtime guard for AI coding agents.",
+		Use:           "auspex",
+		Short:         "Auspex is a local-first predictive runtime guard for AI coding agents.",
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
@@ -56,12 +56,12 @@ func newRootCmd() *cobra.Command {
 	return root
 }
 
-// newVersionCmd builds `preflight version`, which prints the build's
+// newVersionCmd builds `auspex version`, which prints the build's
 // version string to stdout.
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the Preflight version",
+		Short: "Print the Auspex version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), buildinfo.String())

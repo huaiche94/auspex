@@ -1,13 +1,13 @@
-// evaluate.go: the REAL `preflight evaluate` command (issue #14
+// evaluate.go: the REAL `auspex evaluate` command (issue #14
 // deliverable 5) — the offline half of the per-prompt forecast surface.
-// Shape: `preflight evaluate --session-id <id> [--prompt-file <path>|-]
+// Shape: `auspex evaluate --session-id <id> [--prompt-file <path>|-]
 // [--json]`. It runs a genuine evaluation through the same production
 // path the UserPromptSubmit hook uses (internal/orchestrator's
 // EvaluatePrompt -> evaluateSubmittedPrompt -> the real
 // app.EvaluationService; shared code, not a duplicate pipeline) and
 // prints the resulting forecast card — human-readable by default,
-// schema-versioned JSON ("preflight.evaluate.v1", following `progress
-// complete`'s "preflight.progress-complete.v1" precedent) with --json.
+// schema-versioned JSON ("auspex.evaluate.v1", following `progress
+// complete`'s "auspex.progress-complete.v1" precedent) with --json.
 //
 // Privacy (Constitution §7 rule 2): the prompt text read from
 // --prompt-file/stdin is handed to orchestrator.EvaluatePrompt, which
@@ -24,11 +24,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// NewEvaluateCmd builds the REAL `preflight evaluate` command, wired
+// NewEvaluateCmd builds the REAL `auspex evaluate` command, wired
 // against deps (the same orchestrator.HookDeps the hook subtree uses —
 // deliberately, so both surfaces share one evaluation path and one
 // forecast-card source). This is the constructor
@@ -82,7 +82,7 @@ func NewEvaluateCmd(deps orchestrator.HookDeps) *cobra.Command {
 					return err
 				}
 			} else {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Preflight forecast (uncalibrated estimate; forecast card unavailable): policy %s\n", result.Decision.Action); err != nil {
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Auspex forecast (uncalibrated estimate; forecast card unavailable): policy %s\n", result.Decision.Action); err != nil {
 					return err
 				}
 			}
@@ -129,8 +129,8 @@ func readPromptFile(cmd *cobra.Command, promptFile string) (string, error) {
 	}
 }
 
-// evaluateOutput is `preflight evaluate --json`'s schema-versioned wire
-// shape ("preflight.evaluate.v1"). Nullable-by-design fields use
+// evaluateOutput is `auspex evaluate --json`'s schema-versioned wire
+// shape ("auspex.evaluate.v1"). Nullable-by-design fields use
 // pointers so an unknown quantile serializes as JSON null, never 0 (ADD
 // principle 1). Probability has NO omitempty deliberately: Constitution
 // principle #2 requires cold-start/uncalibrated output to emit
@@ -187,7 +187,7 @@ const evaluateUncalibratedLabel = "uncalibrated estimate"
 
 func buildEvaluateOutput(result orchestrator.EvaluatePromptResult) evaluateOutput {
 	out := evaluateOutput{
-		SchemaVersion: "preflight.evaluate.v1",
+		SchemaVersion: "auspex.evaluate.v1",
 		EvaluationID:  string(result.Evaluation.ID),
 		TurnID:        string(result.Evaluation.TurnID),
 		PolicyAction:  string(result.Decision.Action),

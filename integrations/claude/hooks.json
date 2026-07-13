@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "preflight hook claude user-prompt-submit",
+            "command": "auspex hook claude user-prompt-submit",
             "timeout": 5
           }
         ]
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "preflight hook claude stop",
+            "command": "auspex hook claude stop",
             "timeout": 5
           }
         ]
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "preflight hook claude stop-failure",
+            "command": "auspex hook claude stop-failure",
             "timeout": 5
           }
         ]
@@ -36,7 +36,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "preflight hook claude statusline --emit-line",
+    "command": "auspex hook claude statusline --emit-line",
     "padding": 0
   }
 }

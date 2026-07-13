@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // TestClassifierConfidentClassification exercises prompts with enough

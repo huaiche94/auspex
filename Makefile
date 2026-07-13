@@ -1,4 +1,4 @@
-# Preflight build/lint/test targets.
+# Auspex build/lint/test targets.
 #
 # Taskfile.yml (https://taskfile.dev) is the primary, richer task runner for
 # this repository; this Makefile is a thin, dependency-free mirror of the
@@ -6,7 +6,7 @@
 # available. Keep the two in sync: a target added to one should be added to
 # the other with equivalent behavior.
 
-BIN := preflight
+BIN := auspex
 PKGS := ./...
 
 .PHONY: all build run test test-short fmt fmt-fix vet lint tidy clean
@@ -15,7 +15,7 @@ all: fmt lint test
 
 build:
 	mkdir -p bin
-	go build -o bin/$(BIN) ./cmd/preflight
+	go build -o bin/$(BIN) ./cmd/auspex
 
 run: build
 	./bin/$(BIN) $(ARGS)

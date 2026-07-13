@@ -16,7 +16,7 @@
 //   - completion_risk: 即使 quota/context 足夠，仍需要多輪或未滿足
 //     acceptance criteria 的風險 (derived from ScopeEstimate). ADR-041's
 //     "Terminology note" resolves a naming fork here:
-//     Preflight_Predictor_Design_Supplement.md calls this term
+//     Auspex_Predictor_Design_Supplement.md calls this term
 //     "execution_risk = P(task_requires_multiple_turns)"; ADD §16.1/§16.2
 //     names and formalizes the identical concept as "completion_risk" with
 //     a complete formula. ADR-041 explicitly keeps the ADD's name as the
@@ -33,7 +33,7 @@
 // # Formula (ADD §16.2)
 //
 // This is a Version 1 (rule-based/deterministic, explainable) combiner per
-// Preflight_Predictor_Design_Supplement.md's Evolution Roadmap, implementing
+// Auspex_Predictor_Design_Supplement.md's Evolution Roadmap, implementing
 // ADD §16.2's "Initial explainable formula" verbatim:
 //
 //	quota_risk = sigmoid((projected_quota_p90 - 85) / 7)

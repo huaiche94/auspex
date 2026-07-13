@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/clock"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/clock"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 func TestNewReturnsDomainClock(t *testing.T) {

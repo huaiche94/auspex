@@ -61,7 +61,7 @@ blocker requiring a STOP.
 ### #4 — Cross-document inconsistency in the frozen docs themselves (2 occurrences)
 
 Observed in: `claude-provider-06` (PascalCase vs. kebab-case CLI
-subcommand casing between `Preflight_ADD.md` Appendix E.3 and three other
+subcommand casing between `Auspex_ADD.md` Appendix E.3 and three other
 frozen documents — independently confirmed by the lead reading the ADD
 text directly) and, at a smaller scale, `foundation-04` (the DAG's stale
 full-scope estimate left standing next to an explicit reduced-scope

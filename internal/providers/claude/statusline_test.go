@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 func fixture(t *testing.T, name string) []byte {

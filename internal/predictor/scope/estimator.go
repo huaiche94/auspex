@@ -3,10 +3,10 @@ package scope
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/predictor"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/predictor"
 )
 
 // FeatureSource resolves the feature inputs a scope estimate needs from the

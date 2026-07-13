@@ -1,6 +1,6 @@
 // Package redact implements checkpoint role Part B's content-based secret
 // detection (agents/checkpoint.md Part B deliverable #6: "Safe untracked
-// archive policy with size/path/secret filters"; Preflight_ADD.md §19.5
+// archive policy with size/path/secret filters"; Auspex_ADD.md §19.5
 // "secret scan", §27.8 "Secret filters"). It is the real extension of
 // checkpoint-b04's structural-only untracked-archive policy (size/path/
 // symlink caps, internal/repocheckpoint/security.go) into the "secret scan"

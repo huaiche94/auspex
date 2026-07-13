@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // TestPrivacy_UserPromptSubmit_RawPromptNeverInEvent is this node's

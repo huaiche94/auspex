@@ -36,7 +36,7 @@ Provide the objective evidence that the vertical slice is safe, restartable, ide
 1. Cross-platform basic CI: format, vet, test, build; race where supported.
 2. One end-to-end high-risk Claude fixture flow:
    - status-line ingestion;
-   - prompt preflight block;
+   - prompt auspex block;
    - state/repo checkpoint;
    - one-time allow;
    - Stop outcome;

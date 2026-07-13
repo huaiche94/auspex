@@ -57,11 +57,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // --- independent fixtures (qa06-prefixed) ----------------------------------
@@ -113,8 +113,8 @@ func newQA06Repo(t *testing.T) *qa06Repo {
 		t.Skipf("git not available: %v", err)
 	}
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight QA Adversarial")
-	rb.git("config", "user.email", "qa-adversarial@preflight.invalid")
+	rb.git("config", "user.name", "Auspex QA Adversarial")
+	rb.git("config", "user.email", "qa-adversarial@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	return rb
 }

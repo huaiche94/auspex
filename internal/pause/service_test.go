@@ -18,12 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/predictor/runway"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/predictor/runway"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // --- compile-time contract assertion --------------------------------------

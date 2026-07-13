@@ -25,11 +25,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // fakeSessionResolver is a package-local narrow double for

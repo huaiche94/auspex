@@ -1,6 +1,6 @@
 -- 0043_policy_decisions.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `policy_decisions`. Durable form
+-- Auspex_ADD.md §12.2 canonical schema: `policy_decisions`. Durable form
 -- of app.DecisionResult (ADD §17 Policy Engine), one row per
 -- EvaluationService.Decide call. FKs into predictions (0041, this range)
 -- and runway_forecasts (0042, this range) — both same-migration-range

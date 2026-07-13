@@ -1,6 +1,6 @@
 -- 0003_provider_sessions.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `provider_sessions`. FKs into
+-- Auspex_ADD.md §12.2 canonical schema: `provider_sessions`. FKs into
 -- worktrees (0002). This is the table every provider role's own migration
 -- range (claude-provider 0010-0019 and later provider adapters) FKs its
 -- turns/telemetry tables into, so its shape here is load-bearing for all of

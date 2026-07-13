@@ -17,7 +17,7 @@
 //     claude-provider's real Normalizer and persisted via the real
 //     EventStore. This is the observational signal that foreshadows the
 //     rest of the scenario: an agent deep into a long, expensive turn.
-//  2. Prompt preflight block: a real evaluation.Service.EvaluateTurn ->
+//  2. Prompt auspex block: a real evaluation.Service.EvaluateTurn ->
 //     Decide call, driven into the critical risk band via a DataSource
 //     fixture reusing runtime-b06's own documented technique
 //     (decision_realauth_test.go's newHighRiskDataSource: large
@@ -74,27 +74,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/predictor/quota"
-	"github.com/huaiche94/preflight/internal/predictor/risk"
-	"github.com/huaiche94/preflight/internal/predictor/scope"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/progress"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor/quota"
+	"github.com/huaiche94/auspex/internal/predictor/risk"
+	"github.com/huaiche94/auspex/internal/predictor/scope"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/progress"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- shared fixtures / test doubles (qa02-prefixed, following qa-04's own
@@ -141,7 +141,7 @@ func qa02Fixture(t *testing.T, dir, name string) []byte {
 func qa02OpenDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight-e2e.db")
+	path := filepath.Join(dir, "auspex-e2e.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
@@ -206,10 +206,10 @@ func newQA02Repo(t *testing.T) *qa02Repo {
 		t.Skipf("git not available: %v", err)
 	}
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight QA E2E")
-	rb.git("config", "user.email", "qa-e2e@preflight.invalid")
+	rb.git("config", "user.name", "Auspex QA E2E")
+	rb.git("config", "user.email", "qa-e2e@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
-	if err := os.WriteFile(filepath.Join(rb.dir, "README.md"), []byte("preflight e2e scratch repo\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(rb.dir, "README.md"), []byte("auspex e2e scratch repo\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	rb.git("add", "README.md")
@@ -434,7 +434,7 @@ func TestE2EHighRisk_RiskyTurnFullLifecycle(t *testing.T) {
 	}
 
 	// =====================================================================
-	// Step 2: prompt preflight block — real EvaluateTurn -> Decide, driven
+	// Step 2: prompt auspex block — real EvaluateTurn -> Decide, driven
 	// into the critical risk band.
 	// =====================================================================
 	tid := taskID

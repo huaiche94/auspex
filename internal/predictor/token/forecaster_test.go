@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/features"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
 )
 
 // fakeSource is a minimal, fully-controllable FeatureSource for tests.

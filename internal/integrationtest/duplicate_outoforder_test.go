@@ -30,13 +30,13 @@
 //
 //   - EVENT CORRELATION: internal/orchestrator/correlate.go's
 //     EventCorrelator, wired into HookDeps by internal/app/wiring (and
-//     into the binary by cmd/preflight/wire.go's SessionResolver), now
+//     into the binary by cmd/auspex/wire.go's SessionResolver), now
 //     populates TaskID/ProgressNodeID on every hook-persisted event that
 //     resolves unambiguously — TaskID via the frozen
 //     app.FeatureDataSource.Resolve port, ProgressNodeID only when
 //     exactly one node is in_progress (zero or multiple candidates leave
 //     it empty: correlation never guesses).
-//   - EXPLICIT COMPLETION: `preflight progress complete`
+//   - EXPLICIT COMPLETION: `auspex progress complete`
 //     (internal/cli/progress.go -> orchestrator.ProgressComplete -> the
 //     frozen app.ProgressTreeService.CompleteNode) is the production path
 //     that actually completes a node, with caller-supplied idempotency
@@ -74,17 +74,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- shared test doubles / fixtures --------------------------------------
@@ -134,7 +134,7 @@ func qa04Fixture(t *testing.T, dir, name string) []byte {
 }
 
 // openQA04DB opens a REAL on-disk (temp-file, not :memory:) SQLite database
-// and runs every migration, matching what a real Preflight process would
+// and runs every migration, matching what a real Auspex process would
 // have at both the event-persistence layer AND the progress-tree layer —
 // this is the crux of testing these two roles' work "actually wired
 // together," which requires both EventStore's `events` table and
@@ -144,7 +144,7 @@ func qa04Fixture(t *testing.T, dir, name string) []byte {
 func openQA04DB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
@@ -276,7 +276,7 @@ func qa04MoveToInProgress(t *testing.T, db *sqlite.DB, clock domain.Clock, id do
 }
 
 // deriveCompleteNodeInput is TEST-ONLY glue standing in for the explicit
-// `preflight progress complete` invocation production now uses (issue #1's
+// `auspex progress complete` invocation production now uses (issue #1's
 // explicit-completion design — see the package doc comment; there is
 // deliberately still no AUTOMATIC event->CompleteNode adapter). It maps a
 // real, normalized claude-provider v1.Event onto the frozen
@@ -306,7 +306,7 @@ func deriveCompleteNodeInput(ev v1.Event, nodeID domain.ProgressNodeID, artifact
 // store.go:74-76, names this as "expected, ordinary behavior... not an
 // exceptional one"), against a real on-disk SQLite database that ALSO
 // holds checkpoint-a07's progress_nodes/node_completions tables (the same
-// database a real Preflight process would use — this is what makes this an
+// database a real Auspex process would use — this is what makes this an
 // integration test rather than a re-run of either role's own unit tests in
 // isolation).
 //
@@ -749,7 +749,7 @@ func qa04SeedSessionChain(t *testing.T, db *sqlite.DB, sessionID string, withTas
 }
 
 // qa04ProgressService composes the real, fully-composed
-// app.ProgressTreeService exactly the way cmd/preflight/wire.go does
+// app.ProgressTreeService exactly the way cmd/auspex/wire.go does
 // (progress.NewService over the same real stores/CompleteNode/Reconciler),
 // because the correlator's node lookup consumes the frozen Snapshot method
 // on that service — using the production implementation here is what makes
@@ -799,7 +799,7 @@ func qa04StoredStopEvents(t *testing.T, db *sqlite.DB, sessionID string) []struc
 // the gap that test existed to document is now closed by issue #1's event
 // correlation, and this test asserts the closure END TO END through the
 // production hook path — orchestrator.HandleStop with the exact HookDeps
-// shape cmd/preflight/wire.go + internal/app/wiring compose (real
+// shape cmd/auspex/wire.go + internal/app/wiring compose (real
 // EventStore persister, real evaluation.SQLDataSource resolver, real
 // progress.NewService snapshot reader), a REAL Stop fixture on stdin, and
 // the same real on-disk migrated SQLite database under all of it.
@@ -843,7 +843,7 @@ func TestDuplicateOutOfOrder_StopEventThroughProductionHookPath_CarriesCorrelati
 	}
 	qa04MoveToInProgress(t, db, clock, activeID)
 
-	// Production wiring shape (cmd/preflight/wire.go's HookSupport +
+	// Production wiring shape (cmd/auspex/wire.go's HookSupport +
 	// wiring.App.RootCmd's correlator construction), assembled directly.
 	store := claudetelemetry.NewEventStore(db)
 	deps := orchestrator.HookDeps{

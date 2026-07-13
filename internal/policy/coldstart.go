@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/huaiche94/preflight/internal/domain"
+import "github.com/huaiche94/auspex/internal/domain"
 
 // Risk bands (ADD §16.5). Named exactly after the ADD's own table so this
 // file can be checked against the ADD text directly.

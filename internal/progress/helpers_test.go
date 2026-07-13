@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // fixedClock is a deterministic domain.Clock test double.
@@ -18,7 +18,7 @@ func (f fixedClock) Now() time.Time { return f.t }
 func openTestDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)

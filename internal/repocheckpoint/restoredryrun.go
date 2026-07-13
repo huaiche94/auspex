@@ -1,5 +1,5 @@
 // restoredryrun.go: checkpoint-b08's "Restore dry-run" deliverable
-// (agents/checkpoint.md Part B deliverable #9; Preflight_ADD.md §19.6
+// (agents/checkpoint.md Part B deliverable #9; Auspex_ADD.md §19.6
 // "Restore"). Actual restore-that-mutates-the-working-tree remains
 // explicitly out of vertical-slice scope (this node's own DAG risk note: "actual
 // restore is stretch/deferred") — app.RepositoryCheckpointService.Restore
@@ -28,8 +28,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
 )
 
 // RestoreDryRunReport is the full ADD §19.6 "produce report" deliverable:

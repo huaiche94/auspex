@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 func TestResolverMainWorktree(t *testing.T) {
@@ -49,7 +49,7 @@ func TestResolverLinkedWorktree(t *testing.T) {
 	rb.git("add", "README.md")
 	rb.git("commit", "-q", "-m", "initial")
 
-	linkedParent, err := os.MkdirTemp("", "preflight-gitx-linked-*")
+	linkedParent, err := os.MkdirTemp("", "auspex-gitx-linked-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestResolverLinkedWorktree(t *testing.T) {
 }
 
 func TestResolverNotAGitRepo(t *testing.T) {
-	dir, err := os.MkdirTemp("", "preflight-gitx-notrepo-*")
+	dir, err := os.MkdirTemp("", "auspex-gitx-notrepo-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestResolverNotAGitRepo(t *testing.T) {
 
 func TestResolverNonexistentPath(t *testing.T) {
 	client := NewClient(ExecRunner{})
-	_, err := client.ResolveRepo(context.Background(), "/preflight-gitx-does-not-exist/nope")
+	_, err := client.ResolveRepo(context.Background(), "/auspex-gitx-does-not-exist/nope")
 	if err == nil {
 		t.Fatal("ResolveRepo: expected error for a nonexistent path, got nil")
 	}

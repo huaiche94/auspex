@@ -7,7 +7,7 @@ Approved by: repository owner, 2026-07-13 (issue #13 decision session)
 
 ## Context
 
-Preflight's evaluation pipeline treats **provider quota** as the primary
+Auspex's evaluation pipeline treats **provider quota** as the primary
 exhaustible resource: `QuotaForecaster` (ADR-041 Stage 3,
 `internal/predictor/quota`) projects rolling-window quota and context
 percentages, and Graceful Pause's headline trigger is "a quota limit is
@@ -64,7 +64,7 @@ context projection — quota was always just one resource among several.
 
 ## Consequences
 
-- Preflight's value proposition no longer depends on providers keeping
+- Auspex's value proposition no longer depends on providers keeping
   hard limits; per-prompt cost/scope/risk estimation (issue #14) becomes
   the primary surface, with this ADR supplying its resource/cost model.
 - A pricing table becomes a maintained artifact (per provider/model,

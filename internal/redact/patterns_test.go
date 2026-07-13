@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/redact"
+	"github.com/huaiche94/auspex/internal/redact"
 )
 
 // azureKeyBody is a syntactically valid-shaped (86 base64 chars + "==")

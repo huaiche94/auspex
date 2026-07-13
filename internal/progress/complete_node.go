@@ -50,10 +50,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // Phase names the distinct steps of the CompleteNode protocol, used by
@@ -539,7 +539,7 @@ var startedStatuses = map[domain.ProgressNodeStatus]bool{
 // provider integration that emits lifecycle events over multiple channels
 // (or that redelivers events after a transient failure) can genuinely
 // deliver a child's "completed" signal ahead of its parent's "started"
-// signal even though the real-world execution order was correct — Preflight
+// signal even though the real-world execution order was correct — Auspex
 // must not let the Progress Tree's canonical state (Constitution §6.1)
 // silently become internally incoherent (a completed node whose parent
 // never started) just because two normalized events raced on delivery.

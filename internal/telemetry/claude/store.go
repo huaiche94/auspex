@@ -22,9 +22,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // EventStore persists normalized v1.Event values into the `events` table

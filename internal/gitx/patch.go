@@ -76,7 +76,7 @@ func (c *Client) ApplyCheck(ctx context.Context, worktreeDir string, patch []byt
 		return ApplyCheckResult{WouldApply: true, Detail: "empty patch: nothing to apply"}, nil
 	}
 
-	f, err := os.CreateTemp("", "preflight-restore-dryrun-*.patch")
+	f, err := os.CreateTemp("", "auspex-restore-dryrun-*.patch")
 	if err != nil {
 		return ApplyCheckResult{}, err
 	}

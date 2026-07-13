@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/pause"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pause"
 )
 
 func newSeededMemStore(t *testing.T, id domain.PauseID, status domain.PauseStatus) *pause.MemStore {

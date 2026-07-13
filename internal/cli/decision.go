@@ -3,11 +3,11 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// NewDecisionCmd builds the REAL `preflight decision {allow,deny}` command
+// NewDecisionCmd builds the REAL `auspex decision {allow,deny}` command
 // tree, wired against deps (internal/orchestrator.DecisionDeps). This is
 // the runtime-b06 constructor internal/app/wiring.App.RootCmd() uses in
 // place of the package-private `decision` stub in root.go.
@@ -57,7 +57,7 @@ func newDecisionAllowCmd(deps orchestrator.DecisionDeps) *cobra.Command {
 			}
 
 			out := decisionAllowOutput{
-				SchemaVersion:   "preflight.decision-allow.v1",
+				SchemaVersion:   "auspex.decision-allow.v1",
 				Issued:          result.Issued,
 				Consumed:        result.Consumed,
 				AuthorizationID: result.Authorization.ID,
@@ -98,7 +98,7 @@ func newDecisionDenyCmd(deps orchestrator.DecisionDeps) *cobra.Command {
 				return err
 			}
 			out := decisionDenyOutput{
-				SchemaVersion: "preflight.decision-deny.v1",
+				SchemaVersion: "auspex.decision-deny.v1",
 				Action:        string(result.Decision.Action),
 			}
 			body, err := marshalOrError("decision deny", out)

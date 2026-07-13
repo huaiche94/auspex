@@ -1,7 +1,7 @@
 {
   "session_id": "sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z",
-  "transcript_path": "/Users/dev/.claude/projects/preflight/sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z.jsonl",
-  "cwd": "/Users/dev/projects/preflight",
+  "transcript_path": "/Users/dev/.claude/projects/auspex/sess_01H9X8K7QZ3M4N5P6R7S8T9V0Z.jsonl",
+  "cwd": "/Users/dev/projects/auspex",
   "hook_event_name": "UserPromptSubmit",
   "prompt": "Add a retry loop around the SQLite writer.",
   "permission_mode": "acceptEdits",

@@ -37,11 +37,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // goldenPath returns the checked-in fixture path for name.
@@ -53,7 +53,7 @@ func goldenPath(name string) string {
 // against the fixture at goldenPath(fixtureName), structurally (unmarshal
 // both sides, reflect.DeepEqual) — so a field added, removed, renamed, or
 // value-changed fails loudly, while JSON's own insignificant formatting
-// differences never do. Set PREFLIGHT_UPDATE_GOLDEN=1 to rewrite the
+// differences never do. Set AUSPEX_UPDATE_GOLDEN=1 to rewrite the
 // fixture from got instead of comparing (this role's own established
 // convention for updating a deliberate output-shape change — mirrors the
 // same escape hatch every golden-file testing setup needs so a real,
@@ -62,7 +62,7 @@ func assertGolden(t *testing.T, fixtureName string, got []byte) {
 	t.Helper()
 	path := goldenPath(fixtureName)
 
-	if os.Getenv("PREFLIGHT_UPDATE_GOLDEN") == "1" {
+	if os.Getenv("AUSPEX_UPDATE_GOLDEN") == "1" {
 		var pretty bytes.Buffer
 		if err := json.Indent(&pretty, bytes.TrimSpace(got), "", "  "); err != nil {
 			t.Fatalf("indenting golden output for %s: %v", fixtureName, err)
@@ -77,7 +77,7 @@ func assertGolden(t *testing.T, fixtureName string, got []byte) {
 
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading golden fixture %s: %v (run with PREFLIGHT_UPDATE_GOLDEN=1 to create it)", path, err)
+		t.Fatalf("reading golden fixture %s: %v (run with AUSPEX_UPDATE_GOLDEN=1 to create it)", path, err)
 	}
 
 	var gv, wv any

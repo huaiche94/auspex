@@ -8,7 +8,7 @@ for the latter).
 checkpoint-b04 does not commit an actual `.git` directory here: a real Git
 repository checked into another Git repository as a plain directory tree
 causes tooling (and `git status` inside this very repo) to misbehave, and
-Preflight's own test suite builds real temporary repositories on demand
+Auspex's own test suite builds real temporary repositories on demand
 instead (see `internal/gitx`'s `repoBuilder` and
 `internal/repocheckpoint`'s equivalent test helper in `helpers_test.go`) —
 that is the actual source of "real repository" coverage for this role's

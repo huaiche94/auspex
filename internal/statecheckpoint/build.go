@@ -11,7 +11,7 @@ package statecheckpoint
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // BuildInput is everything Build needs to assemble a Manifest. Every slice

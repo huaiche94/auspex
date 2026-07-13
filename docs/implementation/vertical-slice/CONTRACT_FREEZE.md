@@ -1,35 +1,35 @@
-# Preflight Vertical-Slice Contract Freeze
+# Auspex Vertical-Slice Contract Freeze
 
 Status: **ACCEPTED** — Bootstrap stage, executed by the lead directly (see `CONSTITUTION.md` amendment pending re: Bootstrap-as-lead-only-prerequisite, approved by repository owner 2026-07-12).
 Contract commit: `4262b4b`
-Go module: `github.com/huaiche94/preflight`
-Schema baseline: `preflight.event.v1` / `preflight.progress-tree.v1` / `preflight.state-checkpoint.v1` / `preflight.repository-checkpoint.v1` / `preflight.pause.v1` / `preflight.api.v1`
+Go module: `github.com/huaiche94/auspex`
+Schema baseline: `auspex.event.v1` / `auspex.progress-tree.v1` / `auspex.state-checkpoint.v1` / `auspex.repository-checkpoint.v1` / `auspex.pause.v1` / `auspex.api.v1`
 
 ## Import paths
 
 | Concern | Package |
 |---|---|
-| Domain entities | `github.com/huaiche94/preflight/internal/domain` |
-| Cross-component ports | `github.com/huaiche94/preflight/internal/app` |
-| Event protocol | `github.com/huaiche94/preflight/pkg/protocol/v1` |
-| SQLite runtime | `github.com/huaiche94/preflight/internal/storage/sqlite` (not yet created — `foundation` role) |
+| Domain entities | `github.com/huaiche94/auspex/internal/domain` |
+| Cross-component ports | `github.com/huaiche94/auspex/internal/app` |
+| Event protocol | `github.com/huaiche94/auspex/pkg/protocol/v1` |
+| SQLite runtime | `github.com/huaiche94/auspex/internal/storage/sqlite` (not yet created — `foundation` role) |
 
 ## Schema-version strings
 
 ```text
-preflight.event.v1
-preflight.progress-tree.v1
-preflight.state-checkpoint.v1
-preflight.repository-checkpoint.v1
-preflight.pause.v1
-preflight.api.v1
+auspex.event.v1
+auspex.progress-tree.v1
+auspex.state-checkpoint.v1
+auspex.repository-checkpoint.v1
+auspex.pause.v1
+auspex.api.v1
 ```
 
 Defined as constants in `pkg/protocol/v1/event.go` (`SchemaVersionEvent`, etc.), covered by `pkg/protocol/v1/event_test.go`.
 
 ## ID and idempotency rules
 
-- All Preflight-owned entity IDs (`internal/domain/ids.go`) are opaque `string`-based types (`RepositoryID`, `WorktreeID`, `SessionID`, `TurnID`, `EvaluationID`, `PredictionID`, `DecisionID`, `TaskID`, `ProgressNodeID`, `StateCheckpointID`, `RepositoryCheckpointID`, `PauseID`, `WakeJobID`, `ResumeAttemptID`, `EventID`) — UUIDv7 at generation time (owned by `foundation`'s `internal/idgen`), never parsed for meaning.
+- All Auspex-owned entity IDs (`internal/domain/ids.go`) are opaque `string`-based types (`RepositoryID`, `WorktreeID`, `SessionID`, `TurnID`, `EvaluationID`, `PredictionID`, `DecisionID`, `TaskID`, `ProgressNodeID`, `StateCheckpointID`, `RepositoryCheckpointID`, `PauseID`, `WakeJobID`, `ResumeAttemptID`, `EventID`) — UUIDv7 at generation time (owned by `foundation`'s `internal/idgen`), never parsed for meaning.
 - Event idempotency: `Event.IdempotencyKey` (`pkg/protocol/v1/event.go`) — deterministic per provider event identity where the provider gives a stable ID, else a content digest. Owning role (e.g. `claude-provider`) defines the exact digest algorithm; the field itself is frozen here.
 - `CompleteNodeRequest.IdempotencyKey` (`internal/app/ports.go`) — same completion request replayed with the same key MUST return the same result; a different payload under the same key is a conflict, not a silent overwrite (Constitution §6).
 - `Authorization` — one-time; consumption is exactly-once, enforced by `predictor` at the storage layer, not by this contract alone.
@@ -81,7 +81,7 @@ Fail-open vs fail-closed (Constitution §immutable-day-one-rule-10, from the ver
 - 0040–0049 `predictor`
 - 0050–0059 `runtime` (Part A — pause/scheduler)
 
-`runtime` Part B does not get a range; it does not add schema unless `contract-integrator` explicitly assigns one (`Preflight_Parallel_Execution_Plan.md` §7).
+`runtime` Part B does not get a range; it does not add schema unless `contract-integrator` explicitly assigns one (`Auspex_Parallel_Execution_Plan.md` §7).
 
 ## Predictor pipeline ports (ADR-041)
 
@@ -116,7 +116,7 @@ both feed `RiskCombiner`), `RiskComponent` (`Score`, `Calibrated`,
 changed from `[]string` to `[]domain.ReasonCode` (safe: no Wave 1 code
 constructed or consumed that field).
 
-Terminology: `Preflight_Predictor_Design_Supplement.md` calls the third
+Terminology: `Auspex_Predictor_Design_Supplement.md` calls the third
 risk term "execution_risk"; the frozen contract keeps ADD §16.1's existing
 name, `completion_risk` — same concept, one name, per Constitution §1.
 
@@ -152,3 +152,14 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
   views of the same port (interface segregation, documented at each
   definition). This closes the "repository/session feature lookup"
   deferral in the section above; the rest of that section still applies.
+
+- **2026-07-13 — ADR-045: product renamed Preflight → Auspex.** Every
+  frozen schema-version string is re-prefixed (`preflight.error.v1` →
+  `auspex.error.v1`, `preflight.event.v1` → `auspex.event.v1`,
+  `preflight.evaluate.v1` → `auspex.evaluate.v1`, etc.), the module path
+  becomes `github.com/huaiche94/auspex`, and the user-data directory
+  becomes `auspex/`. Permissible solely because the project is
+  pre-release with zero external consumers; after first public release
+  this class of change is forbidden by this document's own
+  schema-version rules. Historical documents in `docs/archive/` retain
+  the old strings by design.

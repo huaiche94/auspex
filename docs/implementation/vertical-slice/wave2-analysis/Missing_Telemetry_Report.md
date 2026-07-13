@@ -4,16 +4,16 @@
 |---|---|
 | Phase | 3.6 — Post Wave 2 Analysis |
 | Status | Analysis only |
-| Scope | Two categories: (A) **Product telemetry** — data Preflight's own predictor needs from a real coding-agent session, none of which has ever been captured because no live session has been run; (B) **Process telemetry** — data about implementing Preflight itself that this wave's execution could have captured but did not, per `Prediction_Error_Report.md` |
+| Scope | Two categories: (A) **Product telemetry** — data Auspex's own predictor needs from a real coding-agent session, none of which has ever been captured because no live session has been run; (B) **Process telemetry** — data about implementing Auspex itself that this wave's execution could have captured but did not, per `Prediction_Error_Report.md` |
 
-## A. Product telemetry (Preflight's predictor inputs)
+## A. Product telemetry (Auspex's predictor inputs)
 
 ### A1. Actual token usage per turn
 
 - **Current status:** Unknown
 - **Provenance:** Unknown
 - **Why unavailable:** No live Claude Code (or Codex) session has ever run
-  against a `preflight` binary — the CLI (`runtime-b01`+) doesn't exist
+  against a `auspex` binary — the CLI (`runtime-b01`+) doesn't exist
   yet, so there is no integration point that could observe a real turn.
 - **Provider limitation:** Per ADD §8.7's own capability matrix, even once
   integrated, exact per-turn usage is "partial/status-derived" for Claude
@@ -100,8 +100,8 @@
 - **Current status:** Unknown
 - **Provenance:** Unknown
 - **Why unavailable:** No turn has ever completed (or failed) under
-  Preflight's observation; these labels (named in
-  `Preflight_Predictor_Design_Supplement.md`'s "Better Statistical
+  Auspex's observation; these labels (named in
+  `Auspex_Predictor_Design_Supplement.md`'s "Better Statistical
   Models" section) require a persisted, terminated turn to assign.
 - **Provider limitation:** None expected — failure/completion signals are
   generally observable once integrated (`domain.FailureClass`, already
@@ -157,7 +157,7 @@
   interface `predictor-05` introduced, or fold into a proper frozen
   `app` port once one exists (see `ADR_Recommendations.md`).
 
-## B. Process telemetry (implementing Preflight itself)
+## B. Process telemetry (implementing Auspex itself)
 
 ### B1. Per-node token usage
 

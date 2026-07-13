@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // ErrNotFound mirrors internal/statecheckpoint.ErrNotFound's shape

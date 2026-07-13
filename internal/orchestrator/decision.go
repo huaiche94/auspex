@@ -1,4 +1,4 @@
-// decision.go implements `preflight decision allow` / `preflight decision
+// decision.go implements `auspex decision allow` / `auspex decision
 // deny` (agents/runtime.md Part B P0 command list; EXECUTION_DAG.md
 // runtime-b06) — the two remaining decision-flow commands after
 // runtime-b03's Evaluate pipeline. Per the task brief, this node's explicit
@@ -44,8 +44,8 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // AuthorizationIssuer is the narrow local seam for
@@ -77,7 +77,7 @@ type DecisionDeps struct {
 	Issuer     AuthorizationIssuer
 }
 
-// DecisionAllowRequest is `preflight decision allow`'s input. Exactly one
+// DecisionAllowRequest is `auspex decision allow`'s input. Exactly one
 // of the two flows this file's package comment describes applies,
 // selected by whether AuthorizationID is empty:
 //
@@ -132,7 +132,7 @@ type DecisionAllowResult struct {
 	Consumed bool
 }
 
-// DecisionAllowCmd implements `preflight decision allow`. See this file's
+// DecisionAllowCmd implements `auspex decision allow`. See this file's
 // package comment for the full two-flow rationale.
 func DecisionAllowCmd(ctx context.Context, deps DecisionDeps, req DecisionAllowRequest) (DecisionAllowResult, error) {
 	if deps.Evaluation == nil {
@@ -192,7 +192,7 @@ func DecisionAllowCmd(ctx context.Context, deps DecisionDeps, req DecisionAllowR
 	return DecisionAllowResult{Decision: decision, Authorization: auth, Issued: true}, nil
 }
 
-// DecisionDenyRequest is `preflight decision deny`'s input.
+// DecisionDenyRequest is `auspex decision deny`'s input.
 type DecisionDenyRequest struct {
 	EvaluationID domain.EvaluationID
 }
@@ -206,7 +206,7 @@ type DecisionDenyResult struct {
 	Decision app.DecisionResult
 }
 
-// DecisionDenyCmd implements `preflight decision deny`: reads back the
+// DecisionDenyCmd implements `auspex decision deny`: reads back the
 // evaluation's already-computed decision via the real
 // app.EvaluationService.Decide (read-back, not recompute — see
 // internal/evaluation/doc.go's "Decide: read-back, not recompute" section)

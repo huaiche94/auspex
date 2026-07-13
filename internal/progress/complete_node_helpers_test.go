@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // seqIDGenerator is a deterministic, sequential domain.IDGenerator test
@@ -188,7 +188,7 @@ func moveNodeToInProgress(t *testing.T, db *sqlite.DB, clock domain.Clock, id do
 // fileArtifactRef builds a domain.ArtifactRef pointing at path with no
 // claimed checksum (FileStager computes and fills in the real one) — this
 // is the common case tests use since the whole point of staging is that
-// Preflight computes the checksum itself, not trust the caller's claim.
+// Auspex computes the checksum itself, not trust the caller's claim.
 func fileArtifactRef(id string, path string) domain.ArtifactRef {
 	return domain.ArtifactRef{
 		ID:        id,

@@ -16,7 +16,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 func TestMigration0023_AllMigrations_IncludesStateCheckpointsAndCompletions(t *testing.T) {

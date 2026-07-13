@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
 )
 
 // Service implements app.RepositoryCheckpointService. Restore is
@@ -48,7 +48,7 @@ type WorktreeLocation struct {
 
 // NewService constructs a Service. artifactsRoot is the directory under
 // which every checkpoint's own ArtifactsRoot/<id>/ directory is written
-// (ADD §19.2's `<UserDataDir>/Preflight/repositories/<repo-id>/checkpoints/`
+// (ADD §19.2's `<UserDataDir>/Auspex/repositories/<repo-id>/checkpoints/`
 // layout — resolving the real UserDataDir is the caller's responsibility;
 // this package only needs a root to write under, consistent with
 // capture.go's CaptureRequest.ArtifactsRoot doc comment).

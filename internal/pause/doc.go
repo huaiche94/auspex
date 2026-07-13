@@ -1,5 +1,5 @@
-// Package pause implements Preflight's Graceful Pause / Safe Points /
-// Durable Scheduler state machine (Preflight_ADD.md §20; agents/runtime.md
+// Package pause implements Auspex's Graceful Pause / Safe Points /
+// Durable Scheduler state machine (Auspex_ADD.md §20; agents/runtime.md
 // Part A). This node (runtime-a02) builds only the state transition
 // validator — the pause/resume integrity boundary every later Part A node
 // (Observe, RequestPause, the persist-phase orchestrator, resume
@@ -25,7 +25,7 @@
 // agents/runtime.md's Part A "Required state path" prose
 // (observing -> pause_requested -> quiescing -> safe_point_reached ->
 // persisting -> interrupting -> sleeping -> wake_due -> validating ->
-// resuming -> resumed) and Preflight_ADD.md §20.5's mermaid diagram
+// resuming -> resumed) and Auspex_ADD.md §20.5's mermaid diagram
 // (Active -> Predicted -> Requested -> Quiescing -> SafePointReached ->
 // Checkpointing -> Interrupting -> Sleeping -> WakePending -> Validating ->
 // Resuming -> Active, plus EmergencyInterrupt/MinimalCheckpoint/Failed/

@@ -17,7 +17,7 @@ Create the buildable Go application foundation and the SQLite runtime used by ev
 ```text
 go.mod
 go.sum
-cmd/preflight/main.go
+cmd/auspex/main.go
 internal/buildinfo/**
 internal/config/**
 internal/paths/**
@@ -38,7 +38,7 @@ Do not edit contract-integrator's files or another role's migration range.
 
 ## Deliverables
 
-1. Go module and minimal `preflight version`.
+1. Go module and minimal `auspex version`.
 2. OS-correct config/data/cache/runtime paths with injectable environment/home.
 3. YAML config load and documented precedence for fields needed by the day-one flow.
 4. SQLite open/migrate/transaction helpers.

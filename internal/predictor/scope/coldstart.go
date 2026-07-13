@@ -1,6 +1,6 @@
 package scope
 
-import "github.com/huaiche94/preflight/internal/features"
+import "github.com/huaiche94/auspex/internal/features"
 
 // coldStartDefault is one row of the ADD §14.6 bootstrap table: a per-task-class
 // files-changed and lines-changed P50/P90 pair. These are explicitly *not*

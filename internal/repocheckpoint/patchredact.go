@@ -75,7 +75,7 @@ package repocheckpoint
 import (
 	"bytes"
 
-	"github.com/huaiche94/preflight/internal/redact"
+	"github.com/huaiche94/auspex/internal/redact"
 )
 
 // redactedLinePlaceholder replaces an entire added/removed line's content
@@ -83,7 +83,7 @@ import (
 // generic (never echoes any part of the matched text back — same
 // discipline internal/redact.Detector.Find itself documents: a partial
 // secret excerpt is itself a leak vector).
-const redactedLinePlaceholder = "[REDACTED: secret-shaped content removed by preflight checkpoint capture]"
+const redactedLinePlaceholder = "[REDACTED: secret-shaped content removed by auspex checkpoint capture]"
 
 // redactPatchSecrets scans a binary-safe patch (gitx.Client.DiffPatch
 // output) line by line and replaces the body of any added ("+") or removed

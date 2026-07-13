@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // StopEvent is the parsed representation of a Claude Code Stop hook
@@ -134,8 +134,8 @@ func ParseStopFailure(raw []byte) (StopFailureEvent, error) {
 	return ev, nil
 }
 
-// classifyFailure maps Claude/Anthropic API error shapes into Preflight's
-// frozen domain.FailureClass enum. This mapping is Preflight's own
+// classifyFailure maps Claude/Anthropic API error shapes into Auspex's
+// frozen domain.FailureClass enum. This mapping is Auspex's own
 // heuristic (not part of any frozen contract) and may need refinement once
 // real StopFailure payloads are observed against a live account — see the
 // progress artifact's "assumptions" for this wave.

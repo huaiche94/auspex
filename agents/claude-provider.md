@@ -23,7 +23,7 @@ docs/implementation/vertical-slice/claude-provider.md
 
 ## Mission
 
-Implement fixture-backed Claude Code integration without scraping the TUI. Normalize status-line and lifecycle hook payloads into frozen Preflight events and provider-compatible hook responses.
+Implement fixture-backed Claude Code integration without scraping the TUI. Normalize status-line and lifecycle hook payloads into frozen Auspex events and provider-compatible hook responses.
 
 ## P0 deliverables
 
@@ -43,7 +43,7 @@ Implement fixture-backed Claude Code integration without scraping the TUI. Norma
    - turn boundary and provider capability observations.
 3. Idempotent telemetry persistence keyed by provider event identity or deterministic digest.
 4. Provider-compatible allow/block response encoder for `UserPromptSubmit`.
-5. Claude plugin/hooks example invoking `preflight hook claude ...`.
+5. Claude plugin/hooks example invoking `auspex hook claude ...`.
 6. Fixtures for normal, missing/null, compacted, high-usage, duplicate, unknown-field, Stop, and rate-limit StopFailure payloads.
 
 ## Privacy

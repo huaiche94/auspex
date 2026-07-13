@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // NumstatEntry is one parsed record of `git diff --numstat -z`.

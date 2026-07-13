@@ -3,8 +3,8 @@ package fakes
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // FakeStateCheckpointService is a configurable test double for the frozen

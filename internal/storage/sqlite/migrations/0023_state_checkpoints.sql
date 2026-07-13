@@ -1,6 +1,6 @@
 -- 0023_state_checkpoints.sql
 --
--- Preflight_ADD.md §18.8 / Appendix B canonical schema: `state_checkpoints`
+-- Auspex_ADD.md §18.8 / Appendix B canonical schema: `state_checkpoints`
 -- — the durable State Checkpoint manifest row created in the same atomic
 -- operation as every node completion (Constitution §6.3, ADD ADR-029
 -- "State checkpoint at every semantic boundary"). Deferred from
@@ -10,7 +10,7 @@
 -- that wave.
 --
 -- manifest_json carries the full Appendix B document (schema_version
--- preflight.state-checkpoint.v1); the columns below duplicate the fields a
+-- auspex.state-checkpoint.v1); the columns below duplicate the fields a
 -- caller needs to query/join on without parsing JSON, exactly mirroring
 -- 0030_repository_checkpoints.sql's own manifest_json + queryable-column
 -- split for the sibling Part B artifact.

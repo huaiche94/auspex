@@ -28,7 +28,7 @@
 //
 // Correlation is deliberately best-effort and fail-open, matching the hook
 // handlers' own discipline (hooks.go: "a hook must never fail the user's
-// actual prompt/turn because Preflight's own event log could not be
+// actual prompt/turn because Auspex's own event log could not be
 // written", ADD §17.5): any resolver/snapshot error simply persists the
 // event uncorrelated. An uncorrelated event is strictly less useful, never
 // wrong; a hook aborted by a correlation lookup would be provider-visible
@@ -37,7 +37,7 @@
 // Note what this file deliberately does NOT do: it never calls
 // app.ProgressTreeService.CompleteNode. Correlation annotates persisted
 // evidence; actually completing a node remains an explicit, evidence-
-// carrying operation (`preflight progress complete`, internal/cli/
+// carrying operation (`auspex progress complete`, internal/cli/
 // progress.go) per the approved issue #1 design — Constitution §6.2's "a
 // node may not become completed without durable, validator-checked
 // artifact evidence" rules out treating a bare Stop signal as completion
@@ -47,9 +47,9 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // SessionResolver is the narrow, package-local view of the frozen
@@ -58,7 +58,7 @@ import (
 // ("Consumers that need only a subset SHOULD keep depending on their own
 // narrow package-local view of this port... rather than importing the full
 // interface"). The real implementation is internal/evaluation.SQLDataSource
-// (already constructed in cmd/preflight/wire.go); tests supply a fake.
+// (already constructed in cmd/auspex/wire.go); tests supply a fake.
 type SessionResolver interface {
 	// Resolve returns the RepositoryID and (optional) TaskID a session
 	// belongs to. See app.FeatureDataSource.Resolve.
@@ -149,7 +149,7 @@ func (c *EventCorrelator) lookup(ctx context.Context, sessionID domain.SessionID
 	if err != nil || resolved.TaskID == nil || *resolved.TaskID == "" {
 		// Resolve errors include "session not yet registered"
 		// (ErrCodeNotFound from evaluation.SQLDataSource) — for a hook
-		// firing before `preflight init`-style registration, uncorrelated
+		// firing before `auspex init`-style registration, uncorrelated
 		// is the honest answer, not a failure to escalate.
 		return sessionCorrelation{}
 	}

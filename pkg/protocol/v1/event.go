@@ -5,12 +5,12 @@ package v1
 import "time"
 
 const (
-	SchemaVersionEvent                = "preflight.event.v1"
-	SchemaVersionProgressTree         = "preflight.progress-tree.v1"
-	SchemaVersionStateCheckpoint      = "preflight.state-checkpoint.v1"
-	SchemaVersionRepositoryCheckpoint = "preflight.repository-checkpoint.v1"
-	SchemaVersionPause                = "preflight.pause.v1"
-	SchemaVersionAPI                  = "preflight.api.v1"
+	SchemaVersionEvent                = "auspex.event.v1"
+	SchemaVersionProgressTree         = "auspex.progress-tree.v1"
+	SchemaVersionStateCheckpoint      = "auspex.state-checkpoint.v1"
+	SchemaVersionRepositoryCheckpoint = "auspex.repository-checkpoint.v1"
+	SchemaVersionPause                = "auspex.pause.v1"
+	SchemaVersionAPI                  = "auspex.api.v1"
 )
 
 // EventType is a closed, versioned taxonomy (ADD §11.3). New event types
@@ -29,13 +29,13 @@ const (
 	EventProviderTurnInterrupted  EventType = "provider.turn.interrupted"
 
 	// Evaluation
-	EventEvaluationRequested   EventType = "preflight.evaluation.requested"
-	EventFeaturesExtracted     EventType = "preflight.features.extracted"
-	EventPredictionCreated     EventType = "preflight.prediction.created"
-	EventPolicyDecided         EventType = "preflight.policy.decided"
-	EventUserDecisionRecorded  EventType = "preflight.user_decision.recorded"
-	EventAuthorizationCreated  EventType = "preflight.authorization.created"
-	EventAuthorizationConsumed EventType = "preflight.authorization.consumed"
+	EventEvaluationRequested   EventType = "auspex.evaluation.requested"
+	EventFeaturesExtracted     EventType = "auspex.features.extracted"
+	EventPredictionCreated     EventType = "auspex.prediction.created"
+	EventPolicyDecided         EventType = "auspex.policy.decided"
+	EventUserDecisionRecorded  EventType = "auspex.user_decision.recorded"
+	EventAuthorizationCreated  EventType = "auspex.authorization.created"
+	EventAuthorizationConsumed EventType = "auspex.authorization.consumed"
 
 	// Progress / state
 	EventProgressTreeCreated            EventType = "progress.tree.created"

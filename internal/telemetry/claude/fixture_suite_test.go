@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // openFixtureSuiteDB opens a fresh, fully migrated temp-file SQLite database
@@ -38,7 +38,7 @@ import (
 func openFixtureSuiteDB(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
@@ -584,7 +584,7 @@ var allRawTextFixtures = []rawTextFixture{
 	{dir: "stopfailure", file: "overloaded.json", needle: "Anthropic's API is temporarily overloaded.", label: "error message"},
 	{dir: "stopfailure", file: "network.json", needle: "connection reset by peer", label: "error message"},
 	{dir: "stopfailure", file: "context_length.json", needle: "prompt is too long: 210000 tokens > 200000 maximum", label: "error message"},
-	{dir: "stopfailure", file: "unknown_category.json", needle: "an error Preflight has never seen before", label: "error message"},
+	{dir: "stopfailure", file: "unknown_category.json", needle: "an error Auspex has never seen before", label: "error message"},
 }
 
 // TestFixture_RawTextNeverPersistedOrLogged is claude-provider-07's hard
@@ -630,7 +630,7 @@ var allRawTextFixtures = []rawTextFixture{
 //     so this test's coverage is a strict superset.
 //
 // What this test does NOT check (documented so the scope claim is precise,
-// not overstated): it does not check stdout/stderr of an actual `preflight`
+// not overstated): it does not check stdout/stderr of an actual `auspex`
 // CLI process (no such binary exists on this branch yet - runtime-b01/
 // claude-provider-06 territory), and it does not scan a full SQLite file
 // export or a real log file on disk - qa-05's leakage scanner is expected

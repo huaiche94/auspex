@@ -15,7 +15,7 @@ package quota
 // assuming a fixed token ceiling (ADD §15.3's explicit "不得假設固定
 // token ceiling"). These are starting points, not measured values, and
 // are expected to be replaced by StatisticalQuotaForecaster's empirical
-// quantiles (Preflight_Predictor_Design_Supplement.md's Version 2) once
+// quantiles (Auspex_Predictor_Design_Supplement.md's Version 2) once
 // durable per-window delta samples exist.
 const (
 	defaultQuotaDeltaP50 = 2.0

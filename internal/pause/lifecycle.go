@@ -1,6 +1,6 @@
 // lifecycle.go: Cancel and Resume — the two remaining manual, caller-driven
 // pause lifecycle actions runtime-b07's CLI layer wires up
-// (`preflight pause cancel`, `preflight resume`). Both are thin orchestration
+// (`auspex pause cancel`, `auspex resume`). Both are thin orchestration
 // over already-existing pieces this package built in earlier nodes: the
 // transition table (runtime-a02, statemachine.go) proves the requested
 // transition is legal, and PauseStore (runtime-a04, requestpause.go)
@@ -46,7 +46,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // CancelRequest is Cancel's input.

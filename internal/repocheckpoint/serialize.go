@@ -8,7 +8,7 @@ import (
 
 // marshalManifest renders a Manifest as indented JSON (manifest.json, ADD
 // §19.2), matching the human-inspectable style already established for
-// other Preflight manifests referenced in the ADD's appendices.
+// other Auspex manifests referenced in the ADD's appendices.
 func marshalManifest(m Manifest) ([]byte, error) {
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {

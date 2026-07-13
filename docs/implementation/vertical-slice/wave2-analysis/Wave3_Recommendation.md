@@ -5,7 +5,7 @@
 | Phase | 3.10 — Post Wave 2 Analysis |
 | Status | **Recommendation only. No teammates assigned. No execution. Wait for approval.** |
 | Precondition assumed | This analysis treats Wave 2's four branches as if integrated (per DAG dependency semantics), since they were independently verified, validated, and are the immutable Wave 2 record per this phase's own framing. **They have not actually been merged into `main`** — that merge itself is a pending action this document does not perform and is not authorized to perform. |
-| Inputs used | `docs/implementation/vertical-slice/EXECUTION_DAG.md` (frozen), `Preflight_Predictor_Design_Supplement.md`, `Prediction_Error_Report.md`, `Missing_Telemetry_Report.md`, `Feature_Registry.md`, `Prediction_Confidence_Report.md`, `Feature_Gap_Report.md`, `ADR_Recommendations.md` |
+| Inputs used | `docs/implementation/vertical-slice/EXECUTION_DAG.md` (frozen), `Auspex_Predictor_Design_Supplement.md`, `Prediction_Error_Report.md`, `Missing_Telemetry_Report.md`, `Feature_Registry.md`, `Prediction_Confidence_Report.md`, `Feature_Gap_Report.md`, `ADR_Recommendations.md` |
 
 ## 1. Newly unlocked nodes
 
@@ -102,7 +102,7 @@ invented.
 | LOC | DAG: 350. Adjusted: ~731 (350 × 2.089) | Observed / Derived | Low-Medium | Wide |
 | Duration | ~30 min (Derived reference-class mean from this wave's M-complexity self-reports: `foundation-03` ~25min, `foundation-05` ~45min, `checkpoint-b03` ~20min — wide spread, mean is a weak central estimate) | Derived (weak, n=3, spread 20-45min) | Low | ±15 min plausible — wider than the S-complexity reference class |
 | Token usage | Unknown | Unknown | 0.0 | N/A |
-| Complexity | M (DAG) | Observed | Medium | This node explicitly cannot touch `cmd/preflight/main.go` (owned by `contract-integrator`/`foundation` per the vertical-slice plan) — meaning its actual merge requires lead coordination beyond a typical single-role M node, a cost the DAG's complexity label doesn't capture |
+| Complexity | M (DAG) | Observed | Medium | This node explicitly cannot touch `cmd/auspex/main.go` (owned by `contract-integrator`/`foundation` per the vertical-slice plan) — meaning its actual merge requires lead coordination beyond a typical single-role M node, a cost the DAG's complexity label doesn't capture |
 | Execution risk | Low — DAG's own text | Observed | Medium — the root-wiring-coordination requirement is a real, DAG-invisible integration risk even though the DAG's own risk column says "Low," similar to how `Calibration_Report.md` found DAG risk labels sometimes miss integration-shaped risk vs. implementation-shaped risk | Recommend treating this as Low-Medium, not simply Low |
 
 ### qa-01 (CI scaffolding)
@@ -135,7 +135,7 @@ invented.
 |---|---|---|---|---|---|
 | 1 | `foundation-06` | **7 direct dependents** (dominant — see §2) | High | Unknown (no comparable high-risk M-node duration reference exists) | High (schema decisions every later role's migrations depend on) |
 | 2 | `predictor-05b` | 1 direct dependent, but leads the entire remaining predictor chain (`-05c` → `-07` → `-08`+) | High | Unknown (no L-complexity duration reference exists at all) | Medium (self-contained package, but correctness-critical per its own risk note) |
-| 3 | `runtime-b01` | 1 direct dependent (`runtime-b09`, shared with 6 others — partial credit only) | Low (DAG) / Low-Medium (adjusted, per root-wiring coordination need) | ~30 min (weak derived estimate) | Medium (cannot touch `cmd/preflight/main.go`; needs lead-coordinated root wiring) |
+| 3 | `runtime-b01` | 1 direct dependent (`runtime-b09`, shared with 6 others — partial credit only) | Low (DAG) / Low-Medium (adjusted, per root-wiring coordination need) | ~30 min (weak derived estimate) | Medium (cannot touch `cmd/auspex/main.go`; needs lead-coordinated root wiring) |
 | 4 | `qa-08` | 1 direct dependent (`qa-09`, shared with 6 others — partial credit only) | Low (high-confidence label) | ~22 min (weak derived estimate, docs-vs-code caveat) | Low (pure documentation, no code) |
 | 5 | `foundation-08` | 0 direct dependents | Low | ~22 min (weak derived estimate) | Low (single-role, well-isolated precedence tests) |
 | 6 | `qa-01` | 0 direct dependents | Low (label) / Low-Medium (adjusted, first-node-for-new-role uncertainty) | ~22 min (weak derived estimate) | Medium (CI workflow files, cross-cutting `.github/**` tooling, must actually pass on 3 OSes) |

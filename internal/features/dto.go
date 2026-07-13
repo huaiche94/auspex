@@ -3,7 +3,7 @@ package features
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // RepositoryFeatures holds repository-derived signals (ADD §14.2

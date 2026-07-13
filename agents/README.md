@@ -8,7 +8,7 @@ Each role owns a bounded context.
 
 Never modify another role's files.
 
-Refer to `Preflight_ADD.md` for architecture.
+Refer to `Auspex_ADD.md` for architecture.
 
 ## Roles
 
@@ -33,13 +33,13 @@ real seam, not a merge into one undifferentiated blob.
 ## Spawning
 
 A packet file is meant to be handed, on its own, to an isolated
-agent/worktree — it does not require the full `Preflight_ADD.md` or
-`Preflight_Parallel_Execution_Plan.md` in context. To start a role:
-give it this file's contents, its assigned `Preflight_ADD.md` chapters, and
+agent/worktree — it does not require the full `Auspex_ADD.md` or
+`Auspex_Parallel_Execution_Plan.md` in context. To start a role:
+give it this file's contents, its assigned `Auspex_ADD.md` chapters, and
 `docs/implementation/vertical-slice/CONTRACT_FREEZE.md` once the contract-integrator
 has produced it.
 
 For overall context (vision, scope boundary, topology, merge order, cut
-list), see `Preflight_Parallel_Execution_Plan.md` at the repository
-root. For architecture, see `Preflight_ADD.md`. For project-wide governance
-and precedence rules, see the Preflight Repository Constitution.
+list), see `Auspex_Parallel_Execution_Plan.md` at the repository
+root. For architecture, see `Auspex_ADD.md`. For project-wide governance
+and precedence rules, see the Auspex Repository Constitution.

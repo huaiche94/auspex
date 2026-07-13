@@ -48,7 +48,7 @@ blockers: []
 Executed as the **last DAG node** (lead-only, per `EXECUTION_DAG.md`'s own
 entry: `deps: qa-09 | Stage 5 | Risk: High — last chance to catch cross-role
 contradictions | Cannot start until qa's final report exists`), per
-[issue #2](https://github.com/huaiche94/preflight/issues/2)'s scope.
+[issue #2](https://github.com/huaiche94/auspex/issues/2)'s scope.
 
 ### 1. Full `go test ./... -race` scan
 
@@ -66,8 +66,8 @@ binary being wired to real services** — this stage's own risk note
 ("six roles each correctly individually does not mean the composition is
 correct") predicted exactly the class of gap that turned out to be real:
 
-`cmd/preflight/main.go` was still **foundation-01's original stub** —
-only `preflight version` was wired. Investigation found three of the five
+`cmd/auspex/main.go` was still **foundation-01's original stub** —
+only `auspex version` was wired. Investigation found three of the five
 frozen `app.*` service interfaces (`ProgressTreeService`,
 `GracefulPauseService`) plus `internal/evaluation`'s own local `DataSource`
 seam had **no real, assembled production implementation anywhere in the
@@ -76,7 +76,7 @@ codebase** — confirmed via `grep -rn "var _ app.<X>Service"` finding only
 individual piece (state machines, atomicity, idempotency, crash recovery,
 security controls) was real and deeply tested; the final assembly step —
 composing those pieces into the exact frozen interface shape, then wiring
-`cmd/preflight/main.go` to construct and use them — was never a DAG-
+`cmd/auspex/main.go` to construct and use them — was never a DAG-
 numbered task and had fallen through the cracks of the wave-by-wave
 process.
 
@@ -92,11 +92,11 @@ case, never implemented by the lead directly, per Constitution §7):
   (read-only); 7 of 9 methods real, 2 honestly cold-start-only where the
   frozen schema carries no backing signal.
 
-The lead then wired `cmd/preflight/main.go` directly (this stage's own
+The lead then wired `cmd/auspex/main.go` directly (this stage's own
 reserved work, per `agents/*.md` and `internal/app/wiring`'s own doc
 comment: "Root wiring is NOT this package's job... the contract-integrator/
 foundation roles own composing this container into the binary") —
-`cmd/preflight/wire.go` (composition root) and `cmd/preflight/adapters.go`
+`cmd/auspex/wire.go` (composition root) and `cmd/auspex/adapters.go`
 (small DTO-shape-translation seams the owning packages each documented as
 "a future wiring node's job"). Two remaining seams — managed provider
 interrupt and managed session resume — are wired to fail-closed stubs, not
@@ -143,7 +143,7 @@ amendments exist; the frozen contract layer held for the entire build.
 
 ### 5. Known, deliberately still-open items (not blockers for this gate)
 
-- [Issue #1](https://github.com/huaiche94/preflight/issues/1) (P1,
+- [Issue #1](https://github.com/huaiche94/auspex/issues/1) (P1,
   qa-04/qa-09): no production adapter connects a persisted claude-provider
   event to Progress Tree node completion — a genuinely separate gap from
   this stage's own finding (a *new* adapter that doesn't exist yet, not an
@@ -162,9 +162,9 @@ artifacts:
   - internal/pause/service.go (runtime, routed corrective addition)
   - internal/pause/sqlitestore.go (runtime, extended — PersistPauseStore)
   - internal/evaluation/datasource_sql.go (predictor, routed corrective addition)
-  - cmd/preflight/main.go (lead, root wiring)
-  - cmd/preflight/wire.go (lead, root wiring)
-  - cmd/preflight/adapters.go (lead, root wiring)
+  - cmd/auspex/main.go (lead, root wiring)
+  - cmd/auspex/wire.go (lead, root wiring)
+  - cmd/auspex/adapters.go (lead, root wiring)
   - docs/implementation/vertical-slice/contract-integrator.md (this section)
 validation:
   - go build ./...                        # clean
@@ -174,7 +174,7 @@ validation:
   - golangci-lint run ./...              # 0 issues
   - manual smoke test of the compiled binary (version/doctor/status/pause request)
 commit: 3b6cfcb
-next_action: Retire the six vertical-slice/* branches and preflight-* worktrees (all merged); update README to slice-complete status
+next_action: Retire the six vertical-slice/* branches and auspex-* worktrees (all merged); update README to slice-complete status
 assumptions:
   - The three "real service assembly" gaps found during this stage are a
     process gap (no DAG node ever explicitly covered "assemble the frozen

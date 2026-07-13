@@ -10,7 +10,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // --- migration from empty database (agents/foundation.md "Required tests") -
@@ -87,7 +87,7 @@ func TestMigrate_OrderIndependentOfInputOrder(t *testing.T) {
 
 func TestMigrate_Reopen_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	migrations := []sqlite.Migration{
@@ -130,7 +130,7 @@ func TestMigrate_Reopen_Idempotent(t *testing.T) {
 
 func TestMigrate_Reopen_AppliesOnlyNewMigrations(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	db1, err := sqlite.Open(ctx, path)
@@ -174,7 +174,7 @@ func TestMigrate_Reopen_AppliesOnlyNewMigrations(t *testing.T) {
 
 func TestMigrate_DatabaseNewerThanBinary_RejectsSafely(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	// Simulate a database previously migrated by a newer binary that
@@ -585,7 +585,7 @@ func TestCoreMigrations_UniqueConstraints(t *testing.T) {
 
 func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	migrations, err := sqlite.AllMigrations()
@@ -662,7 +662,7 @@ func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 // transaction race, not a Go memory race.
 func TestMigration_ConcurrentReopen_SerializesAndConverges(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	migrations, err := sqlite.AllMigrations()
@@ -729,7 +729,7 @@ func TestMigration_ConcurrentReopen_SerializesAndConverges(t *testing.T) {
 // return nil.
 func TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	migrations, err := sqlite.AllMigrations()
@@ -785,7 +785,7 @@ func TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows(t *testing.T
 // plain ExecContext call.
 func TestMigration_BlocksBehindHolderTransaction_ThenSucceeds(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	dbHolder, err := sqlite.Open(ctx, path)
@@ -874,7 +874,7 @@ func TestMigration_BlocksBehindHolderTransaction_ThenSucceeds(t *testing.T) {
 // migration path rather than Open's already-covered path.
 func TestMigration_CorruptDatabase_FailsDuringMigrateNotOpen(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	db, err := sqlite.Open(ctx, path)
@@ -953,7 +953,7 @@ func TestMigration_ReadOnlyFile_FailsDuringMigrateNotOpen(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	ctx := context.Background()
 
 	db, err := sqlite.Open(ctx, path)

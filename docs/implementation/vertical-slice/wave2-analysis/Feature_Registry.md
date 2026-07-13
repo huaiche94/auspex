@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Phase | 3.7 — Post Wave 2 Analysis |
-| Status | **Canonical.** This is the single source of truth for every feature Preflight's predictor pipeline uses or will use. Every future predictor implementation must reference features only through this registry (Constitution-analogous rule, stated by the repository owner in this phase). Adding a new predictor feature without updating this registry is a design error. |
+| Status | **Canonical.** This is the single source of truth for every feature Auspex's predictor pipeline uses or will use. Every future predictor implementation must reference features only through this registry (Constitution-analogous rule, stated by the repository owner in this phase). Adding a new predictor feature without updating this registry is a design error. |
 | Method | Every feature below is grounded in either (a) real, verified code (`internal/features/**`, `internal/domain/**`) or (b) the ADD's own already-specified §14/§15/§16 feature lists. No feature is invented for this registry that isn't traceable to one of those two sources. |
 
 ## How to read this registry
@@ -274,7 +274,7 @@ Source: `pkg/protocol/v1/event.go` (`Event`, real, Bootstrap-frozen),
 |---|---|---|---|---|---|---|---|---|
 | `Event.EventType` | Closed taxonomy tag (52 values) | enum | `pkg/protocol/v1` (real) | Observed | 1.00 | No (a classification, not a fact) | Available | High |
 | `Event.IdempotencyKey` | Deduplication key | string | `claude-provider-04` normalizer (real, tested) | Observed | 1.00 | Yes (deterministic digest, verified) | Available | High |
-| `Event.SchemaVersion` | Wire-format version tag | string, e.g. `preflight.event.v1` | Bootstrap-frozen constant | Observed | 1.00 | Yes | Available | Medium |
+| `Event.SchemaVersion` | Wire-format version tag | string, e.g. `auspex.event.v1` | Bootstrap-frozen constant | Observed | 1.00 | Yes | Available | Medium |
 | `Event.Payload` | Normalized, redacted event body | `map[string]any` | `claude-provider-04` normalizer | Observed (against fixtures only — same caveat as §4) | 1.00 against fixtures | No | Available (fixture-scoped only) | Critical |
 | `Event.ObservedAt` / `OccurredAt` | Timestamps | `time.Time` ×2 | same | Observed (against fixtures/`domain.Clock` injection) | 1.00 | Yes | Available (fixture-scoped only) | Medium |
 

@@ -38,12 +38,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // --- Section 1: full-chain property tests -----------------------------------
@@ -874,7 +874,7 @@ func TestFullFlow_ConsumeAuthorization_ClockBoundExpiryAgainstRealDecision(t *te
 
 // --- Section 6: benchmark fast path ------------------------------------------
 //
-// ADD §29.11 targets (Preflight_ADD.md): warm evaluate P50 < 25ms, P95 <
+// ADD §29.11 targets (Auspex_ADD.md): warm evaluate P50 < 25ms, P95 <
 // 100ms; prediction < 5ms; policy < 1ms. predictor-08 already benchmarked
 // Policy alone at ~53ns/op. This section benchmarks the FULL pipeline's hot
 // path — a single EvaluateTurn call end-to-end (Scope -> Token -> Quota ->
@@ -982,7 +982,7 @@ func BenchmarkEvaluateTurnThenDecide_FullPipeline(b *testing.B) {
 func newBenchService(b *testing.B, clk domain.Clock, ids domain.IDGenerator, source *fakeDataSource) *evaluation.Service {
 	b.Helper()
 	dir := b.TempDir()
-	path := filepath.Join(dir, "preflight-bench.db")
+	path := filepath.Join(dir, "auspex-bench.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		b.Fatalf("sqlite.Open: %v", err)

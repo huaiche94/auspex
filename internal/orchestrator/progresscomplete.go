@@ -2,7 +2,7 @@
 // "explicit completion + event correlation" design that closes qa's P1
 // finding (docs/implementation/vertical-slice/qa.md §Severity-ranked
 // findings; GitHub issue #1): the orchestration function behind
-// `preflight progress complete` (internal/cli/progress.go).
+// `auspex progress complete` (internal/cli/progress.go).
 //
 // This is a deliberately thin sequencing layer, like CheckpointCreate
 // (checkpoint.go): all completion semantics — idempotency ledger,
@@ -25,8 +25,8 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // ProgressCompleteDeps bundles ProgressComplete's single collaborator: the
@@ -37,7 +37,7 @@ type ProgressCompleteDeps struct {
 	ProgressTree app.ProgressTreeService
 }
 
-// ProgressCompleteRequest is `preflight progress complete`'s input — a
+// ProgressCompleteRequest is `auspex progress complete`'s input — a
 // direct mirror of the frozen app.CompleteNodeRequest field set (NO new
 // fields; the port is frozen and this request adds nothing to it).
 type ProgressCompleteRequest struct {

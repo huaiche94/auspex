@@ -1,6 +1,6 @@
 -- 0002_worktrees.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `worktrees`. FKs into
+-- Auspex_ADD.md §12.2 canonical schema: `worktrees`. FKs into
 -- repositories (0001). Deleting a repository cascades to its worktrees,
 -- since a worktree has no independent existence once its parent repository
 -- record is gone (ADD §12.2 ON DELETE CASCADE).

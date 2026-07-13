@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/paths"
+	"github.com/huaiche94/auspex/internal/paths"
 )
 
 // --- Windows/macOS/Linux path-table tests (agents/foundation.md "Required
@@ -19,10 +19,10 @@ func TestResolve_Linux_XDGDefaults(t *testing.T) {
 	}
 
 	want := paths.Dirs{
-		Config:  "/home/alice/.config/preflight",
-		Data:    "/home/alice/.local/share/preflight",
-		Cache:   "/home/alice/.cache/preflight",
-		Runtime: "/home/alice/.cache/preflight/run",
+		Config:  "/home/alice/.config/auspex",
+		Data:    "/home/alice/.local/share/auspex",
+		Cache:   "/home/alice/.cache/auspex",
+		Runtime: "/home/alice/.cache/auspex/run",
 	}
 	assertDirsEqual(t, dirs, want)
 }
@@ -40,17 +40,17 @@ func TestResolve_Linux_XDGOverrides(t *testing.T) {
 	}
 
 	want := paths.Dirs{
-		Config:  "/custom/config/preflight",
-		Data:    "/custom/data/preflight",
-		Cache:   "/custom/cache/preflight",
-		Runtime: "/run/user/1000/preflight",
+		Config:  "/custom/config/auspex",
+		Data:    "/custom/data/auspex",
+		Cache:   "/custom/cache/auspex",
+		Runtime: "/run/user/1000/auspex",
 	}
 	assertDirsEqual(t, dirs, want)
 }
 
 func TestResolve_FreeBSD_TreatedAsXDG(t *testing.T) {
 	// Any non-windows/non-darwin GOOS should fall through to the XDG
-	// resolver, since Preflight's portability goal is POSIX-general, not
+	// resolver, since Auspex's portability goal is POSIX-general, not
 	// Linux-specific.
 	env := newFakeEnv("/home/bob")
 
@@ -58,7 +58,7 @@ func TestResolve_FreeBSD_TreatedAsXDG(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if dirs.Config != "/home/bob/.config/preflight" {
+	if dirs.Config != "/home/bob/.config/auspex" {
 		t.Errorf("Config = %q, want XDG default", dirs.Config)
 	}
 }
@@ -72,10 +72,10 @@ func TestResolve_Darwin_Defaults(t *testing.T) {
 	}
 
 	want := paths.Dirs{
-		Config:  "/Users/alice/Library/Application Support/preflight",
-		Data:    "/Users/alice/Library/Application Support/preflight",
-		Cache:   "/Users/alice/Library/Caches/preflight",
-		Runtime: "/Users/alice/Library/Caches/preflight/run",
+		Config:  "/Users/alice/Library/Application Support/auspex",
+		Data:    "/Users/alice/Library/Application Support/auspex",
+		Cache:   "/Users/alice/Library/Caches/auspex",
+		Runtime: "/Users/alice/Library/Caches/auspex/run",
 	}
 	assertDirsEqual(t, dirs, want)
 }
@@ -91,10 +91,10 @@ func TestResolve_Windows_Defaults(t *testing.T) {
 	}
 
 	want := paths.Dirs{
-		Config:  `C:\Users\alice\AppData\Roaming\preflight\Config`,
-		Data:    `C:\Users\alice\AppData\Local\preflight\Data`,
-		Cache:   `C:\Users\alice\AppData\Local\preflight\Cache`,
-		Runtime: `C:\Users\alice\AppData\Local\preflight\Run`,
+		Config:  `C:\Users\alice\AppData\Roaming\auspex\Config`,
+		Data:    `C:\Users\alice\AppData\Local\auspex\Data`,
+		Cache:   `C:\Users\alice\AppData\Local\auspex\Cache`,
+		Runtime: `C:\Users\alice\AppData\Local\auspex\Run`,
 	}
 	assertDirsEqual(t, dirs, want)
 }
@@ -107,7 +107,7 @@ func TestResolve_Windows_FallsBackToHomeWhenEnvUnset(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 
-	const wantConfig = `C:\Users\alice\AppData\Roaming\preflight\Config`
+	const wantConfig = `C:\Users\alice\AppData\Roaming\auspex\Config`
 	if dirs.Config != wantConfig {
 		t.Errorf("Config = %q, want %q", dirs.Config, wantConfig)
 	}

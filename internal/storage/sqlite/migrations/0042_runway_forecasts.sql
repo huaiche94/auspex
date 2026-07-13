@@ -1,6 +1,6 @@
 -- 0042_runway_forecasts.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `runway_forecasts`. Durable form
+-- Auspex_ADD.md §12.2 canonical schema: `runway_forecasts`. Durable form
 -- of the independent Runway Predictor's output (ADD §15.4-15.7,
 -- predictor-06's domain.RunwayForecast; ADR-041 explicitly keeps this
 -- outside the Scope->Token->Quota->Risk chain — see CONTRACT_FREEZE.md's

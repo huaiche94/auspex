@@ -1,11 +1,11 @@
 -- 0040_feature_vectors.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `feature_vectors`. First table in
+-- Auspex_ADD.md §12.2 canonical schema: `feature_vectors`. First table in
 -- predictor's migration range (0040-0049 per CONTRACT_FREEZE.md's
 -- migration-range table).
 --
 -- turn_id intentionally has NO FK constraint at this migration: the `turns`
--- table it would reference (Preflight_ADD.md §12.2) is claude-provider's
+-- table it would reference (Auspex_ADD.md §12.2) is claude-provider's
 -- 0010-0019 range and does not exist yet on this branch. This mirrors
 -- 0004_tasks.sql's own precedent for active_node_id/progress_nodes exactly
 -- ("SQLite has no deferred cross-table FK addition without recreating the

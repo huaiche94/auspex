@@ -21,7 +21,7 @@
 // as the evaluation itself, and a read-back presenter works identically
 // for the three surfaces that need it — the UserPromptSubmit hook (card
 // for the evaluation it just ran), the statusline (latest card for a
-// session), and `preflight evaluate`.
+// session), and `auspex evaluate`.
 //
 // # Constitution principle #2 (uncalibrated score is never a probability)
 //
@@ -42,10 +42,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/pricing"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pricing"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // ForecastCard is the presenter DTO for one persisted evaluation: scope
@@ -246,7 +246,7 @@ const maxContextReasonCodes = 3
 // "unknown (cold start)", never as zero (ADD principle 1).
 func (c ForecastCard) AdditionalContext() string {
 	lines := []string{
-		fmt.Sprintf("Preflight forecast (%s; evaluation %s):", c.labelText(), c.EvaluationID),
+		fmt.Sprintf("Auspex forecast (%s; evaluation %s):", c.labelText(), c.EvaluationID),
 		"  scope: " + c.scopeText(),
 		"  tokens: " + c.tokensText(),
 		"  cost: " + c.costText(),
@@ -265,7 +265,7 @@ func (c ForecastCard) AdditionalContext() string {
 // persisted evaluation for the session yet — renders model only), so the
 // status bar always has something to show; "est"/"~" mark every number as
 // an estimate, and the full uncalibrated labeling lives on the card
-// surfaces where there is room for it (AdditionalContext, `preflight
+// surfaces where there is room for it (AdditionalContext, `auspex
 // evaluate`). Exported as a package function rather than a method so the
 // nil-card fallback is one code path, not caller-side duplication.
 func StatusLineText(model string, card *ForecastCard) string {

@@ -1,5 +1,5 @@
 // Package orchestrator wires the frozen internal/app ports into
-// Preflight's day-one pipeline (Preflight_ADD.md §13; agents/runtime.md
+// Auspex's day-one pipeline (Auspex_ADD.md §13; agents/runtime.md
 // Part B "Pipeline behavior"). It is the layer between provider-facing
 // input (CLI flags, a normalized hook event) and the frozen cross-role
 // services (internal/app/ports.go) — it does not implement prediction,
@@ -23,7 +23,7 @@
 //
 // No frozen internal/app port exists yet for repository/worktree/session
 // *resolution* (as opposed to the entities themselves, which
-// internal/domain already types). Preflight_ADD.md §13.2 stage 1 groups
+// internal/domain already types). Auspex_ADD.md §13.2 stage 1 groups
 // "provider, repo, worktree, session, task" resolution as one step, but
 // building a new persistence-backed resolver service here would both
 // duplicate whatever foundation/checkpoint eventually own for that (a

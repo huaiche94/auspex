@@ -1,8 +1,8 @@
 // Package paths resolves the OS-correct, non-repository-local directories
-// Preflight uses for global user configuration, persistent data, cache, and
+// Auspex uses for global user configuration, persistent data, cache, and
 // runtime (socket/pid/lock) files.
 //
-// Repository-local paths (.preflight/config.yaml, .preflight/*.db, etc. —
+// Repository-local paths (.auspex/config.yaml, .auspex/*.db, etc. —
 // ADD §26.3) are NOT this package's concern; those are resolved relative to
 // a repository root by the role that owns repository scoping. This package
 // only resolves the global, per-user directories referenced by ADD §26.1
@@ -28,7 +28,7 @@ import (
 // regardless of which OS the test suite actually runs on.
 type Env interface {
 	// Getenv returns the value of the named environment variable, or ""
-	// if it is unset or empty. Callers treat "" as "unset" — Preflight
+	// if it is unset or empty. Callers treat "" as "unset" — Auspex
 	// never distinguishes an empty override from no override.
 	Getenv(key string) string
 	// UserHomeDir returns the current user's home directory, or an error
@@ -36,11 +36,11 @@ type Env interface {
 	UserHomeDir() (string, error)
 }
 
-// Dirs holds the resolved set of Preflight global directories.
+// Dirs holds the resolved set of Auspex global directories.
 type Dirs struct {
 	// Config holds global user configuration (ADD §26.1 "global user
-	// config"), e.g. the base preflight.yaml a repository's
-	// .preflight/config.yaml layers on top of.
+	// config"), e.g. the base auspex.yaml a repository's
+	// .auspex/config.yaml layers on top of.
 	Config string
 	// Data holds persistent application data not safe to delete casually
 	// (e.g. the global SQLite database, historical exports).
@@ -56,9 +56,9 @@ type Dirs struct {
 }
 
 // AppName is the leaf directory/namespace segment used under each OS's base
-// directory (e.g. "preflight" under XDG_CONFIG_HOME, or "Preflight" under
+// directory (e.g. "auspex" under XDG_CONFIG_HOME, or "Auspex" under
 // macOS's Application Support).
-const AppName = "preflight"
+const AppName = "auspex"
 
 // ErrNoHomeDir is returned (wrapped) when a home directory is required to
 // resolve a path but Env could not provide one.
@@ -76,8 +76,8 @@ func Resolve(goos string, env Env) (Dirs, error) {
 		return resolveDarwin(env)
 	default:
 		// Treat every other GOOS (linux, freebsd, openbsd, ...) as
-		// XDG-conformant POSIX, which is correct for every OS Preflight
-		// targets per Preflight_ADD.md's portability goals beyond the
+		// XDG-conformant POSIX, which is correct for every OS Auspex
+		// targets per Auspex_ADD.md's portability goals beyond the
 		// three primary desktop OSes.
 		return resolveXDG(env)
 	}

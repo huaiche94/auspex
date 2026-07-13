@@ -1,6 +1,6 @@
 // pauselifecycle.go implements the orchestrator-layer wiring for
-// `preflight pause request`, `preflight pause cancel`, `preflight resume`,
-// and `preflight scheduler run-once` (agents/runtime.md Part B P0 command
+// `auspex pause request`, `auspex pause cancel`, `auspex resume`,
+// and `auspex scheduler run-once` (agents/runtime.md Part B P0 command
 // list; EXECUTION_DAG.md runtime-b07). Unlike runtime-b05's
 // CheckpointCreate (which sequences TWO different cross-role services),
 // every collaborator here is this SAME role's own Part A work
@@ -14,12 +14,12 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/scheduler"
 )
 
-// --- preflight pause request ------------------------------------------
+// --- auspex pause request ------------------------------------------
 
 // PauseLifecycleDeps bundles every collaborator this file's three pause
 // commands need. Store is required by all three; WakeJobs is required only
@@ -33,7 +33,7 @@ type PauseLifecycleDeps struct {
 	WakeJobs *scheduler.Store
 }
 
-// PauseRequestRequest is `preflight pause request`'s input.
+// PauseRequestRequest is `auspex pause request`'s input.
 type PauseRequestRequest struct {
 	TaskID    domain.TaskID
 	SessionID domain.SessionID
@@ -48,7 +48,7 @@ type PauseRequestResult struct {
 	Created bool
 }
 
-// PauseRequestCmd implements `preflight pause request`: idempotent pause
+// PauseRequestCmd implements `auspex pause request`: idempotent pause
 // creation via this role's own runtime-a04 RequestPause. IDs come from a
 // real domain.IDGenerator, matching every other orchestrator command's
 // convention of never fabricating an ID inline.
@@ -74,9 +74,9 @@ func PauseRequestCmd(ctx context.Context, deps PauseLifecycleDeps, ids domain.ID
 	return PauseRequestResult{Record: result.Record, Created: result.Created}, nil
 }
 
-// --- preflight pause cancel ----------------------------------------------
+// --- auspex pause cancel ----------------------------------------------
 
-// PauseCancelRequest is `preflight pause cancel`'s input.
+// PauseCancelRequest is `auspex pause cancel`'s input.
 type PauseCancelRequest struct {
 	PauseID domain.PauseID
 }
@@ -86,7 +86,7 @@ type PauseCancelResult struct {
 	Record pause.PauseRecord
 }
 
-// PauseCancelCmd implements `preflight pause cancel` via this role's own
+// PauseCancelCmd implements `auspex pause cancel` via this role's own
 // runtime-b07 pause.Cancel (lifecycle.go).
 func PauseCancelCmd(ctx context.Context, deps PauseLifecycleDeps, req PauseCancelRequest) (PauseCancelResult, error) {
 	if deps.Store == nil {
@@ -101,14 +101,14 @@ func PauseCancelCmd(ctx context.Context, deps PauseLifecycleDeps, req PauseCance
 	return PauseCancelResult{Record: result.Record}, nil
 }
 
-// --- preflight resume ----------------------------------------------------
+// --- auspex resume ----------------------------------------------------
 
-// ResumeCmdRequest is `preflight resume`'s input. See pause.ResumeRequest's
+// ResumeCmdRequest is `auspex resume`'s input. See pause.ResumeRequest's
 // doc comment (lifecycle.go) for why the verdict is caller-supplied this
 // wave rather than independently computed here: real resume validation
 // (quota/repository/session/authorization checks) is runtime-a08's scope,
 // not yet built. Defaulting Valid to true when no verdict flag is set at
-// all keeps the common CLI case (`preflight resume` with no extra flags)
+// all keeps the common CLI case (`auspex resume` with no extra flags)
 // usable today without requiring a caller to already know about a08's
 // not-yet-existing checks — this default is documented, not silent, and is
 // exactly the kind of honest, explicit stand-in Constitution Sec7 rule 3
@@ -124,7 +124,7 @@ type ResumeCmdResult struct {
 	Record pause.PauseRecord
 }
 
-// ResumeCmd implements `preflight resume` via this role's own runtime-b07
+// ResumeCmd implements `auspex resume` via this role's own runtime-b07
 // pause.Resume (lifecycle.go).
 func ResumeCmd(ctx context.Context, deps PauseLifecycleDeps, req ResumeCmdRequest) (ResumeCmdResult, error) {
 	if deps.Store == nil {
@@ -145,9 +145,9 @@ func ResumeCmd(ctx context.Context, deps PauseLifecycleDeps, req ResumeCmdReques
 	return ResumeCmdResult{Record: result.Record}, nil
 }
 
-// --- preflight scheduler run-once -----------------------------------------
+// --- auspex scheduler run-once -----------------------------------------
 
-// SchedulerRunOnceRequest is `preflight scheduler run-once`'s input. Owner
+// SchedulerRunOnceRequest is `auspex scheduler run-once`'s input. Owner
 // identifies this CLI invocation as a lease claimant (scheduler.Store.Claim
 // requires a non-empty owner) — a fixed, recognizable value rather than a
 // caller-supplied flag, since a one-shot CLI sweep has no durable identity
@@ -172,7 +172,7 @@ type SchedulerRunOnceResult struct {
 	Job     scheduler.Job
 }
 
-// SchedulerRunOnceCmd implements `preflight scheduler run-once`: a single
+// SchedulerRunOnceCmd implements `auspex scheduler run-once`: a single
 // Claim sweep via runtime-a06's scheduler.Store, using
 // scheduler.DefaultLeaseDuration. This command claims and reports a job; it
 // deliberately does NOT itself drive the claimed job's pause record forward

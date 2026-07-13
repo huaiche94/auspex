@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/artifacts"
 )
 
 func writeFixture(t *testing.T, content string) string {
@@ -28,7 +28,7 @@ func sha256Hex(content string) string {
 }
 
 func TestChecksumMatches_CorrectDigest_Passes(t *testing.T) {
-	content := "Preflight checkpoint artifact content."
+	content := "Auspex checkpoint artifact content."
 	path := writeFixture(t, content)
 
 	v := artifacts.ChecksumMatchesValidator{}
@@ -45,7 +45,7 @@ func TestChecksumMatches_CorrectDigest_Passes(t *testing.T) {
 }
 
 func TestChecksumMatches_CaseInsensitive_Passes(t *testing.T) {
-	content := "Preflight checkpoint artifact content."
+	content := "Auspex checkpoint artifact content."
 	path := writeFixture(t, content)
 
 	v := artifacts.ChecksumMatchesValidator{}

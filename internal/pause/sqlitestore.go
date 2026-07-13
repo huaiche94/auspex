@@ -8,7 +8,7 @@
 // was a reasonable, honestly-documented deferral at each of those stages —
 // none of them needed cross-restart durability to prove their own required
 // tests. runtime-b10 (this file) is different: its whole job is proving
-// Preflight survives a real process restart against the SAME on-disk SQLite
+// Auspex survives a real process restart against the SAME on-disk SQLite
 // file, and PauseStore is exactly the seam PauseLifecycleDeps.Store
 // (internal/orchestrator/pauselifecycle.go) wires `pause request`/
 // `pause cancel`/`resume` through. Proving restart-safety for those three
@@ -41,8 +41,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // SQLiteStore is a real, cross-process-durable PauseStore backed by the
@@ -122,7 +122,7 @@ func (s *SQLiteStore) FindActiveByKey(ctx context.Context, key PauseKey) (PauseR
 // Insert implements PauseStore.Insert: a brand new pause_records row.
 // metadata_json carries rec.Reason (this store's own encoding, read back
 // by scanPauseRecord) since pause_records has no dedicated reason column
-// (Preflight_ADD.md §12.2's canonical schema does not name one either).
+// (Auspex_ADD.md §12.2's canonical schema does not name one either).
 func (s *SQLiteStore) Insert(ctx context.Context, rec PauseRecord) error {
 	if rec.ID == "" {
 		return &domain.Error{Code: domain.ErrCodeValidation, Message: "pause: SQLiteStore.Insert requires a non-empty ID", Retryable: false}

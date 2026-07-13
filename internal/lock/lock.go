@@ -1,11 +1,11 @@
 // Package lock provides a single-machine, single-daemon advisory file lock.
 //
-// Preflight is a local-first modular monolith (ADD §1.4): exactly one
+// Auspex is a local-first modular monolith (ADD §1.4): exactly one
 // daemon process per machine (or per runtime directory, for multi-user/
 // multi-checkout setups) is meant to own a given SQLite database and
 // runtime directory at a time. This package exists to give that daemon —
 // and any short-lived CLI invocation that needs to assert "no other
-// Preflight process is using this runtime directory right now" — a simple,
+// Auspex process is using this runtime directory right now" — a simple,
 // crash-safe way to detect and prevent concurrent ownership.
 //
 // This is intentionally NOT a general-purpose distributed lock, NOT a
@@ -67,7 +67,7 @@ func (l *FileLock) Release() error {
 //
 // If a lock file already exists, Acquire inspects it:
 //   - if the file contains a PID that corresponds to a live process,
-//     Acquire returns ErrLocked — another Preflight process genuinely
+//     Acquire returns ErrLocked — another Auspex process genuinely
 //     holds this lock;
 //   - if the file is stale (its PID is not a live process, or the file is
 //     empty/corrupt), Acquire treats it as an abandoned lock from a

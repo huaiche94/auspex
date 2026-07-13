@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // EntryKind identifies the record type of a porcelain v2 status entry. The

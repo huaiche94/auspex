@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // UserPromptSubmitEvent is the parsed, privacy-safe representation of a
@@ -75,7 +75,7 @@ func ParseUserPromptSubmit(raw []byte) (UserPromptSubmitEvent, error) {
 // directly from raw prompt text, hashing it immediately so the raw string
 // never survives past this function's stack frame — the exact same
 // derivation ParseUserPromptSubmit applies to a real hook payload (it now
-// calls this). Exported for `preflight evaluate` (issue #14 deliverable
+// calls this). Exported for `auspex evaluate` (issue #14 deliverable
 // 5), which receives prompt text from a file/stdin instead of a hook
 // payload but MUST derive the identical hash/length/approx-token features
 // so an offline evaluation and a hook evaluation of the same prompt are
@@ -108,7 +108,7 @@ func approxTokenCount(prompt string) int {
 	return tokens
 }
 
-// HookDecision is the coarse allow/block decision Preflight's evaluation
+// HookDecision is the coarse allow/block decision Auspex's evaluation
 // path renders for a UserPromptSubmit hook (ADD §22.3).
 type HookDecision string
 
@@ -129,7 +129,7 @@ type UserPromptSubmitResponse struct {
 
 // wireUserPromptSubmitResponse mirrors Claude Code's expected on-wire JSON
 // shape exactly (field names/casing are provider-dictated, not ours to
-// choose per Preflight convention).
+// choose per Auspex convention).
 type wireUserPromptSubmitResponse struct {
 	Decision           string                     `json:"decision,omitempty"`
 	Reason             string                     `json:"reason,omitempty"`
@@ -145,7 +145,7 @@ type wireHookSpecificOutputUPS struct {
 // for a UserPromptSubmit hook response. An empty/zero-value Decision is
 // treated as allow-with-no-opinion: Claude Code's hook protocol allows the
 // prompt through by default when a hook emits no explicit "block" decision,
-// so Preflight only ever emits the block shape when it actually decided to
+// so Auspex only ever emits the block shape when it actually decided to
 // block; a pure allow renders as `{}` (no decision key), matching
 // hook-protocol convention of omitting fields that don't apply.
 func EncodeUserPromptSubmitResponse(resp UserPromptSubmitResponse) ([]byte, error) {
@@ -188,11 +188,11 @@ func EncodeUserPromptSubmitResponse(resp UserPromptSubmitResponse) ([]byte, erro
 }
 
 // FallbackAllowResponse is the safe, minimal allow response emitted when
-// Preflight itself fails internally (e.g. malformed hook payload). Per the
+// Auspex itself fails internally (e.g. malformed hook payload). Per the
 // packet's Tests section ("malformed payload produces typed error and valid
-// hook fallback"), Preflight must never leave Claude Code hanging or emit
+// hook fallback"), Auspex must never leave Claude Code hanging or emit
 // invalid JSON on internal failure — fail open on parse/internal errors so
-// a Preflight bug never blocks the user's actual work.
+// a Auspex bug never blocks the user's actual work.
 func FallbackAllowResponse() []byte {
 	b, err := EncodeUserPromptSubmitResponse(UserPromptSubmitResponse{Decision: HookDecisionAllow})
 	if err != nil {

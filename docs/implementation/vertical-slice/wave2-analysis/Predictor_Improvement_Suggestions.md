@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Phase | 3.4 — Post Wave 2 Analysis |
-| Target | The Rule Predictor tier only (Version 1 in `Preflight_Predictor_Design_Supplement.md`'s Evolution Roadmap) |
+| Target | The Rule Predictor tier only (Version 1 in `Auspex_Predictor_Design_Supplement.md`'s Evolution Roadmap) |
 | Status | Recommendations only. `internal/predictor/**` is unmodified by this document. |
-| Grounding | Every suggestion below is labeled either **evidence-based** (grounded in Wave 1/2 data, cited) or **speculative** (no Preflight execution data exists yet — grounded in the ADD's own already-specified formulas instead, or flagged as untested) |
+| Grounding | Every suggestion below is labeled either **evidence-based** (grounded in Wave 1/2 data, cited) or **speculative** (no Auspex execution data exists yet — grounded in the ADD's own already-specified formulas instead, or flagged as untested) |
 
 ## 1. Multipliers this wave's data can and cannot speak to
 
@@ -19,8 +19,8 @@ wave built the Scope Estimator (`predictor-05`) and Runway Forecaster
 (`predictor-05b`/`-05c`/`-07`, deliberately deferred per ADR-041). So this
 wave has **zero direct execution data** on token-cost multipliers for
 coding-agent turns — the dataset in `Prediction_Error_Report.md` measures
-the cost of *implementing Preflight itself*, not the cost of a Claude Code
-turn Preflight is meant to forecast (see `Calibration_Report.md` §5's
+the cost of *implementing Auspex itself*, not the cost of a Claude Code
+turn Auspex is meant to forecast (see `Calibration_Report.md` §5's
 category-error warning). Every suggestion below states plainly whether it
 draws on this wave's real data or is speculative pending real coding-agent
 telemetry.
@@ -106,7 +106,7 @@ coefficient tuning suggestion.
 this wave triggered the `integration_tests` term (ADD §16.2's
 `completion_risk` formula weights it at `0.12`; §15.2's
 `verification_multiplier` weights it at `0.45`). Recommendation: no
-change; this coefficient has never been exercised by Preflight's own
+change; this coefficient has never been exercised by Auspex's own
 execution, so there is nothing in this wave's data to calibrate it
 against. Note for future waves: `qa-01`'s CI matrix and `qa-02`'s E2E test
 (neither built yet) are themselves integration-test-heavy nodes and would

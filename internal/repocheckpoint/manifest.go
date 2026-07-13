@@ -1,6 +1,6 @@
 // Package repocheckpoint implements checkpoint role Part B's Repository
 // Checkpoint create/verify operations (agents/checkpoint.md Part B
-// deliverable #4; Preflight_ADD.md §19; migrations/0030_repository_checkpoints.sql).
+// deliverable #4; Auspex_ADD.md §19; migrations/0030_repository_checkpoints.sql).
 //
 // A Repository Checkpoint captures exact working-tree evidence (patches +
 // untracked file archive) before a pause or high-risk turn, WITHOUT ever
@@ -16,8 +16,8 @@ import "time"
 
 // ManifestSchemaVersion is the frozen wire schema-version string for a
 // Repository Checkpoint manifest (CONTRACT_FREEZE.md,
-// preflight.repository-checkpoint.v1; Preflight_ADD.md Appendix D).
-const ManifestSchemaVersion = "preflight.repository-checkpoint.v1"
+// auspex.repository-checkpoint.v1; Auspex_ADD.md Appendix D).
+const ManifestSchemaVersion = "auspex.repository-checkpoint.v1"
 
 // Status is this package's checkpoint lifecycle vocabulary
 // (repository_checkpoints.status, migrations/0030 — deliberately not

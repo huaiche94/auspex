@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // Node is the Go-level representation of one progress_nodes row. JSON-typed

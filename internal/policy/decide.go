@@ -3,8 +3,8 @@ package policy
 import (
 	"math"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Decision is this package's own richer decision shape. It carries

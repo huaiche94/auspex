@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
 )
 
 // zipContains reports whether a zip archive at path contains an entry

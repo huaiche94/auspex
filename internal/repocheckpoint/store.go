@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // Row is the Go-level representation of one repository_checkpoints row.

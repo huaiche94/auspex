@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // --- Status ---------------------------------------------------------------
@@ -133,7 +133,7 @@ func TestDoctor_NoDepsConfigured_AllChecksSkipped(t *testing.T) {
 
 func TestDoctor_DBReachableAndMigrated_OK(t *testing.T) {
 	dir := t.TempDir()
-	db, err := sqlite.Open(context.Background(), filepath.Join(dir, "preflight.db"))
+	db, err := sqlite.Open(context.Background(), filepath.Join(dir, "auspex.db"))
 	if err != nil {
 		t.Fatalf("sqlite.Open: %v", err)
 	}

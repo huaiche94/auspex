@@ -27,7 +27,7 @@ func processAlive(pid int) bool {
 	}
 	// ESRCH: no such process -> definitively dead.
 	// EPERM: process exists but we lack permission to signal it -> alive,
-	// and per Preflight's local single-user daemon model this should not
+	// and per Auspex's local single-user daemon model this should not
 	// occur for a lock file our own user created, but treat it as alive
 	// out of caution rather than declaring another user's live process
 	// stale.

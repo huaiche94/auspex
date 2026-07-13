@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/progress"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/progress"
 )
 
 func newNode(taskID domain.TaskID, id domain.ProgressNodeID, ordinal int64, status domain.ProgressNodeStatus) progress.Node {

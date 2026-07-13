@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/artifacts"
 )
 
 func TestFileExists_RealFile_Passes(t *testing.T) {

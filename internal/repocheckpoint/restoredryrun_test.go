@@ -1,6 +1,6 @@
 // restoredryrun_test.go: checkpoint-b08's required test coverage for the
 // Restore dry-run deliverable (agents/checkpoint.md Part B deliverable #9;
-// Preflight_ADD.md §19.6). Named so this node's own DAG validation
+// Auspex_ADD.md §19.6). Named so this node's own DAG validation
 // command, `go test ./internal/repocheckpoint/... -run RestoreDryRun`,
 // selects exactly this file.
 package repocheckpoint_test
@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
 )
 
 // captureForDryRun runs a real Capture (the same way capture_test.go does)

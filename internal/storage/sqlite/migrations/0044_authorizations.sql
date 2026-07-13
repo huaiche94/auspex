@@ -1,6 +1,6 @@
 -- 0044_authorizations.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `authorizations`. Durable form
+-- Auspex_ADD.md §12.2 canonical schema: `authorizations`. Durable form
 -- of app.Authorization (one-time authorization issuance/consumption,
 -- agents/predictor.md deliverable #12; CONTRACT_FREEZE.md: "Authorization —
 -- one-time; consumption is exactly-once, enforced by predictor at the

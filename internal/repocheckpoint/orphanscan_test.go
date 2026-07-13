@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
 )
 
 func TestAtomicWrite_OrphanScan_FindsOldOrphan(t *testing.T) {

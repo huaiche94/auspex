@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/pause"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pause"
 )
 
 func newSeededSQLiteStore(t *testing.T) (*pause.SQLiteStore, pause.PauseKey) {

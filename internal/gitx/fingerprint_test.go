@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // take is a test helper that takes a fingerprint and fails the test on error.
@@ -331,7 +331,7 @@ func TestFingerprintDigestSensitivity(t *testing.T) {
 		Untracked:    DefaultUntrackedPolicy(),
 	}
 	mutate := map[string]func(*Fingerprint){
-		"schema":        func(f *Fingerprint) { f.Schema = "preflight.gitx.fingerprint.v999" },
+		"schema":        func(f *Fingerprint) { f.Schema = "auspex.gitx.fingerprint.v999" },
 		"worktree root": func(f *Fingerprint) { f.WorktreeRoot = "/other" },
 		"common dir":    func(f *Fingerprint) { f.CommonDir = "/other/.git" },
 		"linked flag":   func(f *Fingerprint) { f.IsLinkedWorktree = true },

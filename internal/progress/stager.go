@@ -1,16 +1,16 @@
 // stager.go: the default ArtifactStager. ADD §18.7 describes two artifact
-// storage modes: Preflight writes the artifact itself (temp+fsync+rename),
+// storage modes: Auspex writes the artifact itself (temp+fsync+rename),
 // or — the day-one common case per §18.6/§18.7's "若 artifact 是 agent 已
 // 直接寫入 repo" branch — the agent already wrote the file directly into
-// the repository, and Preflight's job is to read its checksum and treat it
+// the repository, and Auspex's job is to read its checksum and treat it
 // as evidence without rewriting it.
 //
 // FileStager implements the second mode: it never mutates the artifact's
-// own content (an agent's file is not Preflight's to overwrite), and its
+// own content (an agent's file is not Auspex's to overwrite), and its
 // "staging" is instead a durable, content-addressed COPY into this
 // package's own evidence directory (fsync + atomic rename, matching
 // internal/repocheckpoint's atomic-write discipline) so later verification
-// and reconciliation have a stable, Preflight-owned copy to check even if
+// and reconciliation have a stable, Auspex-owned copy to check even if
 // the agent's own working copy is later changed or deleted. This is what
 // makes "missing or changed artifact" (Constitution §6 "must reject" list)
 // detectable at CompleteNode/reconciliation time rather than only at the
@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // FileStager stages file-kind artifacts into EvidenceDir, a directory this
@@ -128,7 +128,7 @@ func (s *FileStager) Stage(ctx context.Context, nodeID domain.ProgressNodeID, re
 	// re-verification of dest's own bytes is needed here — content
 	// addressing makes a collision under a different actual content
 	// astronomically unlikely and, in any case, out of scope for this
-	// protocol to detect (that would be a SHA-256 break, not a Preflight
+	// protocol to detect (that would be a SHA-256 break, not a Auspex
 	// bug).
 
 	out := ref

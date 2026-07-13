@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://preflight.dev/schemas/repository-checkpoint.schema.json",
-  "title": "Preflight Repository Checkpoint Manifest",
-  "description": "Wire shape of a Repository Checkpoint's manifest.json (Preflight_ADD.md §19, Appendix D). Mirrors internal/repocheckpoint.Manifest. schema_version pins this document to preflight.repository-checkpoint.v1 (CONTRACT_FREEZE.md).",
+  "$id": "https://auspex.dev/schemas/repository-checkpoint.schema.json",
+  "title": "Auspex Repository Checkpoint Manifest",
+  "description": "Wire shape of a Repository Checkpoint's manifest.json (Auspex_ADD.md §19, Appendix D). Mirrors internal/repocheckpoint.Manifest. schema_version pins this document to auspex.repository-checkpoint.v1 (CONTRACT_FREEZE.md).",
   "type": "object",
   "required": ["schema_version", "checkpoint_id", "created_at", "status", "repository", "snapshot", "artifacts", "recoverability"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "const": "preflight.repository-checkpoint.v1"
+      "const": "auspex.repository-checkpoint.v1"
     },
     "checkpoint_id": { "type": "string", "minLength": 1 },
     "created_at": { "type": "string", "format": "date-time" },

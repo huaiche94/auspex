@@ -64,7 +64,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
+	"github.com/huaiche94/auspex/internal/app"
 )
 
 // ProviderInterrupterContract runs the full app.TurnInterrupter contract

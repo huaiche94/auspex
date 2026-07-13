@@ -16,7 +16,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // insertRepoCheckpoint inserts a minimal repository_checkpoints row. turnID
@@ -28,7 +28,7 @@ func insertRepoCheckpoint(t *testing.T, db *sqlite.DB, id, worktreeID string, ta
 		`INSERT INTO repository_checkpoints
 		   (id, worktree_id, task_id, turn_id, status, artifact_root, manifest_path,
 		    git_head, index_diff_hash, worktree_diff_hash, recoverability, created_at)
-		 VALUES (?, ?, ?, ?, 'created', '/tmp/preflight/checkpoints/rc1', '/tmp/preflight/checkpoints/rc1/manifest.json',
+		 VALUES (?, ?, ?, ?, 'created', '/tmp/auspex/checkpoints/rc1', '/tmp/auspex/checkpoints/rc1/manifest.json',
 		         'deadbeef', 'idxhash', 'wthash', 'full', '2026-07-12T00:00:00Z')`,
 		id, worktreeID, taskID, turnID)
 }

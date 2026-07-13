@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Job statuses — this package's own vocabulary for wake_jobs.status (see

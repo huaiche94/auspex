@@ -88,9 +88,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/scheduler"
 )
 
 // PersistPhase names the five durable writes, in the fixed order
@@ -275,7 +275,7 @@ type PersistResult struct {
 	Resumed bool
 	// LastCompletedPhase names the furthest phase in persistPhaseOrder that
 	// Progress has durable evidence for at the moment Persist returns --
-	// diagnostics-only (e.g. a `preflight status`-style surface reporting
+	// diagnostics-only (e.g. a `auspex status`-style surface reporting
 	// "this pause's persist phase reached repository_checkpoint"), never
 	// used by Persist itself to decide what to skip (each step checks its
 	// own field independently -- see PersistProgress.completedPhase's doc

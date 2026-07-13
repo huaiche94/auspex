@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/redact"
+	"github.com/huaiche94/auspex/internal/redact"
 )
 
 func writeFile(t *testing.T, dir, name string, content []byte) string {

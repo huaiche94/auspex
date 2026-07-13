@@ -18,7 +18,7 @@
 // the only change — no signature here moves, because every field is a
 // frozen interface type.
 //
-// Root wiring (cmd/preflight/main.go) is NOT this package's job: the
+// Root wiring (cmd/auspex/main.go) is NOT this package's job: the
 // contract-integrator/foundation roles own composing this container into
 // the binary (agents/runtime.md "Exclusive paths").
 package wiring
@@ -28,12 +28,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/clock"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/idgen"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/clock"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/idgen"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
 // Services carries one implementation of each frozen service interface.
@@ -60,11 +60,11 @@ type Services struct {
 	// evaluated, sets Hooks explicitly.
 	Hooks HookSupport
 
-	// Diagnostics configures `preflight doctor`'s optional checks
+	// Diagnostics configures `auspex doctor`'s optional checks
 	// (runtime-b08, internal/orchestrator.DoctorDeps). Also not required:
 	// omitting it renders every doctor check CheckSkipped rather than
 	// failing container construction — doctor is meant to run even in a
-	// minimal environment (e.g. before `preflight init` has created a
+	// minimal environment (e.g. before `auspex init` has created a
 	// database at all), and reporting "skipped, not configured" for each
 	// missing piece IS doctor's correct behavior in that case, not a
 	// construction-time error.
@@ -112,7 +112,7 @@ type HookSupport struct {
 	// container's own ProgressTree service (task -> single in-progress
 	// node), so persisted hook events carry TaskID/ProgressNodeID whenever
 	// they resolve unambiguously. The real value is the same
-	// internal/evaluation.SQLDataSource cmd/preflight/wire.go already
+	// internal/evaluation.SQLDataSource cmd/auspex/wire.go already
 	// constructs for the evaluation pipeline (it satisfies the narrow
 	// orchestrator.SessionResolver view of the frozen app.FeatureDataSource
 	// port). nil disables correlation entirely — events persist with
@@ -123,11 +123,11 @@ type HookSupport struct {
 
 	// Forecast optionally enables the issue-#14 forecast surfaces: the
 	// UserPromptSubmit hook's additionalContext card, the statusline
-	// --emit-line display, and `preflight evaluate`'s card output. Like
+	// --emit-line display, and `auspex evaluate`'s card output. Like
 	// Decision.Issuer, only the REAL *internal/evaluation.Service
 	// satisfies orchestrator.ForecastCardSource (a card is a read-back of
 	// the persisted prediction/policy rows only the real service owns) —
-	// cmd/preflight/wire.go passes its evaluation.Service here. nil
+	// cmd/auspex/wire.go passes its evaluation.Service here. nil
 	// degrades every surface to its pre-issue-#14 output (no card block,
 	// model-only status line, `evaluate` without card numbers), per
 	// orchestrator.HookDeps.Forecast's own documented contract.
@@ -203,7 +203,7 @@ func (a *App) RepositoryCheckpoint() app.RepositoryCheckpointService {
 	return a.services.RepositoryCheckpoint
 }
 
-// RootCmd builds the Preflight CLI command tree for this container. This
+// RootCmd builds the Auspex CLI command tree for this container. This
 // is the seam between the wiring layer and internal/cli: runtime-b02
 // started from cli.NewRootCmd()'s all-stub tree; runtime-b04 (this
 // change) is the first node to actually thread a service into a command
@@ -258,7 +258,7 @@ func (a *App) RootCmd() *cobra.Command {
 	// evaluate (issue #14): swapped unconditionally, like progress/
 	// checkpoint/status, because its one required dependency (Evaluation)
 	// is a required service this container cannot exist without. It
-	// shares hookDeps with the hook subtree deliberately — `preflight
+	// shares hookDeps with the hook subtree deliberately — `auspex
 	// evaluate` runs the SAME production evaluation path the
 	// UserPromptSubmit hook runs (orchestrator.EvaluatePrompt over the
 	// same normalizer/persister/evaluation/forecast collaborators), which

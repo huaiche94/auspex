@@ -8,8 +8,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/features"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
 )
 
 // --- Storage transaction boundary -----------------------------------------
@@ -99,7 +99,7 @@ type EvaluationService interface {
 //
 // Each stage is a narrow, swappable interface: a Rule/Statistical/ML
 // implementation of any one stage can replace it without touching the
-// others (ADD §1.4; Preflight_Predictor_Design_Supplement.md's
+// others (ADD §1.4; Auspex_Predictor_Design_Supplement.md's
 // Version 1/2/3 evolutionary roadmap).
 
 type EstimateScopeRequest struct {

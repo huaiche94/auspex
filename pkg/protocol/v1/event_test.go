@@ -6,12 +6,12 @@ import "testing"
 // CONTRACT_FREEZE.md). A change here requires an ADR (Constitution §3).
 func TestSchemaVersionStrings(t *testing.T) {
 	cases := map[string]string{
-		SchemaVersionEvent:                "preflight.event.v1",
-		SchemaVersionProgressTree:         "preflight.progress-tree.v1",
-		SchemaVersionStateCheckpoint:      "preflight.state-checkpoint.v1",
-		SchemaVersionRepositoryCheckpoint: "preflight.repository-checkpoint.v1",
-		SchemaVersionPause:                "preflight.pause.v1",
-		SchemaVersionAPI:                  "preflight.api.v1",
+		SchemaVersionEvent:                "auspex.event.v1",
+		SchemaVersionProgressTree:         "auspex.progress-tree.v1",
+		SchemaVersionStateCheckpoint:      "auspex.state-checkpoint.v1",
+		SchemaVersionRepositoryCheckpoint: "auspex.repository-checkpoint.v1",
+		SchemaVersionPause:                "auspex.pause.v1",
+		SchemaVersionAPI:                  "auspex.api.v1",
 	}
 	for got, want := range cases {
 		if got != want {

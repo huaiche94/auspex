@@ -3,7 +3,7 @@ package pause
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Boundary names one observation this package's caller can report while a

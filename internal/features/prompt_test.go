@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Sentinel tokens deliberately avoid the hex alphabet [0-9a-f] so they can

@@ -12,7 +12,7 @@
 n=19, all from one repository, one contributor, one execution environment,
 across two waves of one day. Every observation below is a real, Observed
 pattern in this specific dataset — none are fabricated — but none should
-be treated as a general law about Preflight's future scope estimator
+be treated as a general law about Auspex's future scope estimator
 without many more waves of data across different repositories, task
 classes, and contributors. Where a pattern looks strong, this report says
 so; where n is too small to trust a direction, this report says that too.
@@ -106,7 +106,7 @@ self-assessed as lower than the DAG predicted:
   the smaller tier. The DAG's "L" label describes the tier that was *not*
   built this wave.
 
-**Interpretation**: this is not evidence that Preflight's estimator is
+**Interpretation**: this is not evidence that Auspex's estimator is
 biased toward over-estimating complexity in general — it is evidence that
 at least one DAG node (`predictor-06`) bundled two very differently-sized
 pieces of work under one complexity label, and the wave correctly executed
@@ -117,7 +117,7 @@ Prediction_Error_Report.md, not a calibration bias in the ordinary sense.
 ## 4. Repository-specific bias
 
 **Unknown.** This entire dataset comes from exactly one repository
-(`preflight` itself). There is no second repository to compare against,
+(`auspex` itself). There is no second repository to compare against,
 so no repository-specific bias can be identified or ruled out.
 `Missing_Telemetry_Report.md` (Phase 3.6) treats "cross-repository
 calibration data" as a named gap.
@@ -127,12 +127,12 @@ calibration data" as a named gap.
 **Unknown**, with one important caveat stated explicitly: the "provider"
 in this dataset is Claude (Sonnet/Fable models via this harness) acting as
 the *implementing agent*, not Claude Code acting as the coding agent
-Preflight is designed to *observe*. This dataset measures "how much does
-it cost an AI agent to implement a Preflight component," which is a
+Auspex is designed to *observe*. This dataset measures "how much does
+it cost an AI agent to implement a Auspex component," which is a
 different question from "how much does it cost a user's Claude Code
-session to complete a coding task" — the latter is what Preflight's
+session to complete a coding task" — the latter is what Auspex's
 predictor is ultimately meant to forecast. Do not read this report's
-findings as calibration data for Preflight's *product* predictor without
+findings as calibration data for Auspex's *product* predictor without
 first confirming this distinction is understood; that would be a
 category error, not just a small-sample-size caveat.
 
@@ -161,7 +161,7 @@ to distinguish a task-class effect from ordinary node-to-node variance.
 | Token usage | Cannot assess — no estimate ever existed | N/A | 0 of 19 nodes had a DAG token field |
 | Complexity | Two isolated over-estimates, not a pattern | Low | n=2, both explained by scope-bundling, not general bias |
 | Repository-specific | Unknown | N/A | n=1 repository |
-| Provider-specific | Unknown, and possibly a category error to ask | N/A | Dataset measures implementer cost, not Preflight's target (coding-agent turn cost) |
+| Provider-specific | Unknown, and possibly a category error to ask | N/A | Dataset measures implementer cost, not Auspex's target (coding-agent turn cost) |
 | Task-class | Weak hypothesis only | Very low | n=2 for the one pattern observed |
 
 ## 8. What would most improve confidence before Wave 3

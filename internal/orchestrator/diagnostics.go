@@ -1,4 +1,4 @@
-// diagnostics.go implements `preflight status` and `preflight doctor`
+// diagnostics.go implements `auspex status` and `auspex doctor`
 // (agents/runtime.md Part B P0 commands; runtime-b08). Both are read-only:
 // neither mutates repository/worktree/session/task state, config, or the
 // database beyond what schema-check machinery itself requires (e.g.
@@ -13,13 +13,13 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
-// --- preflight status --------------------------------------------------
+// --- auspex status --------------------------------------------------
 
-// StatusRequest is `preflight status`'s input — whatever identity is
+// StatusRequest is `auspex status`'s input — whatever identity is
 // already known to the caller (a CLI flag, an already-resolved session).
 // All fields are optional: a field left empty simply does not appear in
 // StatusResult (unknown is not zero — this command reports what it
@@ -29,7 +29,7 @@ type StatusRequest struct {
 	TaskID    *domain.TaskID
 }
 
-// StatusResult is `preflight status`'s best-effort summary. Each Has*
+// StatusResult is `auspex status`'s best-effort summary. Each Has*
 // flag distinguishes "we don't know" from "we know and it's empty/zero",
 // per CONTRACT_FREEZE.md's unknown-is-not-zero discipline.
 //
@@ -59,7 +59,7 @@ type StatusDeps struct {
 	ProgressTree app.ProgressTreeService
 }
 
-// Status implements `preflight status`: report current
+// Status implements `auspex status`: report current
 // repository/worktree/session/task state, best-effort, against whatever
 // real stores or fakes are wired. It never mutates anything.
 func Status(ctx context.Context, deps StatusDeps, req StatusRequest) (StatusResult, error) {
@@ -81,7 +81,7 @@ func Status(ctx context.Context, deps StatusDeps, req StatusRequest) (StatusResu
 	return result, nil
 }
 
-// --- preflight doctor ----------------------------------------------------
+// --- auspex doctor ----------------------------------------------------
 
 // CheckStatus is one doctor check's outcome.
 type CheckStatus string
@@ -100,7 +100,7 @@ type CheckResult struct {
 	Detail string
 }
 
-// DoctorResult is `preflight doctor`'s full report: every check that ran,
+// DoctorResult is `auspex doctor`'s full report: every check that ran,
 // in a fixed order, plus an overall pass/fail summarizing them (fail if
 // any check is CheckFail, ok otherwise — CheckWarn/CheckSkipped do not by
 // themselves fail the overall report, matching ADD §17.5's fail-open
@@ -122,7 +122,7 @@ type DBPinger interface {
 	CurrentVersion(ctx context.Context) (int, error)
 }
 
-// ConfigLoader reports whether Preflight's configuration loads cleanly.
+// ConfigLoader reports whether Auspex's configuration loads cleanly.
 // Declared locally (not internal/config's concrete Load signature) so
 // Doctor depends on the one capability it actually needs.
 type ConfigLoader interface {
@@ -133,14 +133,14 @@ type ConfigLoader interface {
 // omitting one renders that check CheckSkipped rather than failing the
 // whole report — Doctor never panics or aborts early just because one
 // dependency was not wired (e.g. a CLI invocation with no DB path
-// configured yet, before `preflight init`).
+// configured yet, before `auspex init`).
 type DoctorDeps struct {
 	DB           DBPinger
 	Config       ConfigLoader
 	RequiredDirs []string
 }
 
-// Doctor implements `preflight doctor`: DB reachable/migrated, config
+// Doctor implements `auspex doctor`: DB reachable/migrated, config
 // loadable, required directories/permissions present. Purely diagnostic —
 // it never creates a directory, writes a config file, or applies a
 // migration; every check is read-only (DBPinger.CurrentVersion may create
@@ -223,7 +223,7 @@ func checkDirs(dirs []string) []CheckResult {
 // explicitly a read-diagnostic command, so this probe's own artifact is
 // removed in the same call, leaving no observable side effect.
 func isWritable(dir string) bool {
-	f, err := os.CreateTemp(dir, ".preflight-doctor-*")
+	f, err := os.CreateTemp(dir, ".auspex-doctor-*")
 	if err != nil {
 		return false
 	}

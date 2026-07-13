@@ -1,6 +1,6 @@
 -- 0020_progress_nodes.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `progress_nodes` — the Progress
+-- Auspex_ADD.md §12.2 canonical schema: `progress_nodes` — the Progress
 -- Tree node table, the canonical durable task state (Constitution §6.1).
 -- First migration of checkpoint Part A's assigned range (0020-0029 per
 -- CONTRACT_FREEZE.md), transcribed column-for-column from §12.2.

@@ -1,4 +1,4 @@
-// filename.go: the exact "Name patterns" list from Preflight_ADD.md §27.8,
+// filename.go: the exact "Name patterns" list from Auspex_ADD.md §27.8,
 // transcribed verbatim (not a superset, not a subset):
 //
 //	.env

@@ -7,7 +7,7 @@
 // quota_risk/context_risk terms (ADD §16.2, ADR-041).
 //
 // This is a Version 1 (rule-based/deterministic) implementation per
-// Preflight_Predictor_Design_Supplement.md's Evolution Roadmap
+// Auspex_Predictor_Design_Supplement.md's Evolution Roadmap
 // ("RuleQuotaForecaster — Version 1 — deterministic delta model, §15.3").
 //
 // No durable historical telemetry store exists yet this wave — the same

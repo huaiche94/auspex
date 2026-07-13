@@ -6,7 +6,7 @@ package clock
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // System is the real Clock implementation backed by time.Now(). It carries

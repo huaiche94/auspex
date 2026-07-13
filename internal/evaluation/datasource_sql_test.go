@@ -18,16 +18,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/predictor/quota"
-	"github.com/huaiche94/preflight/internal/predictor/risk"
-	"github.com/huaiche94/preflight/internal/predictor/scope"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor/quota"
+	"github.com/huaiche94/auspex/internal/predictor/risk"
+	"github.com/huaiche94/auspex/internal/predictor/scope"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // --- compile-time interface assertion --------------------------------------
@@ -82,7 +82,7 @@ func insertEvent(t *testing.T, db *sqlite.DB, eventID, sessionID, eventType, occ
 	exec(t, db, `
 		INSERT INTO events (event_id, schema_version, event_type, occurred_at, observed_at, source, session_id, payload_json)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		eventID, "preflight.event.v1", eventType, occurredAt, occurredAt, "hook", sessionID, string(b),
+		eventID, "auspex.event.v1", eventType, occurredAt, occurredAt, "hook", sessionID, string(b),
 	)
 }
 
@@ -729,7 +729,7 @@ func TestSQLDataSource_PriorRunwayHitConfirmed_NonQualifyingReasonCodeIsFalse(t 
 // evaluation.Service, wired to the SAME real pipeline-stage implementations
 // (scope/token/quota/risk/policy) production wiring would use — the whole
 // point of this corrective addition (per the task's own framing: "this is
-// why cmd/preflight/main.go still cannot be wired with a real
+// why cmd/auspex/main.go still cannot be wired with a real
 // EvaluationService"). This does not re-prove the pipeline's own internal
 // correctness (pipeline_e2e_test.go already does that against
 // fakeDataSource) — it proves SQLDataSource satisfies every hand-off

@@ -1,6 +1,6 @@
 -- 0050_pause_records.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `pause_records` — one row per
+-- Auspex_ADD.md §12.2 canonical schema: `pause_records` — one row per
 -- Graceful Pause lifecycle (agents/runtime.md Part A; runtime's migration
 -- range 0050-0059 per CONTRACT_FREEZE.md). `status` holds the frozen
 -- PauseStatus enum wire strings (internal/domain/status.go): predicted →

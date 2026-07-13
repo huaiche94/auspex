@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 func TestOpen_CreatesFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
@@ -314,7 +314,7 @@ func TestOpen_UnwritableDirectory_Errors(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	_, err := sqlite.Open(context.Background(), path)
 	if err == nil {
 		t.Fatal("expected an error opening a database under an unwritable directory")
@@ -324,7 +324,7 @@ func TestOpen_UnwritableDirectory_Errors(t *testing.T) {
 func openTemp(t *testing.T) *sqlite.DB {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "preflight.db")
+	path := filepath.Join(dir, "auspex.db")
 	db, err := sqlite.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("Open: %v", err)

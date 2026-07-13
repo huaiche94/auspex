@@ -1,4 +1,4 @@
-// Package scheduler implements Preflight's durable wake scheduler (ADD
+// Package scheduler implements Auspex's durable wake scheduler (ADD
 // §12.4, §20.7; agents/runtime.md Part A P0 deliverable 6: "Durable
 // scheduler lease with claim/renew/complete/fail/retry"). It operates on
 // the wake_jobs table runtime-a01 shipped

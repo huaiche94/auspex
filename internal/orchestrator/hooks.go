@@ -1,5 +1,5 @@
 // hooks.go implements agents/runtime.md Part B's four P0 Claude Code hook
-// commands (`preflight hook claude statusline|user-prompt-submit|stop|
+// commands (`auspex hook claude statusline|user-prompt-submit|stop|
 // stop-failure`) as orchestration functions internal/cli's command
 // constructors call into. This is runtime-b04's scope.
 //
@@ -31,9 +31,9 @@
 //     details) on internal failure, distinct from a hook's own semantic
 //     "block" decision (which is not an error — see HandleUserPromptSubmit);
 //   - always produces a syntactically valid provider hook response body
-//     even when Preflight's own internal step failed, via each Response's
+//     even when Auspex's own internal step failed, via each Response's
 //     Fallback() method — "hook fallback remains syntactically valid when
-//     Preflight fails" is proven by fallback_test.go's malformed-payload
+//     Auspex fails" is proven by fallback_test.go's malformed-payload
 //     cases (a fallback is a criterion this node's tests exercise
 //     directly, not an aspiration).
 package orchestrator
@@ -41,13 +41,13 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // EventPersister is a narrow interface over
@@ -57,7 +57,7 @@ import (
 // store wired in. A nil EventPersister is valid: persistence is skipped
 // (fail-open per ADD §17.5's "telemetry unavailable -> fail open +
 // warning" — a hook must never fail the user's actual prompt/turn because
-// Preflight's own event log could not be written).
+// Auspex's own event log could not be written).
 type EventPersister interface {
 	PersistAll(ctx context.Context, runner app.TxRunner, evs []v1.Event) error
 }
@@ -133,7 +133,7 @@ func (d HookDeps) persist(ctx context.Context, evs []v1.Event) (persisted bool) 
 	return true
 }
 
-// --- preflight hook claude statusline ---------------------------------------
+// --- auspex hook claude statusline ---------------------------------------
 
 // StatusLineResult is HandleStatusLine's return value.
 type StatusLineResult struct {
@@ -146,11 +146,11 @@ type StatusLineResult struct {
 	Persisted        bool
 }
 
-// HandleStatusLine implements `preflight hook claude statusline` (ADD
+// HandleStatusLine implements `auspex hook claude statusline` (ADD
 // §22.5): parse the stdin JSON status-line snapshot, normalize it into
 // usage/quota/context observation events via the real, already-integrated
 // claude-provider-04 Normalizer, and best-effort persist them. Per ADD
-// §22.6, Preflight's wrapper is expected to ultimately compose with
+// §22.6, Auspex's wrapper is expected to ultimately compose with
 // whatever status-line command was previously configured; that installer/
 // compose mechanism is a separate, not-yet-built concern (no
 // internal/statusline composition package exists this wave) — this
@@ -160,7 +160,7 @@ type StatusLineResult struct {
 // top of this result.
 //
 // Malformed stdin is not escalated as a hard failure: a status line must
-// keep rendering even when Preflight cannot parse its own input, so a
+// keep rendering even when Auspex cannot parse its own input, so a
 // parse error here yields a zero StatusLineResult and a nil error —
 // exactly the fail-open contract ADD §17.5 assigns to telemetry
 // unavailability. internal/cli's command wraps this to guarantee the
@@ -191,7 +191,7 @@ func statusLineIngest(ctx context.Context, deps HookDeps, stdin []byte) (claudep
 	return snap, result, true
 }
 
-// HandleStatusLineEmitLine implements `preflight hook claude statusline
+// HandleStatusLineEmitLine implements `auspex hook claude statusline
 // --emit-line` (issue #14 deliverable 4, resolving issue #12's recorded
 // friction #2: Claude Code's statusLine command must PRINT the display
 // line — wiring the ingest-only handler directly blanks the user's status
@@ -207,7 +207,7 @@ func statusLineIngest(ctx context.Context, deps HookDeps, stdin []byte) (claudep
 // degradation is fail-open into a shorter line, never an error and never
 // an empty line: malformed stdin renders bare "pf✈", a missing model
 // omits the model segment, a missing/errored card omits the forecast
-// segments — a status line must keep rendering even when Preflight cannot
+// segments — a status line must keep rendering even when Auspex cannot
 // parse its own input (the same ADD §17.5 discipline HandleStatusLine
 // already documents).
 func HandleStatusLineEmitLine(ctx context.Context, deps HookDeps, stdin []byte) (StatusLineResult, string, error) {
@@ -236,7 +236,7 @@ func HandleStatusLineEmitLine(ctx context.Context, deps HookDeps, stdin []byte) 
 	return result, evaluation.StatusLineText(model, card), nil
 }
 
-// --- preflight hook claude user-prompt-submit -------------------------------
+// --- auspex hook claude user-prompt-submit -------------------------------
 
 // UserPromptSubmitResult is HandleUserPromptSubmit's return value: the
 // provider-compatible response body to write to stdout, plus diagnostics.
@@ -253,7 +253,7 @@ type UserPromptSubmitResult struct {
 	Evaluated bool
 }
 
-// HandleUserPromptSubmit implements `preflight hook claude
+// HandleUserPromptSubmit implements `auspex hook claude
 // user-prompt-submit`: parse+hash the prompt (never retaining raw text
 // past claudehooks.ParseUserPromptSubmit, per Constitution §7 rule 2),
 // normalize a provider.turn.started event, best-effort persist it, and —
@@ -261,12 +261,12 @@ type UserPromptSubmitResult struct {
 // pipeline (runtime-b03) to render a block/allow decision matching ADD
 // §22.3's UserPromptSubmit block shape.
 //
-// A block decision is Preflight's own considered output, not an error:
+// A block decision is Auspex's own considered output, not an error:
 // this function returns (result, nil) for both allow and block, and
 // callers render whichever Decision the result carries. Only a genuine
 // internal fault (malformed stdin) short-circuits to the safe default
 // allow response — again fail-open, matching HandleStatusLine, because a
-// Preflight bug must never be the reason a user's prompt is silently
+// Auspex bug must never be the reason a user's prompt is silently
 // swallowed.
 func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (UserPromptSubmitResult, error) {
 	parsed, err := claudehooks.ParseUserPromptSubmit(stdin)
@@ -312,7 +312,7 @@ func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (U
 	if pe.decision.Action == app.PolicyBlock {
 		result.Response = claudehooks.UserPromptSubmitResponse{
 			Decision:          claudehooks.HookDecisionBlock,
-			Reason:            "Preflight evaluation " + string(pe.evaluation.ID) + " requires a checkpoint or explicit override before this task starts.",
+			Reason:            "Auspex evaluation " + string(pe.evaluation.ID) + " requires a checkpoint or explicit override before this task starts.",
 			AdditionalContext: additional,
 		}
 	} else {
@@ -348,7 +348,7 @@ type promptEvaluation struct {
 // evaluateSubmittedPrompt runs the single production path from a parsed
 // (already privacy-safe: hash/length/approx-tokens only) prompt event to
 // a persisted evaluation + policy decision. Shared verbatim by the
-// UserPromptSubmit hook and `preflight evaluate` (issue #14 deliverable
+// UserPromptSubmit hook and `auspex evaluate` (issue #14 deliverable
 // 5's "share code, don't duplicate"), so an offline evaluation is the
 // same evaluation a hook would have produced.
 //
@@ -391,7 +391,7 @@ func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudeho
 	return pe, nil
 }
 
-// --- preflight hook claude stop / stop-failure ------------------------------
+// --- auspex hook claude stop / stop-failure ------------------------------
 
 // StopResult is HandleStop's return value.
 type StopResult struct {
@@ -399,7 +399,7 @@ type StopResult struct {
 	Persisted        bool
 }
 
-// HandleStop implements `preflight hook claude stop`: parse, normalize a
+// HandleStop implements `auspex hook claude stop`: parse, normalize a
 // provider.turn.completed event, best-effort persist. Full Progress
 // Tree/Git/artifact reconciliation (ADD §22.4: "Stop 時 reconcile Progress
 // Tree、Git、artifacts") is outcome labeling depth beyond this node's
@@ -425,7 +425,7 @@ type StopFailureResult struct {
 	FailureClass     domain.FailureClass
 }
 
-// HandleStopFailure implements `preflight hook claude stop-failure`:
+// HandleStopFailure implements `auspex hook claude stop-failure`:
 // parse+classify, normalize one or two events (NormalizeStopFailure emits
 // a second provider.rate_limit.hit event when the classified failure is a
 // rate limit — see internal/telemetry/claude.NormalizeStopFailure), and

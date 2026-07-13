@@ -39,15 +39,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/gitx"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	"github.com/huaiche94/preflight/internal/redact"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/gitx"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	"github.com/huaiche94/auspex/internal/redact"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- shared fixtures / needles ---------------------------------------------
@@ -235,7 +235,7 @@ func buildLeakageScannerDB(t *testing.T) (dbPath string, needles []promptNeedle)
 // TestLeakageScanner_SQLiteExport_NoRawPromptText drives a real on-disk
 // SQLite export (see buildLeakageScannerDB) and scans the raw file bytes —
 // not a typed SQL query, the actual bytes on disk, the way a `cp
-// preflight.db support-bundle/` operator flow or a support-bundle tool would
+// auspex.db support-bundle/` operator flow or a support-bundle tool would
 // access it — for every known prompt/error-message needle. This is
 // qa-05's core closure of claude-provider-07's documented scope gap ("a
 // full SQLite file export... left out of scope, per this node's own DAG
@@ -317,7 +317,7 @@ func newCheckpointRepoBuilder(t *testing.T) *checkpointRepoBuilder {
 	t.Helper()
 	rb := &checkpointRepoBuilder{t: t}
 
-	dir, err := os.MkdirTemp("", "preflight-qa05-repo-*")
+	dir, err := os.MkdirTemp("", "auspex-qa05-repo-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -334,8 +334,8 @@ func newCheckpointRepoBuilder(t *testing.T) *checkpointRepoBuilder {
 	}
 
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight QA")
-	rb.git("config", "user.email", "qa@preflight.invalid")
+	rb.git("config", "user.name", "Auspex QA")
+	rb.git("config", "user.email", "qa@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	return rb
 }
@@ -629,7 +629,7 @@ func TestLeakageScanner_Falsifiability_DetectsPlantedSecretInRawFile(t *testing.
 // on a match, replaces the ENTIRE line body with a fixed, non-echoing
 // placeholder constant (patchredact.go's redactedLinePlaceholder):
 //
-//	"[REDACTED: secret-shaped content removed by preflight checkpoint capture]"
+//	"[REDACTED: secret-shaped content removed by auspex checkpoint capture]"
 //
 // This test asserts the new, correct behavior: the raw secret must NOT
 // appear verbatim in the resulting patch artifact (mirroring this file's
@@ -691,7 +691,7 @@ func TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered(t *testing.T) {
 	// positive assertion is stronger than "the secret is gone" alone —
 	// it confirms redact-in-place happened as designed, not e.g. the
 	// whole line or file being silently dropped some other way.
-	const redactedLinePlaceholder = "[REDACTED: secret-shaped content removed by preflight checkpoint capture]"
+	const redactedLinePlaceholder = "[REDACTED: secret-shaped content removed by auspex checkpoint capture]"
 	if !strings.Contains(string(patch), redactedLinePlaceholder) {
 		t.Fatalf("expected staged.patch.gz to contain checkpoint's redaction placeholder %q in place of the redacted secret line; got:\n%s", redactedLinePlaceholder, patch)
 	}
@@ -735,8 +735,8 @@ func assertPatchApplies(t *testing.T, repoDir string, patch []byte) {
 		}
 	}
 	run("clone", "-q", repoDir, ".")
-	run("config", "user.name", "Preflight QA")
-	run("config", "user.email", "qa@preflight.invalid")
+	run("config", "user.name", "Auspex QA")
+	run("config", "user.email", "qa@auspex.invalid")
 
 	patchPath := filepath.Join(checkDir, "check.patch")
 	if err := os.WriteFile(patchPath, patch, 0o644); err != nil {

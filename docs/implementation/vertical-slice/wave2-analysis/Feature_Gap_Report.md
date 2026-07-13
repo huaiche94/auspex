@@ -43,7 +43,7 @@ for Wave 3+ planning to draw on.
 ### 1.2 Actual token usage / turn (Registry §4, §5's `TokenForecast`)
 
 - **Why missing:** No live coding-agent session has ever run against
-  `preflight` (no CLI exists yet to observe one).
+  `auspex` (no CLI exists yet to observe one).
 - **Impact:** Blocks Token Forecaster calibration permanently, at every
   tier (Rule/Statistical/ML) — there is no ground truth to calibrate
   against regardless of algorithm sophistication.

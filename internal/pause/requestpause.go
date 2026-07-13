@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // PauseKey is the natural idempotency key for RequestPause (agents/
@@ -13,7 +13,7 @@ import (
 // most one live (non-terminal) pause in flight at a time. This mirrors
 // wake_jobs' own UNIQUE(pause_id, job_kind) exactly-once anchor
 // (internal/scheduler's migration 0051) — pause_records has no separate
-// caller-supplied idempotency key column (Preflight_ADD.md §12.2), so the
+// caller-supplied idempotency key column (Auspex_ADD.md §12.2), so the
 // natural key IS the idempotency key here, exactly as CONTRACT_FREEZE.md's
 // "ID and idempotency rules" section describes for
 // CompleteNodeRequest.IdempotencyKey: "same completion request replayed

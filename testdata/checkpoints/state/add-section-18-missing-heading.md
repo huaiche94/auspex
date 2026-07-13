@@ -6,13 +6,13 @@
 ## 18.2 Progress Tree 結構
 
 ```text
-Task: Build Preflight ADD
+Task: Build Auspex ADD
 ├── 01 Executive decisions [completed]
-│   └── artifact: Preflight_ADD.md#1
+│   └── artifact: Auspex_ADD.md#1
 ├── 02 Requirements [completed]
-│   └── artifact: Preflight_ADD.md#5
+│   └── artifact: Auspex_ADD.md#5
 ├── 03 Architecture [completed]
-│   └── artifact: Preflight_ADD.md#7
+│   └── artifact: Auspex_ADD.md#7
 ├── 04 State Checkpointing [in_progress]
 ├── 05 Graceful Pause [ready]
 └── 06 Final validation [pending]
@@ -63,7 +63,7 @@ node:
   title: Graceful Pause
   artifact_contract:
     type: file
-    path: Preflight_ADD.md
+    path: Auspex_ADD.md
     selector: heading:#20-graceful-pause-與-auto-resume
     media_type: text/markdown
     minimum_bytes: 4000
@@ -122,7 +122,7 @@ node:
 ## 18.8 State checkpoint contents
 
 ```yaml
-schema_version: preflight.state-checkpoint.v1
+schema_version: auspex.state-checkpoint.v1
 checkpoint_id: 0198...
 task_id: 0198...
 progress_tree_version: 17
@@ -133,7 +133,7 @@ completed_nodes:
   - section-01
   - section-02
 artifacts:
-  - uri: file:Preflight_ADD.md
+  - uri: file:Auspex_ADD.md
     sha256: ...
 repository:
   git_head: f1a83bc
@@ -171,16 +171,16 @@ On startup/resume：
 
 ### Codex
 
-`turn/plan/updated` steps map to proposed nodes；status update maps observation。Preflight assigns canonical IDs。
+`turn/plan/updated` steps map to proposed nodes；status update maps observation。Auspex assigns canonical IDs。
 
 ### Claude
 
-`TaskCreated`／`TaskCompleted` hooks map to provider nodes；Preflight still validates artifacts。
+`TaskCreated`／`TaskCompleted` hooks map to provider nodes；Auspex still validates artifacts。
 
 ### Fallback
 
 - user-defined YAML plan；
-- `preflight progress add`；
+- `auspex progress add`；
 - plan extracted from prompt by deterministic headings；
 - optional LLM plan only after consent。
 
@@ -191,11 +191,11 @@ Managed mode can inject developer instruction：
 ```text
 Work one Progress Tree node at a time.
 Before starting the next document section, persist the current section to the
-configured Markdown artifact and report the artifact path. Preflight will not
+configured Markdown artifact and report the artifact path. Auspex will not
 mark the node complete until validation and State Checkpointing succeed.
 ```
 
-Preflight itself validates；不信任 instruction compliance。
+Auspex itself validates；不信任 instruction compliance。
 
 ## 18.12 Node idempotency
 

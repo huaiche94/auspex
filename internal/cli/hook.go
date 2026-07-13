@@ -5,11 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/hooks/claude"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// newHookCmd builds the standalone-stub `preflight hook claude
+// newHookCmd builds the standalone-stub `auspex hook claude
 // {statusline,user-prompt-submit,stop,stop-failure}` subtree
 // (agents/runtime.md Part B P0 command list). Every leaf here is a stub,
 // used only by the bare NewRootCmd() tree (no wired services — see
@@ -22,7 +22,7 @@ import (
 // Subcommand casing: kebab-case ("user-prompt-submit", "stop-failure").
 // See doc.go's package comment for the full naming-convention rationale —
 // this repository has an unresolved discrepancy between
-// Preflight_ADD.md Appendix E.3 (PascalCase) and three other frozen
+// Auspex_ADD.md Appendix E.3 (PascalCase) and three other frozen
 // documents (kebab-case), tracked as ADR_Recommendations.md REC-03. This
 // package follows agents/runtime.md's own P0 command list verbatim.
 func newHookCmd() *cobra.Command {
@@ -76,7 +76,7 @@ func newHookClaudeStubCmd() *cobra.Command {
 	return cmd
 }
 
-// NewHookClaudeCmd builds the REAL `preflight hook claude ...` subtree,
+// NewHookClaudeCmd builds the REAL `auspex hook claude ...` subtree,
 // wired against deps (internal/orchestrator.HookDeps). This is the
 // runtime-b04 constructor internal/app/wiring.App.RootCmd() uses in place
 // of the package-private stub tree above. Exported because
@@ -86,12 +86,12 @@ func newHookClaudeStubCmd() *cobra.Command {
 // Every leaf follows agents/runtime.md Part B's "JSON and errors"
 // requirements: reads the full raw hook payload from stdin, never logs or
 // echoes it, always writes a syntactically valid provider-compatible JSON
-// response to stdout (even on Preflight's own internal failure — the
+// response to stdout (even on Auspex's own internal failure — the
 // orchestrator Handle* functions are fail-open by design, see hooks.go),
 // and exits 0 in every case except a genuine command-usage error (e.g.
 // unreadable stdin) — a hook's own semantic block decision is content in
 // the response body, never a non-zero process exit, so the provider's own
-// hook runner does not misinterpret an ordinary block as Preflight
+// hook runner does not misinterpret an ordinary block as Auspex
 // crashing.
 func NewHookClaudeCmd(deps orchestrator.HookDeps) *cobra.Command {
 	cmd := &cobra.Command{
@@ -142,9 +142,9 @@ func newRealStatusLineCmd(deps orchestrator.HookDeps) *cobra.Command {
 			// pre-issue-#14 command: ADD §22.6's compose-with-existing-
 			// status-line installer mechanism still does not exist, so
 			// the default stdout contribution stays intentionally empty —
-			// Preflight does not overwrite or duplicate whatever the
+			// Auspex does not overwrite or duplicate whatever the
 			// user's previously-configured status-line command prints.
-			// Callers that want Preflight to OWN the line opt in via the
+			// Callers that want Auspex to OWN the line opt in via the
 			// flag (integrations/claude/hooks.json now does).
 			return nil
 		},

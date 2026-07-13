@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/progress"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/progress"
 )
 
 // TestValidTransitions_Allowed exercises every edge in the frozen adjacency

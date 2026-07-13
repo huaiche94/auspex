@@ -1,6 +1,6 @@
 // Package statecheckpoint implements checkpoint role Part A's State
 // Checkpoint manifest (agents/checkpoint.md Part A deliverable #5;
-// Preflight_ADD.md §18.8, Appendix B; migrations/0023_state_checkpoints.sql).
+// Auspex_ADD.md §18.8, Appendix B; migrations/0023_state_checkpoints.sql).
 //
 // A State Checkpoint is the canonical, durable, replayable snapshot of a
 // task's Progress Tree at a semantic boundary (ADR-029: "state checkpoint
@@ -16,12 +16,12 @@ package statecheckpoint
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // SchemaVersion is the frozen wire schema-version string for a State
-// Checkpoint manifest (CONTRACT_FREEZE.md, preflight.state-checkpoint.v1).
-const SchemaVersion = "preflight.state-checkpoint.v1"
+// Checkpoint manifest (CONTRACT_FREEZE.md, auspex.state-checkpoint.v1).
+const SchemaVersion = "auspex.state-checkpoint.v1"
 
 // ProgressTreeSummary mirrors Appendix B's `progress_tree` block: the
 // Progress Tree's shape at the moment this checkpoint was taken.

@@ -17,7 +17,7 @@ fabricated data"). Stated precisely:
 
 ### 1a. No historical telemetry records exist
 
-A "telemetry record" in Preflight's own architecture is a persisted
+A "telemetry record" in Auspex's own architecture is a persisted
 `turns` / `turn_usage` / `quota_observations` / `context_observations` row
 (ADD §12.2) produced by a real coding-agent turn and written durably to
 SQLite. None of the infrastructure required to produce or store one
@@ -29,8 +29,8 @@ exists yet:
 - `claude-provider-05` (idempotent persistence of normalized telemetry
   events into SQLite) — not built (blocked on `foundation-06`).
 - `predictor-09` (evaluation persistence) — not built.
-- No `preflight` binary has ever observed a real Claude Code turn. The
-  Wave 1/2 execution *of Preflight's own development* is not telemetry in
+- No `auspex` binary has ever observed a real Claude Code turn. The
+  Wave 1/2 execution *of Auspex's own development* is not telemetry in
   this sense — it is the work of building the predictor, not output the
   predictor produced.
 

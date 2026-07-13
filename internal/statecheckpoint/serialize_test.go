@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
 )
 
 func sampleManifest() statecheckpoint.Manifest {
@@ -19,7 +19,7 @@ func sampleManifest() statecheckpoint.Manifest {
 			CompletedNodeIDs: []domain.ProgressNodeID{"section-01", "section-02"},
 		},
 		Artifacts: []statecheckpoint.ArtifactSummary{
-			{ID: "artifact-add", URI: "file:Preflight_ADD.md", Bytes: 128442, SHA256: "abc123", ValidationStatus: "passed"},
+			{ID: "artifact-add", URI: "file:Auspex_ADD.md", Bytes: 128442, SHA256: "abc123", ValidationStatus: "passed"},
 		},
 		Repository: statecheckpoint.RepositoryInfo{GitHead: "f1a83bc"},
 		Provider:   statecheckpoint.ProviderInfo{Name: "codex", SessionID: "thr_123"},

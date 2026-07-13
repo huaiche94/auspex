@@ -38,27 +38,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/gitx"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/predictor/quota"
-	"github.com/huaiche94/preflight/internal/predictor/risk"
-	"github.com/huaiche94/preflight/internal/predictor/scope"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/gitx"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor/quota"
+	"github.com/huaiche94/auspex/internal/predictor/risk"
+	"github.com/huaiche94/auspex/internal/predictor/scope"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- independent fixtures (qa03-prefixed; distinct from qa-02's own and
@@ -121,8 +121,8 @@ func newQA03Repo(t *testing.T) *qa03Repo {
 		t.Skipf("git not available: %v", err)
 	}
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight QA Restart")
-	rb.git("config", "user.email", "qa-restart@preflight.invalid")
+	rb.git("config", "user.name", "Auspex QA Restart")
+	rb.git("config", "user.email", "qa-restart@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	if err := os.WriteFile(filepath.Join(rb.dir, "restart-fixture.txt"), []byte("restart-same-db scratch repo\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)

@@ -2,7 +2,7 @@
 // internal/providers/claude and internal/hooks/claude (StatusLineSnapshot,
 // UserPromptSubmitEvent, StopEvent, StopFailureEvent) into the frozen
 // pkg/protocol/v1.Event envelope (ADD §11.1, CONTRACT_FREEZE.md). This is
-// the sole path from raw Claude Code provider payloads into Preflight's
+// the sole path from raw Claude Code provider payloads into Auspex's
 // wire event protocol (claude-provider-04) — no other package in this
 // repository constructs a v1.Event from Claude payloads.
 //
@@ -17,10 +17,10 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	claudeprovider "github.com/huaiche94/preflight/internal/providers/claude"
-	v1 "github.com/huaiche94/preflight/pkg/protocol/v1"
+	"github.com/huaiche94/auspex/internal/domain"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // Provider is the frozen provider identifier this package stamps onto every

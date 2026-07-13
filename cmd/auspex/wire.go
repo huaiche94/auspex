@@ -1,6 +1,6 @@
-// wire.go is cmd/preflight's composition root — the one place, per every
+// wire.go is cmd/auspex's composition root — the one place, per every
 // role's own agents/*.md exclusive-path declarations and
-// internal/app/wiring's own doc comment ("Root wiring (cmd/preflight/
+// internal/app/wiring's own doc comment ("Root wiring (cmd/auspex/
 // main.go) is NOT this package's job: the contract-integrator/foundation
 // roles own composing this container into the binary"), that is
 // authorized to import every role's concrete implementation and assemble
@@ -22,33 +22,33 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/app/wiring"
-	"github.com/huaiche94/preflight/internal/artifacts"
-	"github.com/huaiche94/preflight/internal/clock"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/idgen"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/paths"
-	"github.com/huaiche94/preflight/internal/pause"
-	"github.com/huaiche94/preflight/internal/policy"
-	"github.com/huaiche94/preflight/internal/predictor/quota"
-	"github.com/huaiche94/preflight/internal/predictor/risk"
-	"github.com/huaiche94/preflight/internal/predictor/scope"
-	"github.com/huaiche94/preflight/internal/predictor/token"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
-	"github.com/huaiche94/preflight/internal/scheduler"
-	"github.com/huaiche94/preflight/internal/statecheckpoint"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
-	claudetelemetry "github.com/huaiche94/preflight/internal/telemetry/claude"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/app/wiring"
+	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/clock"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/idgen"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/paths"
+	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor/quota"
+	"github.com/huaiche94/auspex/internal/predictor/risk"
+	"github.com/huaiche94/auspex/internal/predictor/scope"
+	"github.com/huaiche94/auspex/internal/predictor/token"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/statecheckpoint"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
 
 	"github.com/spf13/cobra"
 )
 
-// buildRootCmd opens (creating if needed) Preflight's SQLite database
+// buildRootCmd opens (creating if needed) Auspex's SQLite database
 // under the OS-appropriate user data directory, migrates it, composes one
 // real implementation of every frozen app.* service interface plus the
 // hook/diagnostics/pause-lifecycle support wiring.App.RootCmd needs, and
@@ -57,28 +57,28 @@ import (
 func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() error, err error) {
 	dirs, err := paths.ResolveHost(paths.NewOSEnv())
 	if err != nil {
-		return nil, nil, fmt.Errorf("cmd/preflight: resolve user data directory: %w", err)
+		return nil, nil, fmt.Errorf("cmd/auspex: resolve user data directory: %w", err)
 	}
 
 	if err := os.MkdirAll(dirs.Data, 0o755); err != nil {
-		return nil, nil, fmt.Errorf("cmd/preflight: create data directory %s: %w", dirs.Data, err)
+		return nil, nil, fmt.Errorf("cmd/auspex: create data directory %s: %w", dirs.Data, err)
 	}
 
-	dbPath := filepath.Join(dirs.Data, "preflight.db")
+	dbPath := filepath.Join(dirs.Data, "auspex.db")
 	db, err := sqlite.Open(ctx, dbPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cmd/preflight: open database %s: %w", dbPath, err)
+		return nil, nil, fmt.Errorf("cmd/auspex: open database %s: %w", dbPath, err)
 	}
 	closeFn = db.Close
 
 	migrations, err := sqlite.AllMigrations()
 	if err != nil {
 		_ = closeFn()
-		return nil, nil, fmt.Errorf("cmd/preflight: load migrations: %w", err)
+		return nil, nil, fmt.Errorf("cmd/auspex: load migrations: %w", err)
 	}
 	if err := db.Migrate(ctx, migrations); err != nil {
 		_ = closeFn()
-		return nil, nil, fmt.Errorf("cmd/preflight: migrate database: %w", err)
+		return nil, nil, fmt.Errorf("cmd/auspex: migrate database: %w", err)
 	}
 
 	clk := clock.New()
@@ -95,7 +95,7 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 	stager, err := progress.NewFileStager(stagingDir)
 	if err != nil {
 		_ = closeFn()
-		return nil, nil, fmt.Errorf("cmd/preflight: create artifact staging directory %s: %w", stagingDir, err)
+		return nil, nil, fmt.Errorf("cmd/auspex: create artifact staging directory %s: %w", stagingDir, err)
 	}
 	checkpointStore := statecheckpoint.NewStore(db)
 	completeOp := &progress.CompleteNode{
@@ -209,7 +209,7 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// ForecastCardSource — ForecastCard/LatestForecastCard read
 			// back the prediction/policy rows EvaluateTurn persists), so
 			// the UserPromptSubmit hook's additionalContext, the
-			// statusline --emit-line display, and `preflight evaluate`
+			// statusline --emit-line display, and `auspex evaluate`
 			// all render the same persisted forecast. Cost estimates use
 			// pricing.DefaultTable() (evaluation.Service.Pricing nil —
 			// ADR-043's config override is a documented follow-up, see
@@ -228,7 +228,7 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 	app, err := wiring.New(services)
 	if err != nil {
 		_ = closeFn()
-		return nil, nil, fmt.Errorf("cmd/preflight: wire services: %w", err)
+		return nil, nil, fmt.Errorf("cmd/auspex: wire services: %w", err)
 	}
 	return app.RootCmd(), closeFn, nil
 }

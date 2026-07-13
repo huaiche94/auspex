@@ -1,7 +1,7 @@
 package evaluation
 
 import (
-	"github.com/huaiche94/preflight/internal/app"
+	"github.com/huaiche94/auspex/internal/app"
 )
 
 // DataSource resolves every input EvaluateTurn's pipeline needs beyond what

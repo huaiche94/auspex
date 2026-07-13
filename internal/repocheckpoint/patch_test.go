@@ -33,8 +33,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/repocheckpoint"
 )
 
 // applyPatchToFreshCheckout clones the repo at rb.dir into a new temp

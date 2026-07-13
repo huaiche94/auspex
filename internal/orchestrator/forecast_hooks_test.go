@@ -4,7 +4,7 @@
 // response on any presenter failure (fail-open, never a new hook failure
 // mode), the minted TurnID now links the persisted turn.started event to
 // the evaluation, the statusline --emit-line composition renders in every
-// degradation state, and EvaluatePrompt (the `preflight evaluate` core)
+// degradation state, and EvaluatePrompt (the `auspex evaluate` core)
 // shares the same path with a fail-closed posture.
 package orchestrator_test
 
@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pricing"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pricing"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // fakeForecastSource is a minimal orchestrator.ForecastCardSource double
@@ -284,7 +284,7 @@ func TestHookHandlers_StatusLineEmitLine_MalformedInputStillEmitsLine(t *testing
 	}
 }
 
-// --- EvaluatePrompt (the `preflight evaluate` core) ----------------------
+// --- EvaluatePrompt (the `auspex evaluate` core) ----------------------
 
 func TestEvaluatePrompt_SharesHookPathAndReturnsCard(t *testing.T) {
 	deps := baseHookDeps()

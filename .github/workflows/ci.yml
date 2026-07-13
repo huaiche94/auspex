@@ -1,6 +1,6 @@
 name: CI
 
-# vertical-slice CI scaffold (qa-01). Mirrors Preflight_ADD.md §30.3's ci.yml jobs
+# vertical-slice CI scaffold (qa-01). Mirrors Auspex_ADD.md §30.3's ci.yml jobs
 # (format / vet / golangci-lint / unit+integration / race / build) that are
 # in scope for the current vertical slice. VS Code lint/test/build,
 # JSON Schema checks, docs link/fence checks, and migration tests are not
@@ -58,8 +58,8 @@ jobs:
       - name: task lint
         run: task lint
 
-  # Build and test run across the full OS matrix per Preflight_ADD.md
-  # §30.3 ("Matrix: Ubuntu/macOS/Windows, Go 1.26.x") - Preflight ships a
+  # Build and test run across the full OS matrix per Auspex_ADD.md
+  # §30.3 ("Matrix: Ubuntu/macOS/Windows, Go 1.26.x") - Auspex ships a
   # single static binary on all three, so build/test must be verified
   # natively on each, not cross-compiled and assumed.
   build-and-test:

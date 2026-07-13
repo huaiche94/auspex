@@ -6,7 +6,7 @@ import (
 	"errors"
 	"os/exec"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // ExecRunner is the exec.Command-backed implementation of

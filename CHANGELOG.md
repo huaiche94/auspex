@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Preflight are documented in this file. The format
+All notable changes to Auspex are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow [SemVer](https://semver.org/) once releases begin.
 
@@ -19,7 +19,7 @@ follow [SemVer](https://semver.org/) once releases begin.
   forecasters → risk combiner → runway score), cold-start policy engine
   over eight frozen actions, one-time authorizations with replay
   rejection, graceful-pause state machine + durable scheduler with lease
-  recovery, fully wired `preflight` CLI (`evaluate`, `decision`,
+  recovery, fully wired `auspex` CLI (`evaluate`, `decision`,
   `checkpoint`, `pause`/`resume`/`scheduler`, `status`, `doctor`,
   `hook claude ...`), cross-platform CI, and the qa security/integration
   suite (E2E demo, leakage scanner, path-traversal fixtures, race tests).
@@ -28,7 +28,7 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 - No production adapter yet connects persisted provider events to
   Progress Tree node completion
-  ([#1](https://github.com/huaiche94/preflight/issues/1)).
+  ([#1](https://github.com/huaiche94/auspex/issues/1)).
 - Unattended wake/resume requires the future daemon
-  ([#7](https://github.com/huaiche94/preflight/issues/7)); wake jobs run
-  via `preflight scheduler run-once` until then.
+  ([#7](https://github.com/huaiche94/auspex/issues/7)); wake jobs run
+  via `auspex scheduler run-once` until then.

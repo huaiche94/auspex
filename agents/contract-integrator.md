@@ -20,7 +20,7 @@ internal/app/ports.go
 pkg/protocol/v1/**
 docs/adr/**
 docs/implementation/vertical-slice/CONTRACT_FREEZE.md
-Preflight_ADD.md (only when a genuine contradiction requires an ADR)
+Auspex_ADD.md (only when a genuine contradiction requires an ADR)
 AGENTS.md
 ```
 

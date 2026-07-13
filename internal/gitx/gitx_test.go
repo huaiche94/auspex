@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // repoBuilder creates and mutates a real temporary Git repository for
@@ -29,7 +29,7 @@ func newRepoBuilder(t *testing.T) *repoBuilder {
 	t.Helper()
 	rb := &repoBuilder{t: t, runner: ExecRunner{}}
 
-	dir, err := os.MkdirTemp("", "preflight-gitx-*")
+	dir, err := os.MkdirTemp("", "auspex-gitx-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
@@ -45,8 +45,8 @@ func newRepoBuilder(t *testing.T) *repoBuilder {
 	}
 
 	rb.git("init", "-q", "-b", "main")
-	rb.git("config", "user.name", "Preflight Test")
-	rb.git("config", "user.email", "test@preflight.invalid")
+	rb.git("config", "user.name", "Auspex Test")
+	rb.git("config", "user.email", "test@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
 	return rb
 }

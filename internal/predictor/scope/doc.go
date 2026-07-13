@@ -4,7 +4,7 @@
 // prompt, repository, session, and Progress-Tree derived features.
 //
 // This is a Version 1 (rule-based/heuristic) implementation per
-// Preflight_Predictor_Design_Supplement.md's Evolution Roadmap: cold-start
+// Auspex_Predictor_Design_Supplement.md's Evolution Roadmap: cold-start
 // defaults keyed by task class (ADD §14.6), blended with empirical
 // quantiles from recent session history (internal/predictor.EmpiricalQuantiles)
 // once enough samples exist. It deliberately leaves ToolCalls/Verification/

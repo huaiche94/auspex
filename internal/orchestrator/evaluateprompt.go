@@ -1,11 +1,11 @@
-// evaluateprompt.go: the orchestration behind `preflight evaluate`
+// evaluateprompt.go: the orchestration behind `auspex evaluate`
 // (issue #14 deliverable 5) — a REAL evaluation of caller-supplied prompt
 // text through the exact same production path HandleUserPromptSubmit
 // runs (hooks.go's evaluateSubmittedPrompt: normalize -> best-effort
 // persist -> EvaluateTurn -> Decide), not a parallel reimplementation.
 // The only differences from the hook are the entry shape (prompt text
 // from a file/stdin instead of a hook payload) and the error posture:
-// the hook fails open to an allow response because a Preflight bug must
+// the hook fails open to an allow response because a Auspex bug must
 // never swallow a user's prompt, while a CLI evaluation the user
 // explicitly asked for fails CLOSED — an EvaluateTurn/Decide error
 // surfaces as the typed *domain.Error the CLI's error contract renders,
@@ -27,10 +27,10 @@ package orchestrator
 import (
 	"context"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	claudehooks "github.com/huaiche94/preflight/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
 )
 
 // EvaluatePromptRequest is EvaluatePrompt's input. Prompt is consumed

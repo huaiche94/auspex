@@ -1,6 +1,6 @@
 package features
 
-import "github.com/huaiche94/preflight/internal/domain"
+import "github.com/huaiche94/auspex/internal/domain"
 
 // Classification is the classifier's explainable output. Class is always a
 // valid ADD §14.3 value; ReasonCodes records which signals produced it.

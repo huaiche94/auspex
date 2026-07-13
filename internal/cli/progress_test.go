@@ -1,4 +1,4 @@
-// progress_test.go: CLI-level tests for the REAL `preflight progress
+// progress_test.go: CLI-level tests for the REAL `auspex progress
 // complete` command (issue #1's explicit-completion half; progress.go),
 // following this package's established conventions: commands are executed
 // under newTestRoot's production-accurate root configuration
@@ -15,11 +15,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // completingProgressTree returns a FakeProgressTreeService whose
@@ -89,8 +89,8 @@ func TestProgressComplete_HappyPath_JSON(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &success); err != nil {
 		t.Fatalf("stdout is not valid JSON: %v (body=%s)", err, out.Bytes())
 	}
-	if success.SchemaVersion != "preflight.progress-complete.v1" {
-		t.Errorf("SchemaVersion = %q, want %q", success.SchemaVersion, "preflight.progress-complete.v1")
+	if success.SchemaVersion != "auspex.progress-complete.v1" {
+		t.Errorf("SchemaVersion = %q, want %q", success.SchemaVersion, "auspex.progress-complete.v1")
 	}
 	if success.NodeID != "node-1" {
 		t.Errorf("node_id = %q, want node-1", success.NodeID)

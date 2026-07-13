@@ -6,7 +6,7 @@
 // config-overridable, never fetched at runtime by default — local-first)."
 // Issue #14 is the surface this feeds: the per-prompt forecast card shown
 // on every UserPromptSubmit, the statusline --emit-line output, and
-// `preflight evaluate`.
+// `auspex evaluate`.
 //
 // # Every number here is an ESTIMATE input, clearly labeled
 //
@@ -26,7 +26,7 @@
 //
 // ADR-043 calls the table "config-overridable". internal/config today
 // exposes only a merged Raw map with no production loader wired into
-// cmd/preflight's composition root (nothing in wire.go loads YAML config
+// cmd/auspex's composition root (nothing in wire.go loads YAML config
 // at all yet), so wiring a YAML override path here would mean building the
 // config-loading plumbing as a side effect of a pricing package — out of
 // this increment's honest scope (Constitution §7 rule 10: no abstractions

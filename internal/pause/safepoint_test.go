@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // --- fakes: record call order without any real checkpoint/provider store ---

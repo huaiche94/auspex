@@ -3,7 +3,7 @@ package pause
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // TriggerReason names why an observation qualified for a pause trigger —

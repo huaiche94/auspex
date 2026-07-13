@@ -1,8 +1,8 @@
-// Package sqlite is Preflight's SQLite runtime: connection setup, the
+// Package sqlite is Auspex's SQLite runtime: connection setup, the
 // journal/durability pragmas every later role's storage code depends on,
 // and a transaction-callback boundary implementing internal/app.TxRunner.
 //
-// Driver: modernc.org/sqlite (pure Go, no CGO), per Preflight_ADD.md §1.4's
+// Driver: modernc.org/sqlite (pure Go, no CGO), per Auspex_ADD.md §1.4's
 // tech-stack decision.
 //
 // This file (db.go) is the connection/pragma/transaction engine only. It
@@ -23,7 +23,7 @@ import (
 
 	modernc "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
-	"github.com/huaiche94/preflight/internal/app"
+	"github.com/huaiche94/auspex/internal/app"
 )
 
 // Compile-time assertion that *DB satisfies the frozen app.TxRunner port
@@ -33,8 +33,8 @@ import (
 // TxRunner.
 var _ app.TxRunner = (*DB)(nil)
 
-// Pragmas are Preflight's fixed SQLite connection settings, per
-// Preflight_ADD.md §12.1 / docs/implementation/vertical-slice/CONTRACT_FREEZE.md.
+// Pragmas are Auspex's fixed SQLite connection settings, per
+// Auspex_ADD.md §12.1 / docs/implementation/vertical-slice/CONTRACT_FREEZE.md.
 // These are load-bearing for every later role's storage code: WAL mode and
 // a busy timeout are what make concurrent daemon+CLI access to the same
 // database file safe instead of returning SQLITE_BUSY immediately.
@@ -69,7 +69,7 @@ var pragmaStatements = []string{
 	pragmaTempStore,
 }
 
-// DB wraps a *sql.DB configured with Preflight's pragmas and implements
+// DB wraps a *sql.DB configured with Auspex's pragmas and implements
 // app.TxRunner (internal/app/ports.go) for the frozen WithTx transaction
 // boundary every storage-touching service uses.
 type DB struct {
@@ -81,7 +81,7 @@ type DB struct {
 }
 
 // Open opens (creating if necessary) a SQLite database at path and applies
-// Preflight's fixed pragmas (§12.1) to it. path may be ":memory:" for an
+// Auspex's fixed pragmas (§12.1) to it. path may be ":memory:" for an
 // in-memory database (tests only — an in-memory DB is not shared across
 // connections in modernc.org/sqlite's default mode, so callers needing a
 // realistic multi-connection test should use a temp file instead; see

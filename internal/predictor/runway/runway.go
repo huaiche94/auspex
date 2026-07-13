@@ -3,7 +3,7 @@ package runway
 import (
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // DefaultHorizon is the ADD §15.5 default runway horizon: "H = 600 seconds

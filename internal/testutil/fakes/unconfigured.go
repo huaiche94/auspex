@@ -1,6 +1,6 @@
 package fakes
 
-import "github.com/huaiche94/preflight/internal/domain"
+import "github.com/huaiche94/auspex/internal/domain"
 
 // errUnconfigured is every fake's shared nil-Func behavior: the frozen
 // domain.Error shape (CONTRACT_FREEZE.md "Error contract") with

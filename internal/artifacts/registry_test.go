@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/artifacts"
 )
 
 // alwaysPassValidator is a minimal custom Validator implementation, used to

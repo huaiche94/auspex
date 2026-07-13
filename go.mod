@@ -1,4 +1,4 @@
-module github.com/huaiche94/preflight
+module github.com/huaiche94/auspex
 
 go 1.26.5
 

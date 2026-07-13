@@ -15,8 +15,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/huaiche94/preflight/internal/gitx"
-	"github.com/huaiche94/preflight/internal/redact"
+	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/redact"
 )
 
 // UntrackedArchiveResult reports what buildUntrackedArchive actually did:

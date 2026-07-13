@@ -1,8 +1,8 @@
 {
-  "schema_version": "preflight.progress-tree.v1",
+  "schema_version": "auspex.progress-tree.v1",
   "task": {
     "id": "0198f5d8-2e36-7b75-8af3-8f09fd0f7081",
-    "title": "Build Preflight Architecture Design Document",
+    "title": "Build Auspex Architecture Design Document",
     "objective": "Produce a production-grade ADD that Codex can execute milestone by milestone without relying on conversation memory.",
     "status": "in_progress",
     "version": 17,
@@ -23,7 +23,7 @@
       ],
       "artifacts": [
         {
-          "uri": "file:Preflight_ADD.md",
+          "uri": "file:Auspex_ADD.md",
           "selector": "# 1. Executive Decision Record",
           "sha256": "0ac9cd0123257779efd9297f1a6fdb19f083191abc94955b10f4c960f707bcca",
           "validation_status": "passed"
@@ -46,7 +46,7 @@
       ],
       "next_action": {
         "description": "Add failure modes and E2E acceptance scenarios.",
-        "artifact_uri": "file:Preflight_ADD.md"
+        "artifact_uri": "file:Auspex_ADD.md"
       },
       "version": 2
     },

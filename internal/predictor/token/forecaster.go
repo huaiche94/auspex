@@ -4,10 +4,10 @@ import (
 	"context"
 	"math"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/predictor"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/predictor"
 )
 
 // FeatureSource resolves the feature inputs a token forecast needs beyond
@@ -223,7 +223,7 @@ func (f *RuleTokenForecaster) base(ctx context.Context, sessionID domain.Session
 	// Cold-start P90 is a fixed spread above P50 (no distribution to
 	// measure yet): 2x mirrors the ADD's own "Never Return a Single
 	// Number" P50/P80/P95 example ratios in
-	// Preflight_Predictor_Design_Supplement.md (38000/61000/94000 ~=
+	// Auspex_Predictor_Design_Supplement.md (38000/61000/94000 ~=
 	// 1 : 1.6 : 2.47), rounded to a conservative, explainable constant
 	// rather than reverse-engineering a precise ratio from one example.
 	return base, base * 2.0, false, nil

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/progress"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/progress"
 )
 
 func seedTwoNodes(t *testing.T, ctx context.Context, nodeStore *progress.NodeStore, taskID domain.TaskID) (domain.ProgressNodeID, domain.ProgressNodeID) {

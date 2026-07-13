@@ -1,4 +1,4 @@
-// evaluate_test.go: issue #14's CLI-surface tests — `preflight evaluate`
+// evaluate_test.go: issue #14's CLI-surface tests — `auspex evaluate`
 // happy path (human + schema-versioned JSON), validation errors through
 // the typed error contract, the privacy gate at the CLI boundary (raw
 // prompt text in via --prompt-file/stdin, never out), and the statusline
@@ -19,13 +19,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/evaluation"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pricing"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pricing"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // --- local doubles -------------------------------------------------------
@@ -116,8 +116,8 @@ func TestEvaluate_JSONOutput_SchemaVersionedWithNullProbability(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &decoded); err != nil {
 		t.Fatalf("stdout is not valid JSON: %v (body=%s)", err, out.Bytes())
 	}
-	if decoded["schema_version"] != "preflight.evaluate.v1" {
-		t.Errorf("schema_version = %v, want preflight.evaluate.v1", decoded["schema_version"])
+	if decoded["schema_version"] != "auspex.evaluate.v1" {
+		t.Errorf("schema_version = %v, want auspex.evaluate.v1", decoded["schema_version"])
 	}
 	if decoded["policy_action"] != "WARN" {
 		t.Errorf("policy_action = %v, want WARN", decoded["policy_action"])

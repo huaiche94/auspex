@@ -5,7 +5,7 @@
 // pipeline stage (Scope/Token/Quota/Risk/Policy) was built and tested across
 // predictor-01 through predictor-11, but the layer that feeds them real
 // signals from the live system — DataSource itself — had never been given a
-// concrete implementation, so cmd/preflight/main.go could not wire a real
+// concrete implementation, so cmd/auspex/main.go could not wire a real
 // EvaluationService. See docs/implementation/vertical-slice/predictor.md's
 // "Final-integration-gate correction" entry for the full account.
 //
@@ -74,10 +74,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/features"
-	"github.com/huaiche94/preflight/internal/progress"
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/progress"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // SQLDataSource is the real, SQLite-backed implementation of DataSource. It

@@ -4,8 +4,8 @@ import (
 	"context"
 	"math"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // RuleRiskCombiner is the Wave 5 (Version 1, rule-based/deterministic)

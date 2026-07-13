@@ -1,6 +1,6 @@
 -- 0024_node_completions.sql
 --
--- Preflight_ADD.md §18.12 "Node idempotency" canonical mechanism:
+-- Auspex_ADD.md §18.12 "Node idempotency" canonical mechanism:
 --
 --   completion_key = SHA256(task_id + node_id + artifact hashes +
 --                            acceptance evidence hashes)

@@ -1,11 +1,11 @@
-# Preflight Development Methodology (PDM)
+# Auspex Development Methodology (PDM)
 
 | Field | Value |
 |---|---|
 | Version | 1.0.0 |
-| Status | Extracted from the Preflight project's own Phase 0-3 execution. Not yet applied to a second project — see §9. |
-| Purpose | A versioned, referenceable development process for AI-agent-driven software projects, so future projects invoke it as `Follow Preflight Development Methodology v1.0` instead of restating this process as a several-hundred-line prompt each time. |
-| Origin | This document is a distillation, not a new design — every rule below was exercised at least once on the Preflight project itself before being written down here. Where a rule exists because a specific failure occurred, that failure is cited as evidence, not asserted abstractly. |
+| Status | Extracted from the Auspex project's own Phase 0-3 execution. Not yet applied to a second project — see §9. |
+| Purpose | A versioned, referenceable development process for AI-agent-driven software projects, so future projects invoke it as `Follow Auspex Development Methodology v1.0` instead of restating this process as a several-hundred-line prompt each time. |
+| Origin | This document is a distillation, not a new design — every rule below was exercised at least once on the Auspex project itself before being written down here. Where a rule exists because a specific failure occurred, that failure is cited as evidence, not asserted abstractly. |
 
 ## 0. What this document is for, and what it is not
 
@@ -14,8 +14,8 @@ integrated, validated code across multiple AI agents collaborating on one
 codebase, over multiple sessions, without losing state, duplicating
 effort, or silently drifting from an agreed architecture. It is not:
 
-- An architecture template (that is project-specific — Preflight's own
-  `Preflight_ADD.md` is an *example* of the artifact Phase 1 produces, not
+- An architecture template (that is project-specific — Auspex's own
+  `Auspex_ADD.md` is an *example* of the artifact Phase 1 produces, not
   part of this methodology).
 - A guarantee of correctness — it structures *how* verification happens
   (independent re-checking, evidence over self-report), not what "correct"
@@ -66,7 +66,7 @@ architecture or code work begins.
    **obsolete**, **duplicate**, **archive** (a disposition, not a content
    type — archived material is kept, not deleted, per the rule below).
 3. Produce a written inventory (`docs/repository_inventory.md` in
-   Preflight's case) before touching any file.
+   Auspex's case) before touching any file.
 4. Get explicit approval on the inventory and a migration plan before
    executing any move/archive/delete.
 5. Execute the migration: archive obsolete material with a short
@@ -74,7 +74,7 @@ architecture or code work begins.
    always a safe substitute — a fresh repository may not even have `.git`
    initialized yet), rewrite duplicated content down to one canonical
    copy, update every cross-reference.
-6. Re-audit after any subsequent restructuring (Preflight did this twice —
+6. Re-audit after any subsequent restructuring (Auspex did this twice —
    once for the initial inventory, once again after consolidating 9 roles
    to 7 — the audit trail itself should accumulate, not be discarded and
    rewritten each time).
@@ -94,18 +94,18 @@ all cross-referenced and consistent.
 
 ### 3.1 Two documents, not one, and they are not interchangeable
 
-- **The architecture document** (Preflight's `Preflight_ADD.md`) is
+- **The architecture document** (Auspex's `Auspex_ADD.md`) is
   supreme for *what the system is and how it behaves*.
-- **The Repository Constitution** (Preflight's `CONSTITUTION.md`) is
+- **The Repository Constitution** (Auspex's `CONSTITUTION.md`) is
   supreme for *how the project is built* — document precedence, ADR
   rules, path ownership, invariant enforcement, agent development rules.
 
-Conflating these into one document was tried implicitly in Preflight's
+Conflating these into one document was tried implicitly in Auspex's
 early state (before the Constitution existed) and produced exactly the
 failure this split fixes: process rules (who can edit what, when an ADR is
 required) kept needing to be inferred from architecture prose instead of
 being looked up directly. Write both, from the start, as separate
-documents with an explicit statement of how they relate (Preflight's
+documents with an explicit statement of how they relate (Auspex's
 Constitution §8 is the worked example).
 
 ### 3.2 The execution DAG
@@ -118,13 +118,13 @@ diagram and as a topologically sorted list — the diagram is for human
 review, the sorted list is what an agent actually executes against.
 
 Field semantics (defined here because ambiguity was itself a measured
-error source — see Preflight's `Prediction_Error_Report.md` §3):
+error source — see Auspex's `Prediction_Error_Report.md` §3):
 
 - **estimated LOC** = expected `git` insertions, implementation + tests
   together, excluding progress-artifact/lessons docs.
 - **estimated files** = files created or modified by the node's own
   commits, split as `impl+test` (e.g. `3+2`) — conflating the two was the
-  single most-repeated estimation error across Preflight's waves
+  single most-repeated estimation error across Auspex's waves
   (`Wave2_Lessons.md` §1 issue #1).
 - **estimated duration** = wall-clock minutes for a single agent
   invocation, estimate-only precision (band, not point).
@@ -132,7 +132,7 @@ error source — see Preflight's `Prediction_Error_Report.md` §3):
   An explicit `n/a — declared out of scope` is allowed for either of the
   last two, but the cell must exist and say so.
 
-**History:** Preflight's own DAG never had duration or token-cost fields
+**History:** Auspex's own DAG never had duration or token-cost fields
 across 84+ nodes and twelve waves; 4 of 5 implementing roles
 independently rediscovered the gap without cross-communication
 (`Wave2_Lessons.md` §1, `ADR_Recommendations.md` REC-02). The schema
@@ -164,7 +164,7 @@ changes is stale on arrival.
 ## 4. Phase 2 — Bootstrap
 
 **This phase exists because of a specific, real deadlock, not as
-speculative process design.** In Preflight's execution, Wave 1 could not
+speculative process design.** In Auspex's execution, Wave 1 could not
 start: every root-node teammate's first task depended on frozen
 domain/contract types existing, but creating those types was itself a DAG
 role's job, and that role was never one of the named Wave 1 teammates, and
@@ -193,7 +193,7 @@ since every other role's work is defined in terms of them.
 4. Only after this commit does Phase 3 begin.
 
 **Necessary environment prerequisites belong here too**, evidenced by
-Preflight's own Bootstrap: a toolchain version mismatch (installed
+Auspex's own Bootstrap: a toolchain version mismatch (installed
 runtime vs. the version the architecture pinned) and a build-file
 existence gap (no module manifest existed, and creating one was itself
 role-owned but blocked by the same deadlock this phase resolves) both had
@@ -219,7 +219,7 @@ not batch work with a single end-of-wave report.
   a not-yet-integrated sibling node is not satisfied.
 - If fewer nodes are genuinely unlocked than teammates available, leave
   teammates idle. **Idle is valid.** Do not invent work to keep capacity
-  busy — this was an explicit, repeated instruction in Preflight's own
+  busy — this was an explicit, repeated instruction in Auspex's own
   execution and is generalized here because the alternative (assigning
   something because someone is free) is exactly how scope creep and
   DAG-vs-reality drift begins.
@@ -241,7 +241,7 @@ for each assigned node, in dependency order:
 ```
 
 **Why this matters, evidenced:** every session-interruption incident in
-Preflight's execution (3 occurrences across two waves) was recoverable
+Auspex's execution (3 occurrences across two waves) was recoverable
 with zero rework specifically because implementation artifacts were
 already durable on disk, and node-scoped commits meant "what was actually
 done" was independently verifiable rather than dependent on trusting an
@@ -251,7 +251,7 @@ interrupted agent's memory of its own progress.
 
 - Edit another teammate's or the lead's owned paths.
 - Edit a frozen contract file to work around a gap — work around it
-  locally within owned paths, and report the gap. (Preflight's `predictor`
+  locally within owned paths, and report the gap. (Auspex's `predictor`
   role hit this twice — an undersized request DTO and a missing response
   shape — and both times built a local, package-scoped workaround rather
   than editing `internal/app/ports.go`, correctly.)
@@ -264,7 +264,7 @@ interrupted agent's memory of its own progress.
 
 **Core rule: never accept a "complete" claim without independent
 verification.** This is not paranoia for its own sake — across 19
-completed nodes in Preflight's execution, independent lead re-verification
+completed nodes in Auspex's execution, independent lead re-verification
 caught zero false-completion claims, but did catch (a) a formatting
 discrepancy in a self-reported commit hash that turned out to be benign on
 inspection, and (b) would have caught any case where a session
@@ -334,7 +334,7 @@ This phase produces (adapt names/scope per project, but keep the shape):
 1. **Prediction Error Report** — estimate vs. actual for every completed
    node, with absolute and percentage error where both sides of the
    comparison genuinely exist, and an explicit `Unknown` where they don't
-   (e.g. Preflight's DAG never had duration/token estimates, so those
+   (e.g. Auspex's DAG never had duration/token estimates, so those
    error computations are `Unknown`/`N/A` for every node, not `0`).
 2. **Calibration Report** — systematic bias analysis over the error
    report, with sample-size caveats stated up front, not buried. A
@@ -350,7 +350,7 @@ This phase produces (adapt names/scope per project, but keep the shape):
 5. **Historical Replay** (if applicable) — compare current vs. proposed
    predictor/heuristic behavior against real historical data. **If no
    real historical data exists yet, say so explicitly and do not
-   substitute a fabricated comparison** — this was Preflight's own
+   substitute a fabricated comparison** — this was Auspex's own
    Phase 3.5 outcome: every requested accuracy metric was `Unknown`,
    correctly, because no live telemetry had ever been collected.
 6. **Missing Telemetry Report** — for every metric a predictor/heuristic
@@ -381,7 +381,7 @@ This phase produces (adapt names/scope per project, but keep the shape):
     Each states problem, evidence, affected packages, compatibility
     impact, and recommendation.
 11. **Next-Wave Recommendation** — newly unlocked nodes (checking real
-    dependency satisfaction, not assumption — Preflight's own analysis
+    dependency satisfaction, not assumption — Auspex's own analysis
     found two nodes that had been unlocked since a *prior* wave and were
     simply never assigned, because the team roster never covered their
     owning role), per-node estimates with full provenance/confidence/
@@ -404,7 +404,7 @@ not silently redesign it either:
 2. Write a proposed ADR: context, decision, exactly what it changes in the
    frozen architecture/contract/DAG.
 3. Get explicit approval — approve the ADR itself, not a stub or
-   placeholder standing in for it. (Preflight's ADR-041, inserting a
+   placeholder standing in for it. (Auspex's ADR-041, inserting a
    missing Token/Quota Forecast layer into the predictor pipeline, is the
    worked example: the gap was found via a companion design document,
    confirmed against the frozen architecture text directly rather than
@@ -459,7 +459,7 @@ review any other frozen process document requires.
 one line:
 
 ```text
-Follow Preflight Development Methodology v1.0.
+Follow Auspex Development Methodology v1.0.
 ```
 
 This is understood to mean: execute the phase sequence in §1, respect
@@ -475,5 +475,5 @@ been validated on more than one project, that every rule generalizes
 perfectly outside a Go/multi-agent/single-repository context, or that
 following it guarantees a correct architecture. It claims only that every
 rule in it was exercised at least once, for a real reason, on the
-Preflight project, and is written down here so the next project doesn't
+Auspex project, and is written down here so the next project doesn't
 have to rediscover the same lessons through the same failures.

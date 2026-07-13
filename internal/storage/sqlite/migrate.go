@@ -19,7 +19,7 @@ import (
 )
 
 // migrationsFS embeds every "*.sql" file under migrations/ into the binary,
-// so a deployed preflight binary carries its own schema history without
+// so a deployed auspex binary carries its own schema history without
 // depending on the source tree being present at runtime. Only files
 // directly under this directory are embedded (no subdirectories), matching
 // LoadMigrationsFS's own non-recursive contract.
@@ -27,7 +27,7 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// AllMigrations returns every migration Preflight ships, sorted ascending
+// AllMigrations returns every migration Auspex ships, sorted ascending
 // by version, by loading migrationsFS through LoadMigrationsFS. This is the
 // single source every caller (the CLI's db-open path, this package's own
 // tests, and any later role's integration tests) should use to get "the
@@ -66,8 +66,8 @@ type Migration struct {
 	SQL string
 }
 
-// migrationFilePattern matches Preflight's fixed migration filename
-// convention, per Preflight_ADD.md §12.5 ("Migration file: 0001_name.sql")
+// migrationFilePattern matches Auspex's fixed migration filename
+// convention, per Auspex_ADD.md §12.5 ("Migration file: 0001_name.sql")
 // and agents/foundation.md's exclusive-path glob
 // ("migrations/0000-0009_*.sql"): a zero-padded numeric version, an
 // underscore, a descriptive name, and a .sql extension.
@@ -75,7 +75,7 @@ var migrationFilePattern = regexp.MustCompile(`^(\d{4,})_([a-zA-Z0-9_]+)\.sql$`)
 
 // ErrSchemaNewerThanBinary is returned by Migrate when the database's
 // highest applied migration version is newer than any migration this
-// binary knows about — i.e. the DB was migrated by a newer Preflight
+// binary knows about — i.e. the DB was migrated by a newer Auspex
 // version. Per ADD §12.5 ("DB schema newer than binary => read-only
 // diagnostics, refuse writes"), the caller MUST treat this as fail-closed:
 // do not attempt any write against this database.
@@ -91,7 +91,7 @@ var ErrInvalidMigrationFilename = errors.New("sqlite: invalid migration filename
 
 // LoadMigrationsFS reads every "*.sql" file directly under root in an
 // fs.FS (typically a go:embed of internal/storage/sqlite/migrations),
-// parses each filename per Preflight's NNNN_name.sql convention, and
+// parses each filename per Auspex's NNNN_name.sql convention, and
 // returns them sorted ascending by version. Subdirectories are not
 // traversed. A malformed filename or a duplicate version is an error —
 // this is deliberately strict, since a silently-skipped or silently-

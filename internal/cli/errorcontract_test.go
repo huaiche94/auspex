@@ -6,7 +6,7 @@
 //   - typed error code, message, retryable, details;
 //   - no raw prompt in logs/errors;
 //   - machine mode never emits decorative text to stdout;
-//   - hook fallback remains syntactically valid when Preflight fails.
+//   - hook fallback remains syntactically valid when Auspex fails.
 //
 // A dedicated research pass (this node's own first step) audited every P0
 // command against this contract before writing anything new, and found:
@@ -80,11 +80,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/app"
-	"github.com/huaiche94/preflight/internal/cli"
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/testutil/fakes"
+	"github.com/huaiche94/auspex/internal/app"
+	"github.com/huaiche94/auspex/internal/cli"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/testutil/fakes"
 )
 
 // allP0CommandPaths mirrors root_test.go's own P0 path table — kept as an
@@ -139,7 +139,7 @@ func TestErrorContract_EveryStubCommand_RendersTypedJSONEnvelopeOnError(t *testi
 
 			err := root.Execute()
 			if err == nil {
-				t.Fatalf("preflight %s: expected an error (stub command)", strings.Join(path, " "))
+				t.Fatalf("auspex %s: expected an error (stub command)", strings.Join(path, " "))
 			}
 
 			env := decodeErrorEnvelope(t, out.Bytes())
@@ -225,11 +225,11 @@ func TestErrorContract_KnownIncompleteCommands_AreStubsOnly(t *testing.T) {
 
 			err := root.Execute()
 			if err == nil {
-				t.Fatalf("preflight %s: expected the stub notImplemented error; got nil (a real implementation may have landed — update this test's scope note if so)", strings.Join(path, " "))
+				t.Fatalf("auspex %s: expected the stub notImplemented error; got nil (a real implementation may have landed — update this test's scope note if so)", strings.Join(path, " "))
 			}
 			var derr *domain.Error
 			if !errors.As(err, &derr) || derr.Code != domain.ErrCodeUnavailable || !derr.Retryable {
-				t.Fatalf("preflight %s: expected the stub's ErrCodeUnavailable/Retryable:true shape, got %v", strings.Join(path, " "), err)
+				t.Fatalf("auspex %s: expected the stub's ErrCodeUnavailable/Retryable:true shape, got %v", strings.Join(path, " "), err)
 			}
 		})
 	}
@@ -280,14 +280,14 @@ func TestErrorContract_RealCheckpointCreate_ErrorPathIsTypedJSON(t *testing.T) {
 // production-accurate Cobra configuration rather than Cobra's own
 // un-configured defaults.
 func newTestRoot(child *cobra.Command) *cobra.Command {
-	root := &cobra.Command{Use: "preflight", SilenceUsage: true, SilenceErrors: true}
+	root := &cobra.Command{Use: "auspex", SilenceUsage: true, SilenceErrors: true}
 	root.AddCommand(child)
 	return cli.WithJSONErrorRendering(root)
 }
 
 // TestErrorContract_RealCheckpointCreate_SuccessPathIsSchemaVersionedJSON
 // confirms the success path's OWN schema-versioned output (this command's
-// own "preflight.checkpoint-create.v1", distinct from the shared error
+// own "auspex.checkpoint-create.v1", distinct from the shared error
 // envelope) is present and that NO error envelope leaks onto a successful
 // call's stdout.
 func TestErrorContract_RealCheckpointCreate_SuccessPathIsSchemaVersionedJSON(t *testing.T) {
@@ -318,8 +318,8 @@ func TestErrorContract_RealCheckpointCreate_SuccessPathIsSchemaVersionedJSON(t *
 	if err := json.Unmarshal(out.Bytes(), &success); err != nil {
 		t.Fatalf("stdout is not valid JSON: %v (body=%s)", err, out.Bytes())
 	}
-	if success.SchemaVersion != "preflight.checkpoint-create.v1" {
-		t.Errorf("SchemaVersion = %q, want %q", success.SchemaVersion, "preflight.checkpoint-create.v1")
+	if success.SchemaVersion != "auspex.checkpoint-create.v1" {
+		t.Errorf("SchemaVersion = %q, want %q", success.SchemaVersion, "auspex.checkpoint-create.v1")
 	}
 	// No error envelope must appear anywhere on a successful call.
 	if bytes.Contains(out.Bytes(), []byte(cli.SchemaVersionError)) {
@@ -387,11 +387,11 @@ func TestErrorContract_VersionCommand_KnownGap_PlainStringNotJSON(t *testing.T) 
 	root.SetArgs([]string{"version"})
 
 	if err := root.Execute(); err != nil {
-		t.Fatalf("preflight version: %v", err)
+		t.Fatalf("auspex version: %v", err)
 	}
 	var v any
 	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &v); err == nil {
-		t.Fatalf("preflight version now emits valid JSON (%s) — update this test and the schema-version gap note in errorcontract_test.go/root.go, this documented exception no longer applies", out.Bytes())
+		t.Fatalf("auspex version now emits valid JSON (%s) — update this test and the schema-version gap note in errorcontract_test.go/root.go, this documented exception no longer applies", out.Bytes())
 	}
 }
 
@@ -422,7 +422,7 @@ func assertEmptyOrValidJSONLines(t *testing.T, streamName string, body []byte) {
 // TestErrorContract_HookStubs_ProduceValidJSONErrorNotRawText confirms
 // every `hook claude ...` stub subcommand's error path — the one surface
 // agents/runtime.md singles out explicitly ("hook fallback remains
-// syntactically valid when Preflight fails") — renders valid JSON on
+// syntactically valid when Auspex fails") — renders valid JSON on
 // stderr rather than a bare Go panic/plain-text line, using the bare stub
 // tree (guaranteed to error, since no real orchestrator.HookDeps is
 // wired).
@@ -487,7 +487,7 @@ func TestErrorContract_NoRawPromptInAnyErrorOrOutput(t *testing.T) {
 			_ = root.Execute() // unknown-flag errors are fine; only the canary-absence matters
 
 			if bytes.Contains(out.Bytes(), []byte(rawPromptCanary)) {
-				t.Errorf("preflight %s: canary string echoed back in output — a raw-prompt-shaped input must never be reflected: %s", strings.Join(path, " "), out.Bytes())
+				t.Errorf("auspex %s: canary string echoed back in output — a raw-prompt-shaped input must never be reflected: %s", strings.Join(path, " "), out.Bytes())
 			}
 		})
 	}

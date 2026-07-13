@@ -1,8 +1,8 @@
-# Preflight Execution DAG
+# Auspex Execution DAG
 
 | Field | Value |
 |---|---|
-| Source | `Preflight_ADD.md` + `Preflight_Parallel_Execution_Plan.md` + `agents/*.md` (canonical per those docs) |
+| Source | `Auspex_ADD.md` + `Auspex_Parallel_Execution_Plan.md` + `agents/*.md` (canonical per those docs) |
 | Scope | Full task-level breakdown of the vertical-slice seven-role vertical slice |
 | Status | **Wave 1 integrated (`main` @ `3fb37ce`). Amended 2026-07-12 per ADR-041 (predictor forecast layer) before Wave 2 implementation begins.** |
 | Supersedes | The earlier nine-role (`A00`–`A08`) version of this document, archived in git history at commit `f1d9065` and referenced from `docs/archive/agent-packets-v1/`. |
@@ -17,7 +17,7 @@ Unchanged from the prior version: each role's deliverables/required-tests
 list was decomposed into individually-mergeable tasks
 (`<role>-<seq>`, or `<role>-<part><seq>` for the two roles that internally
 keep a Part A / Part B split). Task IDs now match the coordination-artifact
-convention already established in `Preflight_Parallel_Execution_Plan.md`
+convention already established in `Auspex_Parallel_Execution_Plan.md`
 §9 (`node: predictor-03`) instead of the old `A05-03` form.
 
 **Two roles carry two internal parts** — `checkpoint` (Part A = Progress
@@ -46,7 +46,7 @@ worktree/branch delivers both, in the order given below.
    change.
 
 **Merge order** below is the stage number from
-`Preflight_Parallel_Execution_Plan.md` §10 (0 = `contract-integrator`
+`Auspex_Parallel_Execution_Plan.md` §10 (0 = `contract-integrator`
 contract freeze, 1 = `foundation`, 2 = `claude-provider`/`checkpoint`/
 `predictor` parallel, 3 = `runtime`, 4 = `qa`, 5 = `contract-integrator`
 final integration).
@@ -75,7 +75,7 @@ final integration).
 
 | ID | Dependencies | Complexity | Est. LOC | Est. Files | Validation command | Merge order | Risk | Blockers |
 |---|---|---|---|---|---|---|---|---|
-| foundation-01 | contract-integrator-07 | S | 120 | 4 | `go build ./cmd/preflight && ./preflight version` | 1 | Low | Go module path decision if no Git remote yet |
+| foundation-01 | contract-integrator-07 | S | 120 | 4 | `go build ./cmd/auspex && ./auspex version` | 1 | Low | Go module path decision if no Git remote yet |
 | foundation-02 | foundation-01 | S | 180 | 3 | `go test ./internal/paths/...` | 1 | Low | Windows path behavior needs CI matrix |
 | foundation-03 | foundation-01 | M | 250 | 4 | `go test ./internal/config/...` | 1 | Low | None |
 | foundation-04 | foundation-01, contract-integrator-05 | S | 150 | 6 | `go test ./internal/clock/... ./internal/idgen/... ./internal/lock/...` | 1 | Low | None |
@@ -94,7 +94,7 @@ final integration).
 | claude-provider-03 | contract-integrator-07 | M | 250 | 6 | `go test ./internal/hooks/claude/... -run 'Stop|StopFailure'` | 2 | Medium — rate-limit failure classification affects `predictor`/`runtime` later | None |
 | claude-provider-04 | claude-provider-01, -02, -03, contract-integrator-04 | L | 400 | 6 | `go test ./internal/telemetry/claude/...` | 2 | High — sole path from raw provider payloads into the frozen event envelope | Any `contract-integrator-04` envelope change forces rework here |
 | claude-provider-05 | foundation-06, claude-provider-04 | M | 300 | 6 | `go test ./internal/telemetry/claude/... -run Idempotent` | 2 | Medium — idempotency key design must survive out-of-order delivery | None |
-| claude-provider-06 | claude-provider-02 | S | 100 | 3 | manual: `preflight hook claude user-prompt-submit < fixture` returns valid JSON | 2 | Low | Needs `runtime-b01` CLI skeleton for true end-to-end (stub acceptable before then) |
+| claude-provider-06 | claude-provider-02 | S | 100 | 3 | manual: `auspex hook claude user-prompt-submit < fixture` returns valid JSON | 2 | Low | Needs `runtime-b01` CLI skeleton for true end-to-end (stub acceptable before then) |
 | claude-provider-07 | claude-provider-04, claude-provider-05 | M | 300 | 10 | `go test ./internal/providers/claude/... ./internal/telemetry/claude/... -run Fixture` | 2 | Medium — raw-prompt-absence assertion is a hard privacy gate | Feeds `qa-05` leakage scanner |
 
 ### checkpoint — Part A: Progress Tree & State Checkpointing (Stage 2)
@@ -166,7 +166,7 @@ role/branch, this is a real sequencing dependency now, not a soft one.
 
 | ID | Dependencies | Complexity | Est. LOC | Est. Files | Validation command | Merge order | Risk | Blockers |
 |---|---|---|---|---|---|---|---|---|
-| runtime-b01 | contract-integrator-07, foundation-01 | M | 350 | 6 | `go build ./internal/cli/... && preflight --help` | 3 | Low | None |
+| runtime-b01 | contract-integrator-07, foundation-01 | M | 350 | 6 | `go build ./internal/cli/... && auspex --help` | 3 | Low | None |
 | runtime-b02 | contract-integrator-02, foundation-06 | M | 300 | 4 | `go test ./internal/app/wiring/...` | 3 | Medium — wrong wiring here silently breaks every downstream command | Can start against `claude-provider`/`checkpoint`/`predictor` fakes |
 | runtime-b03 | runtime-b02 | M | 300 | 3 | `go test ./internal/orchestrator/... -run Evaluate` | 3 | Medium | Soft/fake-able on `predictor-08`/`predictor-09`; needs the real thing by merge time |
 | runtime-b04 | runtime-b02 | M | 350 | 5 | `go test ./internal/orchestrator/... -run HookHandlers` | 3 | Medium | Soft/fake-able on `claude-provider-04`; needs the real thing by merge time |

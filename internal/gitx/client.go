@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // Client wraps a domain.ProcessRunner with Git-specific operations.

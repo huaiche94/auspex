@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  BIN: preflight
+  BIN: auspex
   PKGS: ./...
 
 tasks:
@@ -13,13 +13,13 @@ tasks:
       - task: test
 
   build:
-    desc: Build the preflight binary into ./bin.
+    desc: Build the auspex binary into ./bin.
     cmds:
       - mkdir -p bin
-      - go build -o bin/{{.BIN}} ./cmd/preflight
+      - go build -o bin/{{.BIN}} ./cmd/auspex
 
   run:
-    desc: Build and run the preflight binary, forwarding extra args (task run -- version).
+    desc: Build and run the auspex binary, forwarding extra args (task run -- version).
     deps: [build]
     cmds:
       - ./bin/{{.BIN}} {{.CLI_ARGS}}

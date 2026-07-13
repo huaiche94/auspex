@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/auspex/internal/domain"
 )
 
 // TestStateTransition_HappyPath walks the full nominal path named in
@@ -305,7 +305,7 @@ func TestStateTransition_CancelAcceptedFromEveryPreSleepPhase(t *testing.T) {
 
 // TestStateTransition_InterruptingHasNoCancelEdge proves a deliberate
 // narrowing: once a provider interrupt is actually in flight
-// (Interrupting), Preflight cannot cancel out from under an in-progress
+// (Interrupting), Auspex cannot cancel out from under an in-progress
 // process signal — the only valid outcomes are provider_stopped or
 // interrupt_failed. This documents the boundary explicitly rather than
 // leaving "why doesn't Interrupting accept cancel" to be reverse-engineered

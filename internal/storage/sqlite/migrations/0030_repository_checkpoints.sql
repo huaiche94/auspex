@@ -1,6 +1,6 @@
 -- 0030_repository_checkpoints.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `repository_checkpoints` — the
+-- Auspex_ADD.md §12.2 canonical schema: `repository_checkpoints` — the
 -- durable record of a Repository Checkpoint capture (ADD §19). First
 -- migration of checkpoint Part B's assigned range (0030-0039 per
 -- CONTRACT_FREEZE.md), transcribed column-for-column from §12.2 with one

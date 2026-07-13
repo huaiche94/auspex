@@ -1,7 +1,7 @@
 package sqlite_test
 
 // runtime-a01: tests for runtime Part A's migration range 0050-0059
-// (pause_records, wake_jobs, resume_attempts — Preflight_ADD.md §12.2,
+// (pause_records, wake_jobs, resume_attempts — Auspex_ADD.md §12.2,
 // CONTRACT_FREEZE.md "Migration ranges"). Kept in a separate file from
 // foundation's migrate_test.go so each role's tests stay recognizably
 // theirs inside this shared test package; test names deliberately contain
@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/huaiche94/preflight/internal/storage/sqlite"
+	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
 // --- embedded-file loading and application ---------------------------------

@@ -1,6 +1,6 @@
 -- 0022_artifacts.sql
 --
--- Preflight_ADD.md §12.2 canonical schema: `artifacts` — durable,
+-- Auspex_ADD.md §12.2 canonical schema: `artifacts` — durable,
 -- validator-checked evidence rows backing node completion ("Completed
 -- means evidenced," Constitution §6.2). Checkpoint Part A range
 -- (0020-0029 per CONTRACT_FREEZE.md), transcribed column-for-column from

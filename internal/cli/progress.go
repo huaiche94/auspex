@@ -6,11 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
-// NewProgressCmd builds the REAL `preflight progress ...` subtree, wired
+// NewProgressCmd builds the REAL `auspex progress ...` subtree, wired
 // against deps (internal/orchestrator.ProgressCompleteDeps). This is the
 // issue-#1 constructor internal/app/wiring.App.RootCmd() uses in place of
 // the package-private `progress` stub tree in root.go. Exported for the
@@ -31,7 +31,7 @@ func NewProgressCmd(deps orchestrator.ProgressCompleteDeps) *cobra.Command {
 	return cmd
 }
 
-// newProgressCompleteCmd builds `preflight progress complete` — the
+// newProgressCompleteCmd builds `auspex progress complete` — the
 // explicit-completion half of issue #1's "explicit completion + event
 // correlation" design. A completion is an EXPLICIT, evidence-carrying
 // request (Constitution §6.2: "a node may not become completed without
@@ -88,7 +88,7 @@ func newProgressCompleteCmd(deps orchestrator.ProgressCompleteDeps) *cobra.Comma
 
 			if jsonOut {
 				body, err := marshalOrError("progress complete", progressCompleteOutput{
-					SchemaVersion:     "preflight.progress-complete.v1",
+					SchemaVersion:     "auspex.progress-complete.v1",
 					NodeID:            string(result.Node.ID),
 					NodeStatus:        string(result.Node.Status),
 					StateCheckpointID: string(result.Checkpoint.ID),

@@ -5,19 +5,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/buildinfo"
+	"github.com/huaiche94/auspex/internal/buildinfo"
 )
 
-// NewRootCmd builds the root `preflight` Cobra command with the full P0
+// NewRootCmd builds the root `auspex` Cobra command with the full P0
 // command tree (agents/runtime.md Part B "P0 commands") registered under
-// it. Business logic stays out of RunE handlers per Preflight_ADD.md §10.1;
+// it. Business logic stays out of RunE handlers per Auspex_ADD.md §10.1;
 // every handler below is either a direct call to a foundation-owned helper
 // (buildinfo.String, for `version`) or an honest stub returning
 // errNotImplemented until the service it depends on is wired (see doc.go).
 //
 // Kept separate from any os.Exit call so it is fully testable — mirrors
-// cmd/preflight/main.go's own newRootCmd() convention. This constructor is
-// not called from cmd/preflight/main.go yet; that root-wiring integration
+// cmd/auspex/main.go's own newRootCmd() convention. This constructor is
+// not called from cmd/auspex/main.go yet; that root-wiring integration
 // step belongs to contract-integrator/foundation per agents/runtime.md.
 //
 // # Error-contract wiring (runtime-b09)
@@ -40,8 +40,8 @@ import (
 // JSON) — SilenceErrors: true is the fix, not a workaround.
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "preflight",
-		Short:         "Preflight is a local-first predictive runtime guard for AI coding agents.",
+		Use:           "auspex",
+		Short:         "Auspex is a local-first predictive runtime guard for AI coding agents.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -65,13 +65,13 @@ func NewRootCmd() *cobra.Command {
 	return WithJSONErrorRendering(root)
 }
 
-// newVersionCmd builds `preflight version`. Unlike every other command in
+// newVersionCmd builds `auspex version`. Unlike every other command in
 // this package, it is fully real — buildinfo.String() has no service
 // dependency, so there is nothing to stub.
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the Preflight version",
+		Short: "Print the Auspex version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), buildinfo.String())
@@ -80,13 +80,13 @@ func newVersionCmd() *cobra.Command {
 	}
 }
 
-// newInitCmd builds `preflight init` (ADD §10.1 day-one setup flow). Stub:
+// newInitCmd builds `auspex init` (ADD §10.1 day-one setup flow). Stub:
 // workspace/repository registration depends on internal/app/wiring, not
 // built this wave.
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Initialize Preflight for the current repository",
+		Short: "Initialize Auspex for the current repository",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("init")
@@ -94,7 +94,7 @@ func newInitCmd() *cobra.Command {
 	}
 }
 
-// newEvaluateCmd builds the standalone-stub `preflight evaluate` leaf
+// newEvaluateCmd builds the standalone-stub `auspex evaluate` leaf
 // (ADD §9.9 EvaluationService). A stub ONLY on this bare tree —
 // internal/app/wiring.App.RootCmd() replaces it with NewEvaluateCmd's
 // real handler (evaluate.go, issue #14 deliverable 5), the same
@@ -111,7 +111,7 @@ func newEvaluateCmd() *cobra.Command {
 	}
 }
 
-// newDecisionCmd builds `preflight decision {allow,deny}`. Stub: both
+// newDecisionCmd builds `auspex decision {allow,deny}`. Stub: both
 // subcommands depend on EvaluationService.Decide/ConsumeAuthorization,
 // not wired this wave.
 func newDecisionCmd() *cobra.Command {
@@ -140,14 +140,14 @@ func newDecisionCmd() *cobra.Command {
 	return cmd
 }
 
-// newCheckpointCmd builds `preflight checkpoint create`. Stub: depends on
+// newCheckpointCmd builds `auspex checkpoint create`. Stub: depends on
 // sequencing checkpoint role Part A (state) then Part B (repository) per
 // the frozen transaction/orchestration contract (CONTRACT_FREEZE.md
 // "Transaction boundaries"), not wired this wave.
 func newCheckpointCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
-		Short: "Manage Preflight checkpoints",
+		Short: "Manage Auspex checkpoints",
 	}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "create",
@@ -160,7 +160,7 @@ func newCheckpointCmd() *cobra.Command {
 	return cmd
 }
 
-// newProgressCmd builds the standalone-stub `preflight progress
+// newProgressCmd builds the standalone-stub `auspex progress
 // {show,complete}` subtree. `show` (ProgressTreeService.Snapshot) remains
 // a stub: depends on internal/app/wiring, not built this wave. `complete`
 // is a stub ONLY on this bare tree — internal/app/wiring.App.RootCmd()
@@ -201,7 +201,7 @@ func newProgressShowStubCmd() *cobra.Command {
 	}
 }
 
-// newStateCmd builds `preflight state show` (StateCheckpointService.LoadLatest).
+// newStateCmd builds `auspex state show` (StateCheckpointService.LoadLatest).
 // Stub: depends on internal/app/wiring, not built this wave.
 func newStateCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -219,7 +219,7 @@ func newStateCmd() *cobra.Command {
 	return cmd
 }
 
-// newPauseCmd builds `preflight pause {request,cancel}` (GracefulPauseService).
+// newPauseCmd builds `auspex pause {request,cancel}` (GracefulPauseService).
 // Stub: Part A (internal/pause/**) is not this role's Wave-3 scope; this
 // command surface exists so the CLI tree shape is complete, but every
 // handler defers to a service that does not exist yet.
@@ -249,7 +249,7 @@ func newPauseCmd() *cobra.Command {
 	return cmd
 }
 
-// newResumeCmd builds `preflight resume` (GracefulPauseService.Resume).
+// newResumeCmd builds `auspex resume` (GracefulPauseService.Resume).
 // Stub: depends on Part A's pause state machine, not built this wave.
 func newResumeCmd() *cobra.Command {
 	return &cobra.Command{
@@ -262,7 +262,7 @@ func newResumeCmd() *cobra.Command {
 	}
 }
 
-// newSchedulerCmd builds `preflight scheduler run-once` (durable wake
+// newSchedulerCmd builds `auspex scheduler run-once` (durable wake
 // scheduler, Part A). Stub: depends on internal/scheduler, not this
 // role's Wave-3 scope.
 func newSchedulerCmd() *cobra.Command {
@@ -281,13 +281,13 @@ func newSchedulerCmd() *cobra.Command {
 	return cmd
 }
 
-// newStatusCmd builds `preflight status`. Stub: depends on
+// newStatusCmd builds `auspex status`. Stub: depends on
 // internal/app/wiring to summarize session/pause/quota state, not built
 // this wave.
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show a summary of the current Preflight-managed session",
+		Short: "Show a summary of the current Auspex-managed session",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("status")
@@ -295,13 +295,13 @@ func newStatusCmd() *cobra.Command {
 	}
 }
 
-// newDoctorCmd builds `preflight doctor`. Stub: environment/provider
+// newDoctorCmd builds `auspex doctor`. Stub: environment/provider
 // capability diagnostics depend on ProviderDetector/ProviderCapabilityReader
 // wiring, not built this wave.
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Diagnose the local Preflight installation and provider setup",
+		Short: "Diagnose the local Auspex installation and provider setup",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("doctor")

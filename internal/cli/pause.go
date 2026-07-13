@@ -5,13 +5,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/huaiche94/preflight/internal/domain"
-	"github.com/huaiche94/preflight/internal/idgen"
-	"github.com/huaiche94/preflight/internal/orchestrator"
-	"github.com/huaiche94/preflight/internal/pause"
+	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/idgen"
+	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/pause"
 )
 
-// NewPauseCmd builds the REAL `preflight pause {request,cancel}` command
+// NewPauseCmd builds the REAL `auspex pause {request,cancel}` command
 // tree, wired against deps (internal/orchestrator.PauseLifecycleDeps). This
 // is the runtime-b07 constructor internal/app/wiring.App.RootCmd() uses in
 // place of the package-private `pause` stub in root.go. Exported for the
@@ -68,7 +68,7 @@ func newPauseRequestCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 				return err
 			}
 			body, err := marshalOrError("pause request", pauseRequestOutput{
-				SchemaVersion: "preflight.pause-request.v1",
+				SchemaVersion: "auspex.pause-request.v1",
 				PauseID:       string(result.Record.ID),
 				Status:        string(result.Record.Status),
 				Created:       result.Created,
@@ -100,7 +100,7 @@ func newPauseCancelCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 				return err
 			}
 			body, err := marshalOrError("pause cancel", pauseCancelOutput{
-				SchemaVersion: "preflight.pause-cancel.v1",
+				SchemaVersion: "auspex.pause-cancel.v1",
 				PauseID:       string(result.Record.ID),
 				Status:        string(result.Record.Status),
 			})
@@ -114,7 +114,7 @@ func newPauseCancelCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 	return cmd
 }
 
-// NewResumeCmd builds the REAL `preflight resume` command, wired against
+// NewResumeCmd builds the REAL `auspex resume` command, wired against
 // deps. This is the runtime-b07 constructor
 // internal/app/wiring.App.RootCmd() uses in place of the package-private
 // `resume` stub in root.go.
@@ -146,7 +146,7 @@ func NewResumeCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 				return err
 			}
 			body, err := marshalOrError("resume", resumeOutput{
-				SchemaVersion: "preflight.resume.v1",
+				SchemaVersion: "auspex.resume.v1",
 				PauseID:       string(result.Record.ID),
 				Status:        string(result.Record.Status),
 			})
@@ -162,7 +162,7 @@ func NewResumeCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 	return cmd
 }
 
-// NewSchedulerCmd builds the REAL `preflight scheduler run-once` command,
+// NewSchedulerCmd builds the REAL `auspex scheduler run-once` command,
 // wired against deps. This is the runtime-b07 constructor
 // internal/app/wiring.App.RootCmd() uses in place of the package-private
 // `scheduler` stub in root.go.
@@ -182,7 +182,7 @@ func NewSchedulerCmd(deps orchestrator.PauseLifecycleDeps) *cobra.Command {
 				return err
 			}
 			out := schedulerRunOnceOutput{
-				SchemaVersion: "preflight.scheduler-run-once.v1",
+				SchemaVersion: "auspex.scheduler-run-once.v1",
 				Claimed:       result.Claimed,
 			}
 			if result.Claimed {

@@ -13,13 +13,11 @@ import (
 // FeatureSource resolves the feature inputs a token forecast needs beyond
 // what app.ForecastTokensRequest itself carries (SessionID and the
 // upstream Stage-1 domain.ScopeEstimate). Mirrors
-// internal/predictor/scope.FeatureSource's rationale exactly:
-// CONTRACT_FREEZE.md's frozen ForecastTokensRequest has no task-class or
-// session-token-history lookup port yet (Bootstrap deliberately deferred
-// that — "What Bootstrap did NOT freeze"), so RuleTokenForecaster depends
-// on its own package-local abstraction rather than widening
-// internal/app/ports.go (not this role's path to edit unilaterally) or
-// guessing a DTO shape into it.
+// internal/predictor/scope.FeatureSource's rationale exactly: a narrow,
+// consumer-side view of the frozen feature-lookup port
+// app.FeatureDataSource (ADR-044). Note this view's Classification
+// deliberately omits the taskID parameter the frozen port carries — the
+// token stage never needs it; adapters supply nil.
 type FeatureSource interface {
 	// Classification returns the task classifier's output for the current
 	// turn, and the prompt features it was derived from (ambiguity signal

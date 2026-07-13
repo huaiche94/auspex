@@ -140,3 +140,15 @@ Full per-role transition validation logic belongs to the owning role (`checkpoin
 ## What Bootstrap did NOT freeze (intentionally deferred to the owning role)
 
 Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor internals, checkpoint store internals, pause state-machine implementation, or CLI handlers exist yet. Request/response DTOs in `internal/app/ports.go` have minimal fields sufficient to compile and express the interface shape — owning roles MAY find they need additional fields; requests for additions go through the role's progress artifact per Constitution §4, not silent edits to `internal/app/ports.go`.
+
+## Amendments
+
+- **2026-07-13 — ADR-044 (REC-01): feature-lookup port frozen.**
+  `app.FeatureDataSource` + `app.ResolvedSession` added to
+  `internal/app/ports.go`, promoting `internal/evaluation.DataSource`'s
+  shape verbatim into the frozen contract (that package now aliases the
+  frozen types). `internal/predictor/scope.FeatureSource` and
+  `internal/predictor/token.FeatureSource` remain as consumer-side narrow
+  views of the same port (interface segregation, documented at each
+  definition). This closes the "repository/session feature lookup"
+  deferral in the section above; the rest of that section still applies.

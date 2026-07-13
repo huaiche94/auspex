@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/huaiche94/preflight/internal/domain"
+	"github.com/huaiche94/preflight/internal/features"
 )
 
 // --- Storage transaction boundary -----------------------------------------
@@ -408,4 +409,71 @@ type QuotaRequest struct {
 
 type QuotaReader interface {
 	ReadQuota(ctx context.Context, req QuotaRequest) ([]domain.QuotaObservation, error)
+}
+
+// --- Feature lookup (frozen 2026-07-13 per ADR-044 / REC-01) ----------------
+
+// ResolvedSession is FeatureDataSource.Resolve's return value.
+type ResolvedSession struct {
+	RepositoryID domain.RepositoryID
+	TaskID       *domain.TaskID
+}
+
+// FeatureDataSource is the frozen repository/session/progress feature-lookup
+// port (ADR-044, closing wave2-analysis REC-01). It resolves every input the
+// evaluation pipeline needs beyond what EvaluateTurnRequest itself carries.
+// The privacy contract holds here as everywhere: no raw prompt text, only
+// derived features and hashes.
+//
+// A zero-value/ok=false return from any method means "not available yet"
+// (cold-start), not an error — consumers degrade per ADD principle 1
+// ("unknown is not zero"). Consumers that need only a subset SHOULD keep
+// depending on their own narrow package-local view of this port
+// (internal/predictor/scope.FeatureSource, internal/predictor/token.
+// FeatureSource) rather than importing the full interface — the freeze fixes
+// the canonical shape, not the consumption pattern.
+type FeatureDataSource interface {
+	// Resolve returns the RepositoryID and (optional) TaskID a session
+	// belongs to.
+	Resolve(ctx context.Context, sessionID domain.SessionID) (ResolvedSession, error)
+
+	// Classification returns the task classifier's output for the current
+	// turn plus the prompt features it was derived from.
+	Classification(ctx context.Context, sessionID domain.SessionID, taskID *domain.TaskID) (features.Classification, features.PromptFeatures, error)
+
+	// Repository returns repository-derived features. ok=false means
+	// cold-start.
+	Repository(ctx context.Context, repositoryID domain.RepositoryID) (features.RepositoryFeatures, bool, error)
+
+	// Session returns session-derived features (recent-turn quantiles,
+	// retry rate, etc.). ok=false means cold-start.
+	Session(ctx context.Context, sessionID domain.SessionID) (features.SessionFeatures, bool, error)
+
+	// Progress returns Progress-Tree-derived features for the current
+	// task/node. ok=false means cold-start.
+	Progress(ctx context.Context, taskID *domain.TaskID) (features.ProgressFeatures, bool, error)
+
+	// RecentSimilarTurnTokens returns raw total-token observations for
+	// recent turns matching the token forecaster's "similar" cohort
+	// (ADD §15.2).
+	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error)
+
+	// Quota returns the current quota observations for a session (Stage 3
+	// input, ForecastQuotaRequest.Quota).
+	Quota(ctx context.Context, sessionID domain.SessionID) ([]domain.QuotaObservation, error)
+
+	// Context returns the current context-window observation for a session
+	// (Stage 3 input, ForecastQuotaRequest.Context).
+	Context(ctx context.Context, sessionID domain.SessionID) (domain.ContextObservation, error)
+
+	// RunwayForecast returns the most recently computed independent Runway
+	// Predictor output for a session, if any. ok=false means none exists
+	// yet. Evaluation never computes a RunwayForecast itself (ADR-041:
+	// Runway is owned by GracefulPauseService.Observe).
+	RunwayForecast(ctx context.Context, sessionID domain.SessionID) (domain.RunwayForecast, bool, error)
+
+	// PriorRunwayHitConfirmed returns the policy debounce bit (ADD §17.6):
+	// whether the immediately preceding evaluation for this session already
+	// saw a qualifying calibrated hit-probability.
+	PriorRunwayHitConfirmed(ctx context.Context, sessionID domain.SessionID) (bool, error)
 }

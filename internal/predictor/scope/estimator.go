@@ -10,17 +10,14 @@ import (
 )
 
 // FeatureSource resolves the feature inputs a scope estimate needs from the
-// IDs in an app.EstimateScopeRequest. It is this package's own narrow
-// interface, not a frozen internal/app port — CONTRACT_FREEZE.md's
-// EstimateScopeRequest carries only IDs (SessionID/TaskID/RepositoryID)
-// because no repository/session feature-lookup port exists yet in the
-// frozen contract layer (Bootstrap deliberately deferred that to the
-// owning role, per CONTRACT_FREEZE.md "What Bootstrap did NOT freeze").
-// Rather than requesting a contract change or guessing a shape into
-// internal/app/ports.go, this interface lets RuleScopeEstimator depend on
-// an abstraction it owns, satisfied today by a fake/adapter in tests and,
-// in a later wave, by whatever concrete lookup a storage-backed role
-// provides.
+// IDs in an app.EstimateScopeRequest. It is this package's own narrow,
+// consumer-side view of the frozen feature-lookup port
+// app.FeatureDataSource (ADR-044; every method below is a subset of that
+// port's shape, with Classification/Repository/Session signatures matching
+// it exactly). Keeping the narrow view — rather than importing the full
+// port — is deliberate interface segregation: RuleScopeEstimator depends
+// only on what it consumes, satisfied by a fake in tests and by
+// evaluation.SQLDataSource (an app.FeatureDataSource) in production.
 type FeatureSource interface {
 	// Classification returns the task classifier's output for the
 	// current turn, and the prompt features it was derived from (needed

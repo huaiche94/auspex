@@ -48,6 +48,27 @@ func TestParseUserPromptSubmit(t *testing.T) {
 				if ev.TranscriptPath == nil || !strings.Contains(*ev.TranscriptPath, "sess_01H9X8K7QZ3M4N5P6R7S8T9V0W") {
 					t.Errorf("TranscriptPath = %v", ev.TranscriptPath)
 				}
+				// Issue #42: the full derived feature set is computed
+				// here, where the raw text lives — the fixture prompt
+				// ("Refactor the checkpoint manifest writer to use
+				// atomic rename.") must yield a real refactor-verb
+				// signal, and the embedded features must agree with the
+				// legacy top-level fields (one derivation, not two).
+				if !ev.Features.HasRefactorVerb {
+					t.Error("Features.HasRefactorVerb = false, want true for a 'Refactor ...' prompt")
+				}
+				if ev.Features.HasFixVerb {
+					t.Error("Features.HasFixVerb = true, want false (no fix vocabulary in fixture prompt)")
+				}
+				if ev.Features.SHA256Hex != ev.PromptSHA256 {
+					t.Errorf("Features.SHA256Hex = %q, want the same digest as PromptSHA256 %q", ev.Features.SHA256Hex, ev.PromptSHA256)
+				}
+				if ev.Features.ByteLength != ev.PromptByteLength {
+					t.Errorf("Features.ByteLength = %d, want PromptByteLength %d", ev.Features.ByteLength, ev.PromptByteLength)
+				}
+				if ev.Features.ApproxTokens != ev.PromptApproxTokens {
+					t.Errorf("Features.ApproxTokens = %d, want PromptApproxTokens %d", ev.Features.ApproxTokens, ev.PromptApproxTokens)
+				}
 			},
 		},
 		{

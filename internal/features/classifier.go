@@ -107,6 +107,17 @@ func ClassifyTask(in ClassifierInput) Classification {
 		return classified(TaskClassFeatureLocal, ReasonImplementVerb)
 	case pf.RepositoryWideIndicator:
 		return classified(TaskClassRepositoryWide, ReasonRepositoryWide)
+	case pf.MentionsPerformance:
+		// Issue #42 (fix path step 3): a performance-flavored prompt with
+		// no actionable §14.2 verb ("the dashboard is slow", "optimize
+		// the query planner") previously fell through to Unknown even
+		// though the §14.3 taxonomy already has exactly one performance
+		// class with a designed cold-start multiplier
+		// (internal/predictor/token/coldstart.go). Placed after every
+		// verb case and after repository-wide, so it only rescues prompts
+		// no more-specific rule already classifies — it never re-routes a
+		// prompt away from a verb-based class.
+		return classified(TaskClassPerformanceInvestigation, ReasonPerformanceIndicator)
 	default:
 		// Weak indicator combinations with no actionable verb: do not guess.
 		return Classification{

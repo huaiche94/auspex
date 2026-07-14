@@ -193,6 +193,43 @@ func TestNormalizeUserPromptSubmit(t *testing.T) {
 	if ev.Payload["prompt_sha256"] != parsed.PromptSHA256 {
 		t.Errorf("prompt_sha256 payload = %v, want %v", ev.Payload["prompt_sha256"], parsed.PromptSHA256)
 	}
+
+	// Issue #42: the derived feature booleans/counts must reach the
+	// payload so evaluation read-back can feed the real classifier. The
+	// fixture prompt is "Refactor the checkpoint manifest writer to use
+	// atomic rename." — a refactor-verb prompt with no fix vocabulary.
+	if ev.Payload["has_refactor_verb"] != true {
+		t.Errorf("has_refactor_verb payload = %v, want true", ev.Payload["has_refactor_verb"])
+	}
+	if ev.Payload["has_fix_verb"] != false {
+		t.Errorf("has_fix_verb payload = %v, want false (measured false, not absent)", ev.Payload["has_fix_verb"])
+	}
+	if ev.Payload["explicit_path_count"] != parsed.Features.ExplicitPathCount {
+		t.Errorf("explicit_path_count payload = %v, want %v", ev.Payload["explicit_path_count"], parsed.Features.ExplicitPathCount)
+	}
+}
+
+// TestNormalizeUserPromptSubmit_ZeroValueFeaturesPersistNoFeatureKeys pins
+// the issue-#42 honesty gate: an event whose Features were never extracted
+// (zero-value struct, e.g. built by an older caller) must not persist
+// false booleans masquerading as measurements — unknown is not zero. The
+// extraction marker is Features.SHA256Hex, which every
+// features.ExtractPromptFeatures call sets (even for an empty prompt).
+func TestNormalizeUserPromptSubmit_ZeroValueFeaturesPersistNoFeatureKeys(t *testing.T) {
+	n, clock := newTestNormalizer()
+
+	parsed := claudehooks.UserPromptSubmitEvent{
+		SessionID:        "sess-legacy",
+		PromptSHA256:     "abc123",
+		PromptByteLength: 10,
+	}
+	ev := n.NormalizeUserPromptSubmit(parsed, clock.Now())
+
+	for _, key := range []string{"has_fix_verb", "has_refactor_verb", "mentions_tests", "explicit_path_count", "open_ended_indicator"} {
+		if _, present := ev.Payload[key]; present {
+			t.Errorf("payload key %q present for a zero-value Features struct — false booleans must not masquerade as measurements", key)
+		}
+	}
 }
 
 func TestNormalizeStop(t *testing.T) {

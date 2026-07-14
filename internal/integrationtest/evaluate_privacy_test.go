@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,6 +199,35 @@ func TestLeakageScanner_EvaluateCLI_NoRawPromptInDBExport(t *testing.T) {
 	}
 	if predictionCount == 0 || eventCount == 0 {
 		t.Fatalf("positive control failed: predictions=%d hash-bearing events=%d — the evaluation did not persist, so a canary-absence scan would be vacuous", predictionCount, eventCount)
+	}
+
+	// Issue #42 payload pin: the persisted turn.started payload now also
+	// carries the derived prompt-feature fields — assert, on the REAL
+	// stored row, that (a) they are present (the canary contains
+	// "refactor", so has_refactor_verb must be a measured true), and (b)
+	// every payload value is a bool or a number except the two known
+	// strings (prompt_sha256's fixed-alphabet digest; cwd is absent on
+	// the evaluate path). Strings are the only JSON type that can carry
+	// raw prompt text, so this structural check is the payload-level
+	// mirror of the byte scan below (Constitution §7 rule 2: booleans,
+	// counts, and hashes only).
+	var payloadJSON string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT payload_json FROM events WHERE event_type = 'provider.turn.started' ORDER BY rowid DESC LIMIT 1`,
+	).Scan(&payloadJSON); err != nil {
+		t.Fatalf("read persisted turn.started payload: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		t.Fatalf("decode persisted turn.started payload: %v", err)
+	}
+	if payload["has_refactor_verb"] != true {
+		t.Errorf("has_refactor_verb = %v, want true — the canary prompt says 'refactor', so the derived feature must have been measured and persisted", payload["has_refactor_verb"])
+	}
+	for k, v := range payload {
+		if s, ok := v.(string); ok && k != "prompt_sha256" && k != "cwd" {
+			t.Errorf("persisted payload field %q is a string (%q) — only prompt_sha256 and cwd may be strings on turn.started (Constitution §7 rule 2)", k, s)
+		}
 	}
 
 	// Flush the WAL into the main file, close, and scan raw bytes — the

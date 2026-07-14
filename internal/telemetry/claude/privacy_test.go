@@ -31,6 +31,46 @@ func TestPrivacy_UserPromptSubmit_RawPromptNeverInEvent(t *testing.T) {
 	assertNoRawText(t, ev, rawPrompt, "user prompt")
 }
 
+// TestPrivacy_UserPromptSubmit_DerivedFeatureFieldsAreBoolsAndCountsOnly
+// pins the issue-#42 payload's structural privacy contract (Constitution
+// §7 rule 2: "only derived features and hashes"): every payload field on a
+// provider.turn.started event must be a bool or an int except the two
+// known string fields — prompt_sha256 (fixed-alphabet digest, can never
+// spell prompt text) and cwd (a filesystem path from the hook envelope,
+// not prompt content). A new string-typed payload field is a
+// privacy-review event, not a routine change — strings are the only type
+// that can carry raw prompt text, so this test failing means stop and
+// review, not loosen the assertion.
+func TestPrivacy_UserPromptSubmit_DerivedFeatureFieldsAreBoolsAndCountsOnly(t *testing.T) {
+	n, clock := newTestNormalizer()
+	parsed, err := claudehooks.ParseUserPromptSubmit(fixture(t, "userpromptsubmit", "normal.json"))
+	if err != nil {
+		t.Fatalf("ParseUserPromptSubmit: %v", err)
+	}
+
+	ev := n.NormalizeUserPromptSubmit(parsed, clock.Now())
+
+	allowedStringKeys := map[string]bool{"prompt_sha256": true, "cwd": true}
+	for k, v := range ev.Payload {
+		switch v.(type) {
+		case bool, int:
+			// booleans and counts: the only shapes derived features may take.
+		case string:
+			if !allowedStringKeys[k] {
+				t.Errorf("payload field %q is a string (%q) — only prompt_sha256 and cwd may be strings on this event (Constitution §7 rule 2)", k, v)
+			}
+		default:
+			t.Errorf("payload field %q has unexpected type %T — derived prompt features must be bools or ints", k, v)
+		}
+	}
+
+	// Falsifiability: the feature fields must actually be present — an
+	// empty payload would make the type scan above vacuous.
+	if _, ok := ev.Payload["has_refactor_verb"]; !ok {
+		t.Fatal("has_refactor_verb missing from payload — the derived-feature persistence this test pins did not run")
+	}
+}
+
 // TestPrivacy_StopFailure_RawErrorMessageNeverInEvent covers the analogous
 // case for StopFailure: the packet's classifyFailure privacy note in
 // internal/hooks/claude/stop.go says provider error messages can echo

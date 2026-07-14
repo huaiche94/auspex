@@ -241,6 +241,48 @@ func TestSQLDataSource_Classification_RealSizeOnlySignal_NeverFabricatesVerbSign
 	}
 }
 
+// TestSQLDataSource_Classification_DerivedFeaturePayloadFeedsRealClassifier
+// is the issue-#42 read-back proof: when a provider.turn.started payload
+// carries the derived feature booleans/counts (persisted by
+// claude-telemetry's normalizer from hook-side extraction), Classification
+// reconstructs them onto PromptFeatures and the REAL classifier commits to
+// a class instead of collapsing to unknown.
+func TestSQLDataSource_Classification_DerivedFeaturePayloadFeedsRealClassifier(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	insertEvent(t, db, "ev-1", ids.sessionID, "provider.turn.started", "2026-07-12T00:05:00Z", map[string]any{
+		"prompt_sha256":        "abc123",
+		"prompt_byte_length":   30,
+		"prompt_approx_tokens": 8,
+		"prompt_rune_count":    30,
+		"prompt_line_count":    1,
+		"explicit_path_count":  2,
+		"has_refactor_verb":    true,
+		"mentions_tests":       false,
+	})
+	src := evaluation.NewSQLDataSource(db)
+
+	class, pf, err := src.Classification(context.Background(), domain.SessionID(ids.sessionID), nil)
+	if err != nil {
+		t.Fatalf("Classification: %v", err)
+	}
+	if !pf.HasRefactorVerb {
+		t.Errorf("HasRefactorVerb = false, want true (persisted derived feature must be read back)")
+	}
+	if pf.ExplicitPathCount != 2 {
+		t.Errorf("ExplicitPathCount = %d, want 2", pf.ExplicitPathCount)
+	}
+	if pf.RuneCount != 30 || pf.LineCount != 1 {
+		t.Errorf("RuneCount/LineCount = %d/%d, want 30/1", pf.RuneCount, pf.LineCount)
+	}
+	if pf.HasFixVerb || pf.MentionsTests {
+		t.Errorf("absent/false feature fields must decode to false, got %+v", pf)
+	}
+	if class.Class != features.TaskClassRefactorLocal {
+		t.Errorf("Class = %q, want refactor-local (the real classifier fed with real read-back signal)", class.Class)
+	}
+}
+
 func TestSQLDataSource_Classification_UsesMostRecentEvent(t *testing.T) {
 	db := openMigratedDB(t)
 	ids := seedRepoWorktreeSessionTask(t, db)

@@ -219,9 +219,10 @@ func (n *Normalizer) quotaEvent(snap claudeprovider.StatusLineSnapshot, observed
 
 // NormalizeUserPromptSubmit projects a parsed UserPromptSubmitEvent into a
 // provider.turn.started Event. Per Constitution §7 rule 2 and the
-// package-level privacy contract, only the already-hashed/length/approx-
-// token fields from UserPromptSubmitEvent are copied into the payload;
-// no raw prompt text ever passes through this function because
+// package-level privacy contract, only already-derived signals from
+// UserPromptSubmitEvent are copied into the payload — the hash/size
+// fields plus the issue-#42 derived feature booleans/counts; no raw
+// prompt text ever passes through this function because
 // claudehooks.ParseUserPromptSubmit never returns any in the first place.
 func (n *Normalizer) NormalizeUserPromptSubmit(ev claudehooks.UserPromptSubmitEvent, observedAt time.Time) v1.Event {
 	out := n.envelope(v1.EventProviderTurnStarted, observedAt, ev.SessionID)
@@ -235,6 +236,44 @@ func (n *Normalizer) NormalizeUserPromptSubmit(ev claudehooks.UserPromptSubmitEv
 	}
 	if ev.CWD != nil {
 		payload["cwd"] = *ev.CWD
+	}
+	// Issue #42: persist the full derived prompt-feature set so the
+	// classifier's verb/domain signals survive to evaluation read-back
+	// (internal/evaluation/datasource_sql.go's Classification) instead of
+	// collapsing to TaskClassUnknown. Privacy reasoning (Constitution §7
+	// rule 2, "only derived features and hashes"): every value below is a
+	// bool or an int computed from the prompt by
+	// features.ExtractPromptFeatures — no raw text, no substrings, no
+	// n-grams; the only string-typed payload fields on this event remain
+	// prompt_sha256 (fixed-alphabet digest) and cwd (a path, not prompt
+	// content). Keys are stable snake_case mirrors of the
+	// features.PromptFeatures field names. Gated on the extraction marker
+	// (ExtractPromptFeatures sets SHA256Hex for every input, even the
+	// empty prompt) so a zero-value Features — an event built without
+	// extraction, e.g. by an older caller — persists no feature keys at
+	// all rather than false booleans masquerading as measurements
+	// (unknown is not zero).
+	if f := ev.Features; f.SHA256Hex != "" {
+		payload["prompt_rune_count"] = f.RuneCount
+		payload["prompt_line_count"] = f.LineCount
+		payload["explicit_path_count"] = f.ExplicitPathCount
+		payload["list_item_count"] = f.ListItemCount
+		payload["acceptance_criteria_count"] = f.AcceptanceCriteriaCount
+		payload["has_fix_verb"] = f.HasFixVerb
+		payload["has_implement_verb"] = f.HasImplementVerb
+		payload["has_refactor_verb"] = f.HasRefactorVerb
+		payload["has_investigate_verb"] = f.HasInvestigateVerb
+		payload["has_migrate_verb"] = f.HasMigrateVerb
+		payload["mentions_tests"] = f.MentionsTests
+		payload["mentions_schema_or_api"] = f.MentionsSchemaOrAPI
+		payload["mentions_security"] = f.MentionsSecurity
+		payload["mentions_performance"] = f.MentionsPerformance
+		payload["mentions_documentation"] = f.MentionsDocumentation
+		payload["long_document_indicator"] = f.LongDocumentIndicator
+		payload["question_indicator"] = f.QuestionIndicator
+		payload["open_ended_indicator"] = f.OpenEndedIndicator
+		payload["cross_layer_indicator"] = f.CrossLayerIndicator
+		payload["repository_wide_indicator"] = f.RepositoryWideIndicator
 	}
 	out.Payload = payload
 	return out

@@ -111,17 +111,32 @@ func ExtractPromptFeatures(raw string) PromptFeatures {
 		}
 	}
 
-	pf.HasFixVerb = has("fix", "fixes", "fixing", "bug", "bugfix", "repair", "resolve")
-	pf.HasImplementVerb = has("implement", "implements", "implementing", "add", "adds", "create", "creates", "build", "builds", "write", "introduce")
-	pf.HasRefactorVerb = has("refactor", "refactors", "refactoring", "restructure", "rename", "extract", "simplify")
-	pf.HasInvestigateVerb = has("investigate", "investigating", "debug", "diagnose", "why", "analyze", "analyse", "inspect", "explain")
+	// Vocabulary widened per issue #42 (fix path step 3): ordinary prompts
+	// were collapsing to TaskClassUnknown because these lists missed
+	// everyday synonyms. Every addition below is a clear synonym for a
+	// signal slot that already existed — no new signal categories and no
+	// new classes; genuinely ambiguous generic verbs ("update", "change",
+	// "remove") are deliberately NOT mapped, because choosing a class for
+	// them would be an ungrounded modeling decision (they stay
+	// TaskClassUnknown, the classifier's designed answer for insufficient
+	// signal).
+	pf.HasFixVerb = has("fix", "fixes", "fixing", "bug", "bugfix", "repair", "resolve",
+		"typo", "typos", "broken", "crash", "crashes", "patch", "hotfix")
+	pf.HasImplementVerb = has("implement", "implements", "implementing", "add", "adds", "create", "creates", "build", "builds", "write", "introduce",
+		"develop", "generate", "scaffold")
+	pf.HasRefactorVerb = has("refactor", "refactors", "refactoring", "restructure", "rename", "extract", "simplify",
+		"reorganize", "reorganise", "consolidate", "decouple", "deduplicate", "dedupe", "modularize", "modularise")
+	pf.HasInvestigateVerb = has("investigate", "investigating", "debug", "diagnose", "why", "analyze", "analyse", "inspect", "explain",
+		"troubleshoot", "understand", "review", "audit")
 	pf.HasMigrateVerb = has("migrate", "migrates", "migrating", "migration", "upgrade", "port")
 
-	pf.MentionsTests = has("test", "tests", "testing", "unittest", "unittests", "spec", "specs") || phrase("unit test", "integration test")
+	pf.MentionsTests = has("test", "tests", "testing", "unittest", "unittests", "spec", "specs", "coverage") || phrase("unit test", "integration test")
 	pf.MentionsSchemaOrAPI = has("schema", "api", "apis", "endpoint", "endpoints", "contract", "protocol")
 	pf.MentionsSecurity = has("security", "auth", "authentication", "authorization", "secret", "secrets", "vulnerability", "cve", "injection", "sanitize", "csrf", "xss")
-	pf.MentionsPerformance = has("performance", "slow", "latency", "profiling", "profile", "benchmark", "throughput", "regression")
-	pf.MentionsDocumentation = has("document", "documentation", "readme", "docs", "changelog", "comment", "comments", "docstring")
+	pf.MentionsPerformance = has("performance", "slow", "latency", "profiling", "profile", "benchmark", "throughput", "regression",
+		"optimize", "optimise", "optimization", "optimisation", "speedup", "faster", "perf")
+	pf.MentionsDocumentation = has("document", "documentation", "readme", "docs", "changelog", "comment", "comments", "docstring",
+		"tutorial", "guide", "guides", "documenting")
 	pf.LongDocumentIndicator = has("chapter", "chapters", "report", "whitepaper") ||
 		(has("section", "sections") && pf.MentionsDocumentation) ||
 		phrase("design document", "architecture document", "design doc")

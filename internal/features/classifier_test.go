@@ -55,6 +55,51 @@ func TestClassifierConfidentClassification(t *testing.T) {
 			prompt: "investigate why the retry loop spins forever",
 			want:   TaskClassInspection,
 		},
+		// Issue #42 acceptance examples: ordinary prompts must not
+		// collapse to unknown once real derived features reach the
+		// classifier.
+		{
+			name:   "issue #42 acceptance: fix typo in README -> bugfix-local",
+			prompt: "fix typo in README",
+			want:   TaskClassBugfixLocal,
+		},
+		{
+			name:   "issue #42 acceptance: refactor the policy engine -> refactor-local",
+			prompt: "refactor the policy engine",
+			want:   TaskClassRefactorLocal,
+		},
+		// Issue #42 widened vocabulary: everyday synonyms mapped onto the
+		// classes that already existed for their signal slot.
+		{
+			name:   "typo/broken vocabulary -> bugfix-local",
+			prompt: "the exporter is broken and crashes on startup",
+			want:   TaskClassBugfixLocal,
+		},
+		{
+			name:   "consolidate vocabulary -> refactor-local",
+			prompt: "consolidate the duplicated helpers into one package",
+			want:   TaskClassRefactorLocal,
+		},
+		{
+			name:   "troubleshoot vocabulary -> inspection",
+			prompt: "troubleshoot the startup sequence in the runner",
+			want:   TaskClassInspection,
+		},
+		{
+			name:   "coverage vocabulary without impl verbs -> test-only",
+			prompt: "improve coverage for the parser package",
+			want:   TaskClassTestOnly,
+		},
+		{
+			name:   "tutorial vocabulary -> documentation-short",
+			prompt: "write a tutorial for the CLI onboarding flow",
+			want:   TaskClassDocumentationShort,
+		},
+		{
+			name:   "performance indicator without actionable verb -> performance-investigation",
+			prompt: "optimize the query planner, it feels slow",
+			want:   TaskClassPerformanceInvestigation,
+		},
 	}
 
 	for _, c := range cases {
@@ -89,6 +134,13 @@ func TestClassifierReturnsUnknownWithInsufficientSignal(t *testing.T) {
 		{name: "single word, no verb or indicator", prompt: "hello"},
 		{name: "very short prompt", prompt: "ok"},
 		{name: "neutral filler with no actionable signal", prompt: "please and thank you very much indeed"},
+		// Issue #42: generic edit verbs ("update", "change", "remove")
+		// are deliberately NOT mapped to a class — picking one would be
+		// an ungrounded modeling decision (an "update" is equally
+		// plausibly a bugfix, a feature, or a migration), so they stay
+		// unknown by design. See ExtractPromptFeatures' vocabulary
+		// comment.
+		{name: "generic update verb stays unknown by design", prompt: "update the dependency to the latest release"},
 	}
 
 	for _, c := range cases {

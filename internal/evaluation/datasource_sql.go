@@ -48,21 +48,23 @@
 // DataSource interface's own doc comment, ok=false here is the honest
 // answer, not a shortcut.
 //
-// Classification's real signal is deliberately partial: Constitution §7
-// rule 2 means raw prompt text is never persisted anywhere this package can
-// read (only prompt_sha256/prompt_byte_length/prompt_approx_tokens survive
-// in events.payload_json, per claude-provider's own privacy-boundary
-// design — internal/hooks/claude/userpromptsubmit.go). This file builds a
-// real, non-fabricated features.PromptFeatures from exactly those three
-// persisted fields and runs it through the real features.ClassifyTask, the
-// same production classifier predictor-03 built — it does not reimplement
-// or approximate classification itself. Every verb/domain-indicator boolean
-// PromptFeatures also carries (HasFixVerb, MentionsTests, ...) requires raw
-// text to compute and is therefore left at its zero value (false), which
-// is the honest state for signal that was never available — in practice
-// this means most sessions classify as TaskClassUnknown/
-// ReasonInsufficientSignal, which is ClassifyTask's own designed, correct
-// response to insufficient signal, not a bug in this bridge.
+// Classification's real signal: Constitution §7 rule 2 means raw prompt
+// text is never persisted anywhere this package can read — but since issue
+// #42, the DERIVED feature booleans/counts are (computed by
+// features.ExtractPromptFeatures inside the hook/evaluate process where
+// the raw text lives, persisted as bool/int payload fields by
+// claude-telemetry's normalizer alongside the original
+// prompt_sha256/prompt_byte_length/prompt_approx_tokens trio). This file
+// rebuilds a real, non-fabricated features.PromptFeatures from exactly
+// those persisted fields and runs it through the real features.ClassifyTask,
+// the same production classifier predictor-03 built — it does not
+// reimplement or approximate classification itself. On events persisted
+// before #42 the feature keys are simply absent, and every
+// verb/domain-indicator boolean stays at its zero value (false) — the
+// honest state for signal that was never captured (unknown is not zero) —
+// so old sessions still classify as TaskClassUnknown/
+// ReasonInsufficientSignal, ClassifyTask's own designed response to
+// insufficient signal.
 package evaluation
 
 import (
@@ -240,15 +242,18 @@ func (s *SQLDataSource) mostRelevantTaskID(ctx context.Context, sessionID domain
 // --- 2. Classification ----------------------------------------------------
 
 // Classification builds a real (not fabricated) features.PromptFeatures
-// from the most recent provider.turn.started event for this session —
-// specifically its prompt_sha256/prompt_byte_length/prompt_approx_tokens
-// payload fields, the only prompt-derived signal claude-provider's
-// normalizer ever persists (Constitution §7 rule 2: raw prompt text is
-// never persisted). It then runs that through the real features.ClassifyTask
+// from the most recent provider.turn.started event for this session — its
+// prompt_sha256/prompt_byte_length/prompt_approx_tokens size fields plus,
+// since issue #42, the derived verb/domain/structure booleans and counts
+// claude-telemetry's normalizer persists (all computed from raw text
+// inside the hook/evaluate process; only booleans, counts, and the hash
+// ever reach storage — Constitution §7 rule 2: raw prompt text is never
+// persisted). It then runs that through the real features.ClassifyTask
 // (predictor-03), optionally sharpened by Progress features when a task is
-// known. See this file's package doc comment for why every verb/indicator
-// boolean on PromptFeatures stays false (honest absence of signal, not
-// fabrication) and why this typically yields TaskClassUnknown.
+// known. Feature keys absent from the payload (events persisted before
+// #42) decode to their zero values — the honest state for signal that was
+// never captured, which typically yields TaskClassUnknown, exactly as
+// before; see this file's package doc comment.
 func (s *SQLDataSource) Classification(ctx context.Context, sessionID domain.SessionID, taskID *domain.TaskID) (features.Classification, features.PromptFeatures, error) {
 	pf, found, err := s.latestPromptFeatures(ctx, sessionID)
 	if err != nil {
@@ -277,9 +282,12 @@ func (s *SQLDataSource) Classification(ctx context.Context, sessionID domain.Ses
 }
 
 // latestPromptFeatures queries the most recent provider.turn.started event
-// for sessionID and decodes its size-only payload fields into a real
-// features.PromptFeatures. found=false means no such event exists yet
-// (cold-start).
+// for sessionID and decodes its size fields plus the issue-#42 derived
+// feature booleans/counts into a real features.PromptFeatures. found=false
+// means no such event exists yet (cold-start). Keys are the stable
+// snake_case mirrors NormalizeUserPromptSubmit writes; a key absent from
+// the payload (an event persisted before #42) decodes to its zero value,
+// never a fabricated signal.
 func (s *SQLDataSource) latestPromptFeatures(ctx context.Context, sessionID domain.SessionID) (features.PromptFeatures, bool, error) {
 	q := sqlite.QuerierFromContext(ctx, s.DB)
 	var payloadJSON string
@@ -306,6 +314,30 @@ func (s *SQLDataSource) latestPromptFeatures(ctx context.Context, sessionID doma
 		ByteLength:      payloadInt(payload, "prompt_byte_length"),
 		ApproxTokens:    payloadInt(payload, "prompt_approx_tokens"),
 		TokenConfidence: domain.ConfidenceLow, // mirrors ExtractPromptFeatures: always an estimate
+
+		RuneCount: payloadInt(payload, "prompt_rune_count"),
+		LineCount: payloadInt(payload, "prompt_line_count"),
+
+		ExplicitPathCount:       payloadInt(payload, "explicit_path_count"),
+		ListItemCount:           payloadInt(payload, "list_item_count"),
+		AcceptanceCriteriaCount: payloadInt(payload, "acceptance_criteria_count"),
+
+		HasFixVerb:         payloadBool(payload, "has_fix_verb"),
+		HasImplementVerb:   payloadBool(payload, "has_implement_verb"),
+		HasRefactorVerb:    payloadBool(payload, "has_refactor_verb"),
+		HasInvestigateVerb: payloadBool(payload, "has_investigate_verb"),
+		HasMigrateVerb:     payloadBool(payload, "has_migrate_verb"),
+
+		MentionsTests:           payloadBool(payload, "mentions_tests"),
+		MentionsSchemaOrAPI:     payloadBool(payload, "mentions_schema_or_api"),
+		MentionsSecurity:        payloadBool(payload, "mentions_security"),
+		MentionsPerformance:     payloadBool(payload, "mentions_performance"),
+		MentionsDocumentation:   payloadBool(payload, "mentions_documentation"),
+		LongDocumentIndicator:   payloadBool(payload, "long_document_indicator"),
+		QuestionIndicator:       payloadBool(payload, "question_indicator"),
+		OpenEndedIndicator:      payloadBool(payload, "open_ended_indicator"),
+		CrossLayerIndicator:     payloadBool(payload, "cross_layer_indicator"),
+		RepositoryWideIndicator: payloadBool(payload, "repository_wide_indicator"),
 	}
 	return pf, true, nil
 }
@@ -1084,6 +1116,20 @@ func payloadString(payload map[string]any, key string) string {
 	}
 	s, _ := v.(string)
 	return s
+}
+
+// payloadBool decodes a boolean payload field. An absent key or a
+// non-boolean value returns false — for the issue-#42 derived feature
+// fields that is the honest zero value for signal that was never captured
+// (events persisted before those fields existed), matching the
+// pre-#42 behavior exactly.
+func payloadBool(payload map[string]any, key string) bool {
+	v, ok := payload[key]
+	if !ok {
+		return false
+	}
+	b, _ := v.(bool)
+	return b
 }
 
 func payloadInt(payload map[string]any, key string) int {

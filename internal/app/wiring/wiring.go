@@ -104,6 +104,15 @@ type Services struct {
 	// so gating on Issuer alone is the correct, minimal signal that real
 	// wiring is actually in place.
 	Decision orchestrator.DecisionDeps
+
+	// Daemon configures `auspex daemon run|status|stop|install|uninstall`
+	// (issue #7, M6; internal/orchestrator.DaemonDeps). Not required, same
+	// reasoning as GC: the daemon needs real stores, real dirs, and a
+	// composed internal/daemon.Daemon — a caller that hasn't wired them
+	// keeps RootCmd's original `daemon` stub tree. The swap gates on
+	// RuntimeDir (every subcommand needs it) rather than Daemon (only
+	// `run` does).
+	Daemon orchestrator.DaemonDeps
 }
 
 // HookSupport bundles the optional collaborators
@@ -371,6 +380,15 @@ func (a *App) RootCmd() *cobra.Command {
 		schedulerDeps := a.services.PauseLifecycle
 		replaceSubcommand(root, "scheduler", func(_ string) *cobra.Command {
 			return cli.NewSchedulerCmd(schedulerDeps)
+		})
+	}
+
+	// daemon (issue #7, M6) swaps when the runtime directory is wired —
+	// see Services.Daemon's own doc comment for why that field gates.
+	if a.services.Daemon.RuntimeDir != "" {
+		daemonDeps := a.services.Daemon
+		replaceSubcommand(root, "daemon", func(_ string) *cobra.Command {
+			return cli.NewDaemonCmd(daemonDeps)
 		})
 	}
 

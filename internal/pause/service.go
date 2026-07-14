@@ -501,12 +501,14 @@ func (s *Service) RequestPause(ctx context.Context, req app.PauseRequest) (app.P
 	quotaBaseline := s.latestQuotaBySession[req.SessionID]
 	s.quotaMu.Unlock()
 
-	s.rememberContext(result.Record.ID, pauseContext{
+	if err := s.rememberContext(ctx, result.Record.ID, pauseContext{
 		TaskID:          sessCtx.TaskID,
 		WorktreeID:      sessCtx.WorktreeID,
 		PausedWorkPaths: sessCtx.PausedWorkPaths,
 		QuotaBaseline:   quotaBaseline,
-	})
+	}); err != nil {
+		return app.PauseRecord{}, err
+	}
 
 	return toAppPauseRecord(result.Record), nil
 }
@@ -572,7 +574,7 @@ func (s *Service) ReachSafePoint(ctx context.Context, sp app.SafePoint) (app.Pau
 			Code: domain.ErrCodeValidation, Message: "pause: Service.ReachSafePoint requires a PauseID", Retryable: false,
 		}
 	}
-	pctx, err := s.mustContext(sp.PauseID)
+	pctx, err := s.mustContext(ctx, sp.PauseID)
 	if err != nil {
 		return app.PauseRecord{}, err
 	}
@@ -813,7 +815,7 @@ func (s *Service) Resume(ctx context.Context, req app.ResumeRequest) (app.Resume
 			Code: domain.ErrCodeValidation, Message: "pause: Service.Resume requires a PauseID", Retryable: false,
 		}
 	}
-	pctx, err := s.mustContext(req.PauseID)
+	pctx, err := s.mustContext(ctx, req.PauseID)
 	if err != nil {
 		return app.ResumeResult{}, err
 	}
@@ -898,25 +900,52 @@ func (s *Service) Cancel(ctx context.Context, id domain.PauseID) error {
 
 // --- shared helpers --------------------------------------------------------
 
-func (s *Service) rememberContext(id domain.PauseID, pctx pauseContext) {
+// rememberContext records pctx in this Service's in-memory map AND — when
+// the store supports it (SQLiteStore does; contextstore.go) — durably in
+// the pause record itself, so a DIFFERENT process (the M6 daemon worker,
+// #7/D-16) can later rebuild the context mustContext needs. A durable-write
+// failure fails the caller: an unattended resume without its context is
+// exactly the silent gap Constitution §7 rule 9's "re-verified before it
+// runs" forbids, so losing the context durably is a pause-creation failure,
+// not a best-effort miss.
+func (s *Service) rememberContext(ctx context.Context, id domain.PauseID, pctx pauseContext) error {
 	s.contextsMu.Lock()
-	defer s.contextsMu.Unlock()
 	s.contexts[id] = pctx
+	s.contextsMu.Unlock()
+	if cs, ok := s.Store.(pauseContextStore); ok {
+		return cs.SaveContext(ctx, id, pctx)
+	}
+	return nil
 }
 
-func (s *Service) mustContext(id domain.PauseID) (pauseContext, error) {
+func (s *Service) mustContext(ctx context.Context, id domain.PauseID) (pauseContext, error) {
 	s.contextsMu.Lock()
-	defer s.contextsMu.Unlock()
 	pctx, ok := s.contexts[id]
-	if !ok {
-		return pauseContext{}, &domain.Error{
-			Code:      domain.ErrCodeNotFound,
-			Message:   fmt.Sprintf("pause: Service: no remembered context for pause %q (RequestPause must be called first)", id),
-			Retryable: false,
-			Details:   map[string]string{"pause_id": string(id)},
+	s.contextsMu.Unlock()
+	if ok {
+		return pctx, nil
+	}
+	// Cross-process fallback (#7/D-16): a daemon worker resuming a pause it
+	// never requested has no in-memory entry — hydrate from the durable
+	// context rememberContext persisted, and cache it for the next step.
+	if cs, storeOK := s.Store.(pauseContextStore); storeOK {
+		loaded, found, err := cs.LoadContext(ctx, id)
+		if err != nil {
+			return pauseContext{}, err
+		}
+		if found {
+			s.contextsMu.Lock()
+			s.contexts[id] = loaded
+			s.contextsMu.Unlock()
+			return loaded, nil
 		}
 	}
-	return pctx, nil
+	return pauseContext{}, &domain.Error{
+		Code:      domain.ErrCodeNotFound,
+		Message:   fmt.Sprintf("pause: Service: no remembered context for pause %q (RequestPause must be called first)", id),
+		Retryable: false,
+		Details:   map[string]string{"pause_id": string(id)},
+	}
 }
 
 func notFoundError(verb string, id domain.PauseID) error {

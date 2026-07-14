@@ -19,16 +19,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/app/wiring"
 	"github.com/huaiche94/auspex/internal/artifacts"
+	"github.com/huaiche94/auspex/internal/buildinfo"
 	"github.com/huaiche94/auspex/internal/clock"
+	"github.com/huaiche94/auspex/internal/daemon"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/evaluation"
 	"github.com/huaiche94/auspex/internal/gitx"
+	"github.com/huaiche94/auspex/internal/httpapi"
 	"github.com/huaiche94/auspex/internal/idgen"
 	"github.com/huaiche94/auspex/internal/orchestrator"
 	"github.com/huaiche94/auspex/internal/paths"
@@ -254,6 +258,11 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		GC: orchestrator.GCDeps{
 			Runner: &retention.Engine{DB: db, Clock: clk, IDs: ids, DataDir: dirs.Data},
 		},
+		// `auspex daemon` (issue #7, M6): the resident worker drives the
+		// SAME wakeJobStore/pauseStore/gracefulPauseService composed above
+		// — the whole point is that a pause created by a short-lived hook
+		// process resumes from the daemon against the same SQLite file.
+		Daemon: composeDaemon(dirs, clk, ids, wakeJobStore, pauseStore, gracefulPauseService),
 	}
 
 	app, err := wiring.New(services)
@@ -262,4 +271,55 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		return nil, nil, fmt.Errorf("cmd/auspex: wire services: %w", err)
 	}
 	return app.RootCmd(), closeFn, nil
+}
+
+// composeDaemon assembles the M6 daemon command family's deps (issue #7):
+// broker → worker → daemon → HTTP handler, all over the same stores the
+// rest of the container uses. The LaunchAgent dir and executable path are
+// best-effort (empty on failure): only install/uninstall need them, and
+// those commands fail closed with a clear message when unresolved.
+func composeDaemon(
+	dirs paths.Dirs,
+	clk domain.Clock,
+	ids domain.IDGenerator,
+	wakeJobStore *scheduler.Store,
+	pauseStore pause.PauseStore,
+	gracefulPauseService app.GracefulPauseService,
+) orchestrator.DaemonDeps {
+	eventBroker := daemon.NewBroker()
+	worker := daemon.NewWorker(daemon.WorkerDeps{
+		Jobs:       wakeJobStore,
+		Pause:      gracefulPauseService,
+		PauseStore: pauseStore,
+		Clock:      clk,
+		IDs:        ids,
+		Events:     eventBroker,
+	})
+	d := daemon.New(daemon.Config{
+		DataDir:    dirs.Data,
+		RuntimeDir: dirs.Runtime,
+		Version:    buildinfo.Version,
+		Clock:      clk,
+		Worker:     worker,
+		NewHandler: func(token string) http.Handler {
+			return httpapi.NewHandler(httpapi.Deps{
+				Version:   buildinfo.Version,
+				StartedAt: clk.Now(),
+				Clock:     clk,
+				Jobs:      wakeJobStore,
+				Events:    eventBroker,
+			}, token)
+		},
+	})
+	exe, _ := os.Executable()
+	launchAgents := ""
+	if home, err := os.UserHomeDir(); err == nil {
+		launchAgents = filepath.Join(home, "Library", "LaunchAgents")
+	}
+	return orchestrator.DaemonDeps{
+		Daemon:         d,
+		RuntimeDir:     dirs.Runtime,
+		LaunchAgentDir: launchAgents,
+		ExecutablePath: exe,
+	}
 }

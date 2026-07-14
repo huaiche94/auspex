@@ -38,6 +38,7 @@ package pause
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -360,33 +361,26 @@ func (s *SQLiteStore) GetProgress(ctx context.Context, id domain.PauseID) (Persi
 // progress's fields back onto the same row GetProgress reads from. Called
 // once per successful Persist step (persistphase.go's own discipline), so
 // this is a single-row UPDATE per call, never a batch — matching
-// PersistPauseStore's own "never batched" contract exactly.
+// PersistPauseStore's own "never batched" contract exactly. The metadata
+// half goes through readMergedMetadata (contextstore.go) rather than a
+// whole-object rewrite so keys OTHER writers own — "reason"
+// (encodePauseMetadata) and "context" (SaveContext) — survive every
+// SaveProgress call; the merged JSON keeps this file's exact key/value
+// shapes, so decodePersistProgressMetadata reads it back unchanged.
 func (s *SQLiteStore) SaveProgress(ctx context.Context, id domain.PauseID, progress PersistProgress) error {
 	q := sqlite.QuerierFromContext(ctx, s.db)
 
-	// Preserve the existing Reason (encodePauseMetadata's own field) —
-	// SaveProgress must not silently drop it when it rewrites
-	// metadata_json for the phase-progress fields.
-	existing, found, err := s.GetByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("pause: SQLiteStore.SaveProgress: reading existing reason: %w", err)
-	}
-	if !found {
-		return &domain.Error{
-			Code:      domain.ErrCodeNotFound,
-			Message:   fmt.Sprintf("pause: SQLiteStore.SaveProgress: pause record %q not found", id),
-			Retryable: false,
-			Details:   map[string]string{"pause_id": string(id)},
-		}
-	}
-
-	meta := persistProgressMetadata{
-		Reason:                string(existing.Reason),
-		ProgressSnapshotTaken: progress.ProgressSnapshotTaken,
-		PauseRecordSaved:      progress.PauseRecordSaved,
-	}
+	wakeJobID := ""
 	if progress.WakeJobID != nil {
-		meta.WakeJobID = string(*progress.WakeJobID)
+		wakeJobID = string(*progress.WakeJobID)
+	}
+	merged, err := readMergedMetadata(ctx, q, id, "SaveProgress", map[string]json.RawMessage{
+		"progress_snapshot_taken": rawJSONBool(progress.ProgressSnapshotTaken),
+		"pause_record_saved":      rawJSONBool(progress.PauseRecordSaved),
+		"wake_job_id":             rawJSONString(wakeJobID),
+	})
+	if err != nil {
+		return err
 	}
 
 	var stateCkptID, repoCkptID sql.NullString
@@ -401,7 +395,7 @@ func (s *SQLiteStore) SaveProgress(ctx context.Context, id domain.PauseID, progr
 		UPDATE pause_records
 		SET state_checkpoint_id = ?, repository_checkpoint_id = ?, metadata_json = ?
 		WHERE id = ?
-	`, stateCkptID, repoCkptID, encodePersistProgressMetadata(meta), string(id))
+	`, stateCkptID, repoCkptID, merged, string(id))
 	if err != nil {
 		return fmt.Errorf("pause: SQLiteStore.SaveProgress: %w", err)
 	}
@@ -420,24 +414,13 @@ func (s *SQLiteStore) SaveProgress(ctx context.Context, id domain.PauseID, progr
 	return nil
 }
 
-// encodePersistProgressMetadata/decodePersistProgressMetadata hand-roll
-// the same minimal, dependency-free JSON-object encoding
-// encodePauseMetadata/decodePauseMetadata already use for the single
-// "reason" key (this file's own doc comment on those functions explains
-// why: no migration-range budget this wave for a dedicated column, and a
-// hand-rolled encode/decode keeps this file free of an encoding/json
-// dependency for a small, fixed field set). Unlike the single-key
-// original, this is a small fixed-order four-key object; each key's
-// presence/value is written unconditionally in a stable order so encoding
-// is deterministic and decoding is a straightforward per-key scan rather
-// than a general JSON parse.
-func encodePersistProgressMetadata(m persistProgressMetadata) string {
-	b := boolStr(m.ProgressSnapshotTaken)
-	p := boolStr(m.PauseRecordSaved)
-	return `{"reason":"` + jsonEscape(m.Reason) + `","progress_snapshot_taken":` + b +
-		`,"pause_record_saved":` + p + `,"wake_job_id":"` + jsonEscape(m.WakeJobID) + `"}`
-}
-
+// decodePersistProgressMetadata reads the persist-progress keys back with
+// the same minimal per-key scanners decodePauseMetadata uses. The encode
+// side moved to readMergedMetadata (contextstore.go) when metadata_json
+// gained a third writer — the "context" key — and whole-object rewrites
+// stopped being safe; the merged encoding keeps these exact key/value
+// shapes, so this decoder reads rows written before and after that change
+// identically.
 func decodePersistProgressMetadata(metadataJSON string) persistProgressMetadata {
 	return persistProgressMetadata{
 		Reason:                extractJSONStringField(metadataJSON, "reason"),
@@ -498,19 +481,6 @@ func indexOf(s, substr string) int {
 // enum value today, or WakeJobID, an ID-generator-produced string) —
 // sufficient for this hand-rolled encoding's own fixed, narrow field set,
 // not a general JSON string escaper.
-func jsonEscape(s string) string {
-	out := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '"', '\\':
-			out = append(out, '\\', s[i])
-		default:
-			out = append(out, s[i])
-		}
-	}
-	return string(out)
-}
-
 func jsonUnescape(s string) string {
 	out := make([]byte, 0, len(s))
 	for i := 0; i < len(s); i++ {

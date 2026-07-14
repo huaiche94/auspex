@@ -205,8 +205,15 @@ flowchart TD
 | schema-version 字串更名只在 pre-release 窗口允許 | 零外部使用者是唯一可行時機 | CONTRACT_FREEZE.md Amendments |
 | 實作 agent 的產出一律不 commit、lead 審查後才進 main | 品質閘門 | 工作慣例（記錄於 memory） |
 
+## D-16 — M6 daemon 形態與 loopback token 存放（issue #7 開工決策）
+
+- **日期／情境：** 2026-07-14。#7（M6 daemon）開工前，把「待決」清單裡的兩項以選項形式提請 owner 拍板。
+- **決定①（daemon 形態）：混合** —— daemon 本體是 OS 無關的前景程序（`auspex daemon run`），另提供 `auspex daemon install` 產生 macOS LaunchAgent plist（之後可加 systemd unit）。「無人值守」由 launchd KeepAlive 達成，核心邏輯保持可測試、可手動跑。未選：純手動（驗收要靠使用者自行佈署）、launchd 全自動（平台綁定最深，解除安裝與升級流程被迫同批）。
+- **決定②（token 存放）：data dir 0600 檔案** —— `<data>/daemon.token`，每次啟動輪換（ADD §27.5），與 Docker/k8s loopback 慣例一致、跨平台、可測試；#10 VS Code 擴充讀同一路徑即可。未選：macOS Keychain（darwin 專屬、CI/headless 麻煩）、每次啟動隨機不落地（客戶端每次重新發現 token，SSE 重連複雜）。
+- **實作附帶（lead 判斷，未開選項）：** pauseContext（QuotaBaseline／GitHeadBaseline／WorktreeID／PausedWorkPaths）原為 Service 的 in-memory bookkeeping，跨行程的 daemon worker 拿不到——持久化進 `pause_records.metadata_json` 既有 free-form 欄位（encodePauseMetadata／persistProgressMetadata 已建立同欄位合併式編碼先例），不新增 migration（Constitution §4.7 range 紀律）。
+- **可逆性：** 中——token 路徑與 plist 形態是單點；metadata_json 的 context 鍵一旦有 sleeping 中的 pause 依賴，變更需要 backfill。
+
 ## 待決（尚未成為決策點）
 
-- **#7 daemon 的形態**：launchd/systemd 自啟 vs 手動啟動、loopback auth token 的存放——開工前會以選項形式提問。
 - **#18 佔位動作**：需要 owner 本人註冊（auspex.tools、VS Code publisher、Open VSX）。
 - **校準閾值重審**（D-08 的重審條件觸發時）。

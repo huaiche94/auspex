@@ -58,6 +58,7 @@ func NewRootCmd() *cobra.Command {
 		newPauseCmd(),
 		newResumeCmd(),
 		newSchedulerCmd(),
+		newDaemonCmd(),
 		newStatusCmd(),
 		newDoctorCmd(),
 		newGCCmd(),
@@ -280,6 +281,34 @@ func newSchedulerCmd() *cobra.Command {
 			return notImplemented("scheduler run-once")
 		},
 	})
+	return cmd
+}
+
+// newDaemonCmd builds the `auspex daemon` stub tree (issue #7, M6; ADD
+// §24.2). Stub ONLY on this bare tree — internal/app/wiring.App.RootCmd()
+// replaces it with NewDaemonCmd (daemon.go) when the daemon is composed.
+func newDaemonCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Run and manage the Auspex background daemon",
+	}
+	for _, sub := range []struct{ use, short string }{
+		{"run", "Run the daemon in the foreground (Ctrl-C or `auspex daemon stop` to exit)"},
+		{"status", "Report whether the daemon is running (metadata + health probe)"},
+		{"stop", "Signal the running daemon to shut down gracefully"},
+		{"install", "Write a macOS LaunchAgent so the daemon starts at login and stays alive"},
+		{"uninstall", "Remove the macOS LaunchAgent (run `launchctl unload` first if loaded)"},
+	} {
+		use := sub.use
+		cmd.AddCommand(&cobra.Command{
+			Use:   use,
+			Short: sub.short,
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("daemon " + use)
+			},
+		})
+	}
 	return cmd
 }
 

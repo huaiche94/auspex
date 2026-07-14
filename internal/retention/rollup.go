@@ -186,6 +186,15 @@ type calibrationSample struct {
 	actualOutcome      *string
 	actualFailureClass *string
 	actualOutcomeAt    *string
+
+	// Identity labels copied verbatim from the prediction row's 0046
+	// columns (#11, migration 0061): the stratification keys calibration
+	// needs must survive archival, or every retention pass re-opens the
+	// unlabeled-history hole capture-before-model exists to prevent.
+	provider    *string
+	modelID     *string
+	modelFamily *string
+	effort      *string
 }
 
 // turnOutcome is the earliest terminal event observed for one turn.
@@ -244,6 +253,10 @@ func buildCalibrationSamples(ctx context.Context, db *sqlite.DB, predictionRows 
 		if v, ok := row["calibrated"].(int64); ok {
 			s.calibrated = v
 		}
+		s.provider = nullableColumnStr(row["provider"])
+		s.modelID = nullableColumnStr(row["model_id"])
+		s.modelFamily = nullableColumnStr(row["model_family"])
+		s.effort = nullableColumnStr(row["effort"])
 		if o, ok := outcomes[s.turnID]; ok {
 			// Actual side: derivable — the turn has a terminal event.
 			s.actualKnown = true
@@ -359,8 +372,9 @@ func insertCalibrationSamples(ctx context.Context, db *sqlite.DB, samples []cali
 				token_p50, token_p80, token_p90,
 				overall_risk_score, confidence, calibrated,
 				actual_known, actual_outcome, actual_failure_class, actual_outcome_at,
+				provider, model_id, model_family, effort,
 				retention_run_id, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(prediction_id) DO NOTHING
 		`,
 			s.predictionID, s.turnID, nullableStr(s.sessionID),
@@ -368,6 +382,7 @@ func insertCalibrationSamples(ctx context.Context, db *sqlite.DB, samples []cali
 			nullableI64(s.tokenP50), nullableI64(s.tokenP80), nullableI64(s.tokenP90),
 			s.overallRiskScore, s.confidence, s.calibrated,
 			actualKnown, nullableStr(s.actualOutcome), nullableStr(s.actualFailureClass), nullableStr(s.actualOutcomeAt),
+			nullableStr(s.provider), nullableStr(s.modelID), nullableStr(s.modelFamily), nullableStr(s.effort),
 			runID, createdAt,
 		)
 		if err != nil {
@@ -399,6 +414,15 @@ func stringOrEmpty(v any) string {
 func int64Ptr(v any) *int64 {
 	if i, ok := v.(int64); ok {
 		return &i
+	}
+	return nil
+}
+
+// nullableColumnStr reads a scanned nullable TEXT column: NULL (or a row
+// map that predates the column entirely) stays nil, never "".
+func nullableColumnStr(v any) *string {
+	if s, ok := v.(string); ok {
+		return &s
 	}
 	return nil
 }

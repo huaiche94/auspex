@@ -2,3 +2,4 @@
 *.swp
 .claude/settings.local.json
 .claude/worktrees/
+__pycache__/

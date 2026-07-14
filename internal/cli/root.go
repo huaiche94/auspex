@@ -61,6 +61,7 @@ func NewRootCmd() *cobra.Command {
 		newStatusCmd(),
 		newDoctorCmd(),
 		newGCCmd(),
+		newExportCmd(),
 	)
 
 	return WithJSONErrorRendering(root)
@@ -312,6 +313,25 @@ func newGCCmd() *cobra.Command {
 			return notImplemented("gc")
 		},
 	}
+}
+
+// newExportCmd builds `auspex export`. Stub: the real calibration export
+// (FR-170/171, issue #11) needs the retention engine's *sqlite.DB wiring,
+// same gating as gc — internal/app/wiring swaps in the real handler.
+func newExportCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export de-identified datasets for offline analysis",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "calibration",
+		Short: "Export prediction-vs-actual calibration pairs as JSONL",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("export calibration")
+		},
+	})
+	return cmd
 }
 
 // newDoctorCmd builds `auspex doctor`. Stub: environment/provider

@@ -2,13 +2,11 @@ name: CI
 
 # vertical-slice CI scaffold (qa-01). Mirrors Auspex_ADD.md §30.3's ci.yml jobs
 # (format / vet / golangci-lint / unit+integration / race / build) that are
-# in scope for the current vertical slice. VS Code lint/test/build,
-# JSON Schema checks, docs link/fence checks, and migration tests are not
-# yet applicable — no vscode/ tree, no JSON Schema artifacts, and no
-# migration files exist yet in this wave (foundation-06 is still pending)
-# — and are deliberately left for a later CI node once those trees exist,
-# rather than scaffolding jobs against paths that don't exist yet
-# (Constitution §7 rule 10).
+# in scope for the current vertical slice, plus the vscode job added when
+# the vscode/ tree landed (issue #10). JSON Schema checks, docs link/fence
+# checks, and migration tests remain deliberately left for a later CI node
+# once those trees exist, rather than scaffolding jobs against paths that
+# don't exist yet (Constitution §7 rule 10).
 #
 # All steps below call into Taskfile.yml/Makefile targets rather than
 # reimplementing raw go/golangci-lint invocations, per this node's
@@ -130,3 +128,35 @@ jobs:
       - name: task test:short (no race on Windows)
         if: runner.os == 'Windows'
         run: task test:short
+
+  # VS Code companion extension (issue #10): typecheck/build + unit tests
+  # via Node's built-in test runner. Ubuntu-only — the extension is pure
+  # TypeScript over Node built-ins (no native modules, no OS-conditional
+  # code paths at build time; the per-OS path logic is unit-tested with
+  # injected env on any host), so one OS gives full signal. Node version
+  # is EXACT per the same pinning policy as GO_VERSION above.
+  vscode:
+    name: vscode extension (ubuntu-latest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vscode
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.11.0"
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: build + unit tests (node --test)
+        run: npm test

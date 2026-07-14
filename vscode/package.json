@@ -1,0 +1,102 @@
+{
+  "name": "auspex",
+  "displayName": "Auspex",
+  "description": "Companion extension for the Auspex daemon: live status, wake-job queue, and scheduled-resume cancellation (issue #10; ADD §8.4, FR-162/163/164).",
+  "version": "0.1.0",
+  "publisher": "auspex",
+  "license": "Apache-2.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/huaiche94/auspex.git",
+    "directory": "vscode"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "auspex.refresh",
+        "category": "Auspex",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "auspex.cancelScheduledResume",
+        "category": "Auspex",
+        "title": "Cancel Scheduled Resume"
+      },
+      {
+        "command": "auspex.showRawStatus",
+        "category": "Auspex",
+        "title": "Show Raw Status"
+      },
+      {
+        "command": "auspex.cancelJob",
+        "category": "Auspex",
+        "title": "Cancel Wake Job",
+        "icon": "$(stop-circle)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "auspex",
+          "title": "Auspex",
+          "icon": "media/auspex.svg"
+        }
+      ]
+    },
+    "views": {
+      "auspex": [
+        {
+          "id": "auspexStatus",
+          "name": "Status",
+          "icon": "media/auspex.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "auspex.refresh",
+          "when": "view == auspexStatus",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "auspex.cancelJob",
+          "when": "view == auspexStatus && viewItem == auspex.job.scheduled",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "auspex.cancelJob",
+          "when": "false"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "pretest": "npm run build",
+    "test": "node scripts/run-tests.js",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.8",
+    "@types/vscode": "1.90.0",
+    "typescript": "5.5.4"
+  }
+}

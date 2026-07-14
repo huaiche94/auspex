@@ -307,7 +307,12 @@ func composeDaemon(
 				StartedAt: clk.Now(),
 				Clock:     clk,
 				Jobs:      wakeJobStore,
-				Events:    eventBroker,
+				// Cancel is the FR-163 mutation (#10): the VS Code
+				// companion's "cancel scheduled resume" POSTs against the
+				// SAME store the worker claims from, so the conditional
+				// UPDATE in scheduler.Cancel is what arbitrates the race.
+				Cancel: wakeJobStore,
+				Events: eventBroker,
 			}, token)
 		},
 	})

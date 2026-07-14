@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Auspex: a bird-augur's sighting arc over a horizon — simple, currentColor-only so it follows the theme. -->
+  <path d="M3 17c2.5-6 6-9 9-9s6.5 3 9 9" />
+  <circle cx="12" cy="13" r="1.6" />
+  <path d="M4 20h16" />
+</svg>

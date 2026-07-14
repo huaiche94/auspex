@@ -3,3 +3,8 @@
 .claude/settings.local.json
 .claude/worktrees/
 __pycache__/
+
+# VS Code extension build outputs (issue #10)
+vscode/node_modules/
+vscode/out/
+vscode/*.vsix

@@ -3,12 +3,13 @@
 // internal/cli/errorcontract_test.go long documented as "does not exist in
 // this repository": it exists now because the daemon does.
 //
-// Scope this wave is the READ surface plus the live event stream: health /
-// version / capabilities / status / scheduler jobs / events/stream. The
-// §23.4 pause-mutation endpoints (POST /v1/pauses, :cancel, :resume) are
-// deliberately deferred to the VS Code companion wave (#10) — their only
-// named consumer — per Constitution §7 rule 10 (one milestone at a time);
-// `auspex pause|resume` already covers manual mutation on this machine.
+// Scope: the READ surface plus the live event stream (health / version /
+// capabilities / status / scheduler jobs / events/stream, the #7 wave) and
+// the ONE mutation the VS Code companion wave (#10, FR-163) needs: POST
+// /v1/scheduler/jobs/{id}/cancel. The remaining §23.4 pause-mutation
+// endpoints (POST /v1/pauses, :cancel, :resume) stay deferred per
+// Constitution §7 rule 10 (one milestone at a time); `auspex pause|resume`
+// already covers manual mutation on this machine.
 //
 // Security posture (§23.2, §27.5): every endpoint requires
 // `Authorization: Bearer <token>` (constant-time compare), the Host header
@@ -46,17 +47,28 @@ type JobLister interface {
 	List(ctx context.Context) ([]scheduler.Job, error)
 }
 
+// JobCanceller is the narrow slice of scheduler.Store the API mutates —
+// the single FR-163 write (issue #10: "cancel scheduled resume") added to
+// an otherwise read-only surface. Kept as its own interface rather than
+// widening JobLister so read-only compositions (and tests) can keep wiring
+// a lister without granting mutation.
+type JobCanceller interface {
+	Cancel(ctx context.Context, id domain.WakeJobID) (scheduler.Job, error)
+}
+
 // EventSource is the narrow slice of daemon.Broker the API reads.
 type EventSource interface {
 	Subscribe() (<-chan protocol.Event, func())
 }
 
-// Deps bundles the read-only sources the handlers serve from.
+// Deps bundles the sources the handlers serve from. All fields except
+// Cancel are read-only; Cancel is the FR-163 mutation (see JobCanceller).
 type Deps struct {
 	Version   string
 	StartedAt time.Time
 	Clock     domain.Clock
 	Jobs      JobLister
+	Cancel    JobCanceller
 	Events    EventSource
 }
 
@@ -69,6 +81,7 @@ func NewHandler(deps Deps, bearerToken string) http.Handler {
 	mux.HandleFunc("GET /v1/capabilities", deps.handleCapabilities)
 	mux.HandleFunc("GET /v1/status", deps.handleStatus)
 	mux.HandleFunc("GET /v1/scheduler/jobs", deps.handleJobs)
+	mux.HandleFunc("POST /v1/scheduler/jobs/{id}/cancel", deps.handleJobCancel)
 	mux.HandleFunc("GET /v1/events/stream", deps.handleEvents)
 	return guard(mux, bearerToken)
 }
@@ -199,7 +212,8 @@ func (d Deps) handleCapabilities(w http.ResponseWriter, _ *http.Request) {
 		SchemaVersion: "auspex.daemon.capabilities.v1",
 		Endpoints: []string{
 			"/v1/health", "/v1/version", "/v1/capabilities",
-			"/v1/status", "/v1/scheduler/jobs", "/v1/events/stream",
+			"/v1/status", "/v1/scheduler/jobs", "/v1/scheduler/jobs/{id}/cancel",
+			"/v1/events/stream",
 		},
 		SSE: true,
 	})
@@ -270,13 +284,72 @@ func (d Deps) handleJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	views := make([]jobView, 0, len(jobs))
 	for _, j := range jobs {
-		views = append(views, jobView{
-			ID: string(j.ID), PauseID: string(j.PauseID), Kind: j.Kind, Status: j.Status,
-			RunAfter: j.RunAfter, LeaseOwner: j.LeaseOwner, LeaseExpiry: j.LeaseExpires,
-			Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, LastError: j.LastError,
-		})
+		views = append(views, toJobView(j))
 	}
 	writeJSON(w, jobsResponse{SchemaVersion: "auspex.daemon.jobs.v1", Jobs: views})
+}
+
+// toJobView projects a scheduler.Job onto the wire shape — one projection
+// shared by the list and cancel responses so the two can never drift.
+func toJobView(j scheduler.Job) jobView {
+	return jobView{
+		ID: string(j.ID), PauseID: string(j.PauseID), Kind: j.Kind, Status: j.Status,
+		RunAfter: j.RunAfter, LeaseOwner: j.LeaseOwner, LeaseExpiry: j.LeaseExpires,
+		Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, LastError: j.LastError,
+	}
+}
+
+// jobResponse is the single-job envelope POST …/cancel returns: the
+// updated job, in the SAME jobView shape the list endpoint serves, under
+// its own schema identifier.
+type jobResponse struct {
+	SchemaVersion string  `json:"schema_version"`
+	Job           jobView `json:"job"`
+}
+
+// handleJobCancel is FR-163's API half (issue #10): POST
+// /v1/scheduler/jobs/{id}/cancel → scheduler.Store.Cancel, which is legal
+// only from `scheduled` (cancel.go documents the state rules and the
+// claim-vs-cancel race resolution). Domain error codes map onto HTTP the
+// same way the read handlers' §23.5 envelope does: not_found → 404,
+// conflict → 409 (job already leased/done/dead), validation → 400.
+func (d Deps) handleJobCancel(w http.ResponseWriter, r *http.Request) {
+	if d.Cancel == nil {
+		writeError(w, http.StatusServiceUnavailable, &domain.Error{
+			Code: domain.ErrCodeUnavailable, Message: "scheduler store not wired", Retryable: true,
+		})
+		return
+	}
+	job, err := d.Cancel.Cancel(r.Context(), domain.WakeJobID(r.PathValue("id")))
+	if err != nil {
+		writeError(w, statusForError(err), err)
+		return
+	}
+	writeJSON(w, jobResponse{SchemaVersion: "auspex.daemon.job.v1", Job: toJobView(job)})
+}
+
+// statusForError maps *domain.Error codes onto HTTP statuses for the
+// mutation path (the read handlers only ever surface 500/503, so this
+// mapping lives with the first handler that needs the fuller table).
+func statusForError(err error) int {
+	var derr *domain.Error
+	if !errors.As(err, &derr) {
+		return http.StatusInternalServerError
+	}
+	switch derr.Code {
+	case domain.ErrCodeNotFound:
+		return http.StatusNotFound
+	case domain.ErrCodeConflict:
+		return http.StatusConflict
+	case domain.ErrCodeValidation:
+		return http.StatusBadRequest
+	case domain.ErrCodeUnauthorized:
+		return http.StatusUnauthorized
+	case domain.ErrCodeUnavailable:
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 // handleEvents is the §23.4 SSE stream: one `event:`/`data:` block per

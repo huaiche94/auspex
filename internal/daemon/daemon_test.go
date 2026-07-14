@@ -53,7 +53,7 @@ func startTestDaemonIn(t *testing.T, dataDir, runtimeDir string) (daemon.RunInfo
 		NewHandler: func(token string) http.Handler {
 			return httpapi.NewHandler(httpapi.Deps{
 				Version: "test-1", StartedAt: clk.Now(), Clock: clk,
-				Jobs: wakes, Events: broker,
+				Jobs: wakes, Cancel: wakes, Events: broker,
 			}, token)
 		},
 	})

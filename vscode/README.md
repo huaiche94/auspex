@@ -59,7 +59,10 @@ gaps are tracked as issue #10 follow-ups.
 cd vscode
 npm ci
 npm run build       # tsc → out/
-npm test            # builds, then node --test out/test/
+npm test            # builds, then scripts/run-tests.js (node --test with
+                    # an explicit file list; fails loudly if zero test
+                    # files are discovered — the script's comment explains
+                    # the Node 20 vs 22 --test path-semantics difference)
 ```
 
 Dependency versions are pinned **exactly** (no `^`/`~` floats), matching

@@ -91,7 +91,7 @@
     "build": "tsc -p ./",
     "typecheck": "tsc -p ./ --noEmit",
     "pretest": "npm run build",
-    "test": "node --test out/test/",
+    "test": "node scripts/run-tests.js",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

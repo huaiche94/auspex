@@ -52,6 +52,15 @@ func ClassifyTask(in ClassifierInput) Classification {
 
 	hasVerb := pf.HasFixVerb || pf.HasImplementVerb || pf.HasRefactorVerb ||
 		pf.HasInvestigateVerb || pf.HasMigrateVerb
+	// hasActionVerb gates the investigate cases below (#49): fix/refactor/
+	// implement predict the WORKLOAD, investigate only the framing — "review
+	// and refactor the policy engine" is a refactor someone asked to be
+	// careful about, not an inspection. Without this guard, #42's widened
+	// investigate vocabulary ("review", "understand", "audit" — everyday
+	// words inside action prompts) shadowed every action class and pushed
+	// the heaviest turns onto inspection's smallest cold-start multiplier:
+	// the worst under-forecast direction for a runway guard.
+	hasActionVerb := pf.HasFixVerb || pf.HasImplementVerb || pf.HasRefactorVerb
 	hasIndicator := pf.MentionsTests || pf.MentionsSecurity || pf.MentionsPerformance ||
 		pf.MentionsDocumentation || pf.LongDocumentIndicator || pf.QuestionIndicator ||
 		pf.RepositoryWideIndicator
@@ -83,13 +92,20 @@ func ClassifyTask(in ClassifierInput) Classification {
 		return classified(TaskClassDocumentationLong, ReasonLongDocIndicator)
 	case progressSaysDocSection && pf.MentionsDocumentation:
 		return classified(TaskClassDocumentationLong, ReasonDocumentSectionNode, ReasonDocIndicator)
+	// Deliberately NOT guarded on HasImplementVerb (#49 finding 2, kept as
+	// designed): "write a tutorial" / "add a README" are documentation work
+	// phrased with implement verbs, and docs-beats-implement is pinned by
+	// the #42 acceptance tests. The known cost is the rarer inverse ("add a
+	// guide generator" — code work about docs) under-forecasting as
+	// documentation-short; a boolean feature set cannot split these two, so
+	// revisit only with calibration data (#11), not another vocabulary rule.
 	case pf.MentionsDocumentation && !pf.HasFixVerb && !pf.HasRefactorVerb:
 		return classified(TaskClassDocumentationShort, ReasonDocIndicator)
 	case pf.MentionsTests && !pf.HasFixVerb && !pf.HasRefactorVerb && !pf.HasImplementVerb:
 		return classified(TaskClassTestOnly, ReasonTestOnlyIndicator)
-	case pf.HasInvestigateVerb && pf.MentionsPerformance:
+	case pf.HasInvestigateVerb && pf.MentionsPerformance && !hasActionVerb:
 		return classified(TaskClassPerformanceInvestigation, ReasonInvestigateVerb, ReasonPerformanceIndicator)
-	case pf.HasInvestigateVerb:
+	case pf.HasInvestigateVerb && !hasActionVerb:
 		return classified(TaskClassInspection, ReasonInvestigateVerb)
 	case pf.QuestionIndicator && !hasVerb:
 		return classified(TaskClassQuestion, ReasonQuestionIndicator)

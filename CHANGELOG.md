@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Migration runner applies backfilled (gap-numbered) migrations**
+  ([#22](https://github.com/huaiche94/auspex/issues/22)): `Migrate` now
+  computes pending work as a set difference against `schema_migrations`
+  instead of "everything above `MAX(version)`". Under the per-domain
+  migration-range numbering (CONTRACT_FREEZE.md), a migration can land
+  with a lower number than ranges already applied — 0045 (predictions
+  context projection) landed after 0050–0052 shipped and was silently
+  skipped forever on databases already at 52, breaking every
+  `EvaluateTurn` insert invisibly behind the hooks' fail-open contract.
+  The `ErrSchemaNewerThanBinary` fail-closed check is unchanged (still
+  keyed on the maximum applied version). Databases affected by the 0045
+  gap self-heal on next startup.
+
 ### Changed
 
 - **Renamed the product Preflight → Auspex** (ADR-045, supersedes

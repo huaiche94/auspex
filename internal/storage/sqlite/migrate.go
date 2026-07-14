@@ -56,6 +56,18 @@ type Migration struct {
 	// Version is the migration's numeric prefix (e.g. 3 for
 	// "0003_add_repositories.sql"). Versions must be unique and are
 	// applied in ascending order.
+	//
+	// Versions are assigned in per-domain RANGES (CONTRACT_FREEZE.md's
+	// migration-range table), not chronologically, so a migration may
+	// legitimately land in git AFTER higher-numbered ranges have already
+	// been applied to real databases (issue #22: 0045 landed after
+	// 0050-0052 shipped). Migrate applies such a backfilled migration on
+	// those databases too — which means its SQL executes after
+	// higher-numbered migrations have already run. A backfilled migration
+	// therefore must not depend on ordering relative to ranges above its
+	// own; additive statements against its own domain's tables (the only
+	// kind of backfill that has occurred in practice) satisfy this
+	// trivially.
 	Version int
 	// Name is the migration filename's descriptive suffix (e.g.
 	// "add_repositories" for "0003_add_repositories.sql"), used only for
@@ -148,24 +160,35 @@ func LoadMigrationsFS(fsys fs.FS, root string) ([]Migration, error) {
 	return migrations, nil
 }
 
-// Migrate applies every migration in migrations whose Version is greater
-// than the database's current highest applied version, in ascending order,
-// each inside its own transaction. It is idempotent and safe to call on
-// every process startup:
+// Migrate applies every migration in migrations whose Version is not yet
+// recorded in schema_migrations, in ascending version order, all inside
+// one write-locked transaction. Pending work is computed as a SET
+// DIFFERENCE against the applied rows — NOT as "everything above
+// MAX(version)" — because versions are assigned in per-domain ranges
+// (see Migration.Version), so a newly-landed migration can carry a lower
+// number than migrations already applied; max-version semantics silently
+// skipped such backfills forever (issue #22, the 0045 incident). Migrate
+// is idempotent and safe to call on every process startup:
 //
 //   - empty database: schema_migrations is created, then every migration
 //     is applied in order (a "migration from empty database" run);
 //   - reopen with nothing new to apply: schema_migrations already reflects
 //     every migration in `migrations`; Migrate is a fast no-op;
 //   - reopen with new migrations added to the binary since last run: only
-//     the new, higher-versioned migrations are applied;
+//     the missing ones are applied — including a backfilled migration
+//     whose version sits BELOW the database's current maximum;
 //   - reopen where the database's highest applied version is HIGHER than
 //     any version in `migrations` (this binary is older than whatever
 //     last migrated this database): Migrate returns
 //     ErrSchemaNewerThanBinary and applies nothing, per ADD §12.5's
 //     fail-closed "refuse writes" rule. Callers MUST check for this error
 //     specifically and switch to read-only diagnostics mode rather than
-//     proceeding as if migration succeeded.
+//     proceeding as if migration succeeded. The check is deliberately
+//     keyed on the MAXIMUM applied version only: an applied version this
+//     binary doesn't know about but which sits below the binary's own
+//     maximum is a backfill this binary predates — already applied, so
+//     ignoring it is correct — not evidence the whole database is ahead
+//     of the binary.
 //
 // With zero migrations passed (this node's actual state — no .sql files
 // exist yet), Migrate creates schema_migrations and returns nil: a
@@ -208,7 +231,7 @@ func (d *DB) Migrate(ctx context.Context, migrations []Migration) error {
 	copy(sorted, migrations)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Version < sorted[j].Version })
 
-	current, err := currentVersionOn(ctx, conn)
+	applied, maxApplied, err := appliedVersionsOn(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -219,12 +242,12 @@ func (d *DB) Migrate(ctx context.Context, migrations []Migration) error {
 			maxKnown = m.Version
 		}
 	}
-	if current > maxKnown {
-		return fmt.Errorf("%w: database is at version %d, binary knows up to %d", ErrSchemaNewerThanBinary, current, maxKnown)
+	if maxApplied > maxKnown {
+		return fmt.Errorf("%w: database is at version %d, binary knows up to %d", ErrSchemaNewerThanBinary, maxApplied, maxKnown)
 	}
 
 	for _, m := range sorted {
-		if m.Version <= current {
+		if applied[m.Version] {
 			continue
 		}
 		if _, err := conn.ExecContext(ctx, m.SQL); err != nil {
@@ -256,11 +279,40 @@ func (d *DB) CurrentVersion(ctx context.Context) (int, error) {
 	return currentVersionOn(ctx, d.sqlDB)
 }
 
+// appliedVersionsOn reads the full set of applied migration versions (and
+// their maximum, 0 when none) through q — Migrate's reserved *sql.Conn
+// holding the BEGIN IMMEDIATE write lock. The whole set, not just the max,
+// is what Migrate's set-difference application needs: a backfilled version
+// below the max is exactly the row a max-only read cannot see (issue #22).
+func appliedVersionsOn(ctx context.Context, q Querier) (map[int]bool, int, error) {
+	rows, err := q.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	if err != nil {
+		return nil, 0, fmt.Errorf("sqlite: reading applied schema versions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	applied := make(map[int]bool)
+	maxApplied := 0
+	for rows.Next() {
+		var version int
+		if err := rows.Scan(&version); err != nil {
+			return nil, 0, fmt.Errorf("sqlite: reading applied schema versions: %w", err)
+		}
+		applied[version] = true
+		if version > maxApplied {
+			maxApplied = version
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("sqlite: reading applied schema versions: %w", err)
+	}
+	return applied, maxApplied, nil
+}
+
 // currentVersionOn reads the highest applied migration version through q,
-// which is either d.sqlDB (CurrentVersion's plain-pool read) or a single
-// reserved *sql.Conn already holding Migrate's BEGIN IMMEDIATE write lock
-// (Migrate's read-then-apply sequence) — both satisfy Querier's
-// QueryRowContext method.
+// which is d.sqlDB on CurrentVersion's plain-pool read — kept for
+// CurrentVersion's public max-version report (diagnostics), which is
+// unaffected by Migrate's set-difference application.
 func currentVersionOn(ctx context.Context, q Querier) (int, error) {
 	var version *int
 	row := q.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`)

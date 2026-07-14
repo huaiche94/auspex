@@ -170,6 +170,116 @@ func TestMigrate_Reopen_AppliesOnlyNewMigrations(t *testing.T) {
 	}
 }
 
+// --- backfilled gap migrations applied (issue #22) -------------------------
+
+func TestMigrate_Reopen_AppliesBackfilledGapMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "auspex.db")
+	ctx := context.Background()
+
+	// First run: versions 10 and 50 applied — the database's max is 50.
+	db1, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (first): %v", err)
+	}
+	if err := db1.Migrate(ctx, []sqlite.Migration{
+		{Version: 10, Name: "create_t", SQL: `CREATE TABLE t (id INTEGER PRIMARY KEY)`},
+		{Version: 50, Name: "create_u", SQL: `CREATE TABLE u (id INTEGER PRIMARY KEY)`},
+	}); err != nil {
+		t.Fatalf("Migrate (first): %v", err)
+	}
+	if err := db1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Second run: the binary now also ships version 45 — a backfill into
+	// a range BELOW the database's applied maximum (the issue-#22 shape:
+	// 0045 landing after 0050-0052 shipped). Max-version semantics
+	// skipped it forever; set-difference semantics must apply it.
+	db2, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (second): %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	backfilled := []sqlite.Migration{
+		{Version: 10, Name: "create_t", SQL: `CREATE TABLE t (id INTEGER PRIMARY KEY)`},
+		{Version: 45, Name: "add_column", SQL: `ALTER TABLE t ADD COLUMN extra REAL`},
+		{Version: 50, Name: "create_u", SQL: `CREATE TABLE u (id INTEGER PRIMARY KEY)`},
+	}
+	if err := db2.Migrate(ctx, backfilled); err != nil {
+		t.Fatalf("Migrate (second, +backfilled 45): %v", err)
+	}
+
+	// The backfill's schema change is live...
+	var extra *float64
+	q := `SELECT extra FROM t LIMIT 1`
+	if _, err := db2.Conn().ExecContext(ctx, `INSERT INTO t (id, extra) VALUES (1, 0.5)`); err != nil {
+		t.Fatalf("insert into backfilled column: %v", err)
+	}
+	if err := db2.Conn().QueryRowContext(ctx, q).Scan(&extra); err != nil {
+		t.Fatalf("read backfilled column: %v", err)
+	}
+
+	// ...its audit row is recorded...
+	var name string
+	row := db2.Conn().QueryRowContext(ctx, `SELECT name FROM schema_migrations WHERE version = 45`)
+	if err := row.Scan(&name); err != nil {
+		t.Fatalf("schema_migrations row for backfilled version 45: %v", err)
+	}
+	if name != "add_column" {
+		t.Errorf("schema_migrations name for 45 = %q, want %q", name, "add_column")
+	}
+
+	// ...and a third run with the same set is an idempotent no-op (the
+	// ALTER would error if re-executed).
+	if err := db2.Migrate(ctx, backfilled); err != nil {
+		t.Fatalf("Migrate (third, idempotent after backfill): %v", err)
+	}
+}
+
+func TestMigrate_AppliedVersionUnknownToBinary_BelowMax_Ignored(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "auspex.db")
+	ctx := context.Background()
+
+	// A newer binary applied a backfilled version 45 alongside 10 and 50.
+	db1, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (first): %v", err)
+	}
+	if err := db1.Migrate(ctx, []sqlite.Migration{
+		{Version: 10, Name: "create_t", SQL: `CREATE TABLE t (id INTEGER PRIMARY KEY)`},
+		{Version: 45, Name: "add_column", SQL: `ALTER TABLE t ADD COLUMN extra REAL`},
+		{Version: 50, Name: "create_u", SQL: `CREATE TABLE u (id INTEGER PRIMARY KEY)`},
+	}); err != nil {
+		t.Fatalf("Migrate (first): %v", err)
+	}
+	if err := db1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// An older binary that predates the backfill (knows 10 and 50 only,
+	// max 50) reopens the database. Version 45 is applied-but-unknown,
+	// yet sits below the binary's own max — that is a backfill this
+	// binary predates, not a database from the future, so Migrate must
+	// no-op cleanly rather than fail or (worse) try to reconcile it. The
+	// fail-closed ErrSchemaNewerThanBinary check stays keyed on the
+	// MAXIMUM applied version only.
+	db2, err := sqlite.Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open (second): %v", err)
+	}
+	defer func() { _ = db2.Close() }()
+
+	if err := db2.Migrate(ctx, []sqlite.Migration{
+		{Version: 10, Name: "create_t", SQL: `CREATE TABLE t (id INTEGER PRIMARY KEY)`},
+		{Version: 50, Name: "create_u", SQL: `CREATE TABLE u (id INTEGER PRIMARY KEY)`},
+	}); err != nil {
+		t.Fatalf("Migrate (older binary, applied-unknown 45 below max): %v", err)
+	}
+}
+
 // --- newer schema rejected safely (agents/foundation.md "Required tests") --
 
 func TestMigrate_DatabaseNewerThanBinary_RejectsSafely(t *testing.T) {

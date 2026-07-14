@@ -9,6 +9,7 @@ package claude
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/huaiche94/auspex/internal/domain"
@@ -90,14 +91,59 @@ type rawStatusLine struct {
 }
 
 type rawRateWindow struct {
-	UsedPercentage *float64   `json:"used_percentage"`
-	ResetsAt       *time.Time `json:"resets_at"`
+	UsedPercentage *float64       `json:"used_percentage"`
+	ResetsAt       *flexTimestamp `json:"resets_at"`
+}
+
+// flexTimestamp decodes the two encodings resets_at has appeared in: Unix
+// epoch seconds (the documented on-wire shape — statusline.md "rate_limits")
+// and RFC3339 strings (the shape this parser originally assumed, kept so
+// older hand-authored payloads stay parseable). Any other shape decodes to
+// "unknown" WITHOUT returning an error: encoding/json aborts the entire
+// Unmarshal on a single recognized-field error, and issue #27's incident
+// showed what that costs — rate_limits appears only after a session's first
+// API response, so every later payload failed wholesale, blanking the
+// statusline and silencing quota/context/usage ingest for the rest of every
+// real session. One unrecognized field must degrade to nil, never take the
+// whole snapshot down.
+type flexTimestamp struct {
+	t  time.Time
+	ok bool
+}
+
+func (f *flexTimestamp) UnmarshalJSON(b []byte) error {
+	var epoch float64
+	if err := json.Unmarshal(b, &epoch); err == nil {
+		sec, frac := math.Modf(epoch)
+		f.t = time.Unix(int64(sec), int64(frac*1e9)).UTC()
+		f.ok = true
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		if t, perr := time.Parse(time.RFC3339, s); perr == nil {
+			f.t, f.ok = t, true
+		}
+		return nil
+	}
+	return nil
+}
+
+// timePtr returns the decoded timestamp, or nil when the field was absent,
+// null, or an unrecognized shape.
+func (f *flexTimestamp) timePtr() *time.Time {
+	if f == nil || !f.ok {
+		return nil
+	}
+	t := f.t
+	return &t
 }
 
 // ParseStatusLine parses a single Claude Code status-line JSON snapshot
 // (read from stdin per ADD §22.5). It tolerates unknown fields at any
-// nesting level and never substitutes a zero value for a field that was
-// null or absent in the source payload.
+// nesting level, tolerates unrecognized encodings of recognized fields by
+// degrading them to unknown (see flexTimestamp), and never substitutes a
+// zero value for a field that was null or absent in the source payload.
 //
 // A malformed (syntactically invalid) payload returns a *domain.Error with
 // Code ErrCodeValidation so callers (the hook wrapper) can fall back to a
@@ -152,11 +198,11 @@ func ParseStatusLine(raw []byte) (StatusLineSnapshot, error) {
 	if r.RateLimits != nil {
 		if r.RateLimits.FiveHour != nil {
 			snap.FiveHourUsedPercent = r.RateLimits.FiveHour.UsedPercentage
-			snap.FiveHourResetsAt = r.RateLimits.FiveHour.ResetsAt
+			snap.FiveHourResetsAt = r.RateLimits.FiveHour.ResetsAt.timePtr()
 		}
 		if r.RateLimits.SevenDay != nil {
 			snap.SevenDayUsedPercent = r.RateLimits.SevenDay.UsedPercentage
-			snap.SevenDayResetsAt = r.RateLimits.SevenDay.ResetsAt
+			snap.SevenDayResetsAt = r.RateLimits.SevenDay.ResetsAt.timePtr()
 		}
 	}
 

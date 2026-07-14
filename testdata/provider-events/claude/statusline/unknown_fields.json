@@ -26,11 +26,11 @@
   "rate_limits": {
     "five_hour": {
       "used_percentage": 5.1,
-      "resets_at": "2026-07-12T20:00:00Z"
+      "resets_at": 1783886400
     },
     "seven_day": {
       "used_percentage": 2.0,
-      "resets_at": "2026-07-18T00:00:00Z"
+      "resets_at": 1784332800
     }
   },
   "some_future_top_level_field": {

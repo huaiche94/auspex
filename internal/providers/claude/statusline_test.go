@@ -157,6 +157,52 @@ func TestParseStatusLine(t *testing.T) {
 	}
 }
 
+// TestParseStatusLine_ResetsAtEncodings pins issue #27's fix: Claude Code
+// sends rate_limits.*.resets_at as Unix epoch seconds (statusline.md), the
+// parser originally demanded RFC3339, and because encoding/json aborts the
+// whole Unmarshal on one recognized-field mismatch — and rate_limits only
+// appears after the session's first API response — every later payload of
+// every real session failed wholesale (bare statusline, zero
+// quota/context/usage ingest). Both real encodings must parse, and an
+// unrecognized shape must degrade to nil while the REST of the snapshot
+// (model, session) survives.
+func TestParseStatusLine_ResetsAtEncodings(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string // JSON value for resets_at
+		want *time.Time
+	}{
+		{"epoch seconds", "1783879200", ptr(time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC))},
+		{"epoch with fraction", "1783879200.5", ptr(time.Date(2026, 7, 12, 18, 0, 0, 500000000, time.UTC))},
+		{"rfc3339 string", `"2026-07-12T18:00:00Z"`, ptr(time.Date(2026, 7, 12, 18, 0, 0, 0, time.UTC))},
+		{"unparseable string degrades to nil", `"soon"`, nil},
+		{"object degrades to nil", `{"seconds":1}`, nil},
+		{"boolean degrades to nil", "true", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := `{"session_id":"sess_1","model":{"display_name":"Fable 5"},` +
+				`"rate_limits":{"five_hour":{"used_percentage":5.1,"resets_at":` + tc.raw + `}}}`
+			snap, err := ParseStatusLine([]byte(payload))
+			if err != nil {
+				t.Fatalf("ParseStatusLine must never fail on a resets_at shape, got: %v", err)
+			}
+			if snap.ModelDisplayName == nil || *snap.ModelDisplayName != "Fable 5" {
+				t.Errorf("ModelDisplayName = %v — the rest of the snapshot must survive", snap.ModelDisplayName)
+			}
+			if snap.FiveHourUsedPercent == nil || *snap.FiveHourUsedPercent != 5.1 {
+				t.Errorf("FiveHourUsedPercent = %v, want 5.1", snap.FiveHourUsedPercent)
+			}
+			switch {
+			case tc.want == nil && snap.FiveHourResetsAt != nil:
+				t.Errorf("FiveHourResetsAt = %v, want nil (unknown, not an error)", snap.FiveHourResetsAt)
+			case tc.want != nil && (snap.FiveHourResetsAt == nil || !snap.FiveHourResetsAt.Equal(*tc.want)):
+				t.Errorf("FiveHourResetsAt = %v, want %v", snap.FiveHourResetsAt, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseStatusLine_EmptySessionID(t *testing.T) {
 	_, err := ParseStatusLine([]byte(`{"session_id": ""}`))
 	if err == nil {

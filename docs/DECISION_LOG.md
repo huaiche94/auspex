@@ -152,6 +152,7 @@ flowchart TD
 - **日期／情境：** 2026-07-13。Owner 提出：Claude 有 session (5hr)、weekly (all models)、weekly (Fable) 多種限制，該看哪個？稽核發現 parser 寫死只認 `five_hour`/`seven_day`，per-model weekly 被靜默丟棄；domain 層本已支援 N 視窗。
 - **選項：** ①**全部抓 + binding constraint（✅）**——parser 泛型化（未知視窗照收，forward compatible），policy 對每視窗投影後取最早耗盡者。優：永遠看到真瓶頸、provider 改限制免改程式。缺：卡片多一行。Blast radius：小。②只看 5hr——weekly 撞牆全盲，且 Codex 已移除 5hr、此路正在變窄。③只看最嚴 weekly——短 session 內 5hr binding 時會錯過即時風險，且 per-model 視窗不看 model 歸屬會誤報。
 - **後果：** issue #21 追蹤實作；與 #20 Phase 0 綁定（weekly (Fable) 是否 binding 取決於 turn 的 model）。第一步是在 owner 機器抓一次真實 statusline payload 確認 per-model 視窗的 JSON key。
+- **首個真實資料點（2026-07-14，issue #27 事故）：** 真實 payload 的 `resets_at` 是 **Unix epoch 秒數（數字）**，非 fixtures 手寫時假定的 RFC3339 字串——parser 因此整包拒收，且 `rate_limits` 只在 session 首次 API 回應後才出現，導致每個真實 session 只有開場一筆 ingest、之後 quota/context/usage 全斷（statusline 也退化成光禿 glyph、預估卡永遠 QUOTA_UNKNOWN）。hotfix #27 修復：`flexTimestamp` 同時接受 epoch/RFC3339、無法辨識的形狀降級為 unknown 而非錯誤；fixtures 改為 epoch 形狀。另確認現行 schema（Claude Code v2.1.208 文件）僅有 `five_hour`/`seven_day` 兩視窗——per-model weekly 尚未出現在 payload，#21 的視窗泛型化維持原計畫。教訓再次驗證「capture before model」：fixtures 必須源自捕捉的真實 payload，不能手寫假定。
 - **可逆性：** 高——純捕捉面擴充，policy 選擇邏輯獨立可調。
 
 ## D-12 — 下輪開場優先序（E2E 回饋 session 定案）

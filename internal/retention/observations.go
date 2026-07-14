@@ -81,6 +81,20 @@ type ObservationRecord struct {
 	TotalLinesRemoved  *int64   `json:"total_lines_removed,omitempty"`
 	ModelID            *string  `json:"model_id,omitempty"`
 
+	// provider.usage.observed, managed-run variant (issue #11: the turn-
+	// stamped usage event `auspex run` persists from the provider's own
+	// result line). Unlike the cumulative statusline fields above, these
+	// are PER-TURN samples — total_tokens (input + output; the sum choice
+	// is documented on internal/telemetry/claude's managedUsageEvent) is
+	// the per-turn actual research/calibration/report.py joins against
+	// token predictions on turn_id. All plain token counts: numeric,
+	// identity-free, safe to whitelist.
+	InputTokens              *int64 `json:"input_tokens,omitempty"`
+	OutputTokens             *int64 `json:"output_tokens,omitempty"`
+	CacheReadInputTokens     *int64 `json:"cache_read_input_tokens,omitempty"`
+	CacheCreationInputTokens *int64 `json:"cache_creation_input_tokens,omitempty"`
+	TotalTokens              *int64 `json:"total_tokens,omitempty"`
+
 	// provider.context.observed.
 	UsedTokens   *int64   `json:"used_tokens,omitempty"`
 	WindowTokens *int64   `json:"window_tokens,omitempty"`
@@ -188,6 +202,11 @@ func observationRecordFromRow(row map[string]any) ObservationRecord {
 	rec.TotalLinesAdded = payloadInt(payload, "total_lines_added")
 	rec.TotalLinesRemoved = payloadInt(payload, "total_lines_removed")
 	rec.ModelID = payloadString(payload, "model_id")
+	rec.InputTokens = payloadInt(payload, "input_tokens")
+	rec.OutputTokens = payloadInt(payload, "output_tokens")
+	rec.CacheReadInputTokens = payloadInt(payload, "cache_read_input_tokens")
+	rec.CacheCreationInputTokens = payloadInt(payload, "cache_creation_input_tokens")
+	rec.TotalTokens = payloadInt(payload, "total_tokens")
 	rec.UsedTokens = payloadInt(payload, "used_tokens")
 	rec.WindowTokens = payloadInt(payload, "window_tokens")
 	rec.UsedPercent = payloadFloat(payload, "used_percent")

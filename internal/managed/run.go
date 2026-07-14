@@ -327,6 +327,11 @@ func (r *Runner) persistTerminal(ctx context.Context, req RunRequest, turnID dom
 		TaskID:      req.TaskID,
 		ExitCode:    exitCode,
 		SpawnFailed: spawnFailed,
+		// The stream's own model declaration (system init line), "" when
+		// never observed — the normalizer stamps it onto the usage event
+		// so ADR-047's cohort ladder can family-label the token sample
+		// without guessing.
+		ModelID: stream.Model,
 	}
 	if res := stream.Result; res != nil {
 		o.ResultSeen = true
@@ -337,6 +342,12 @@ func (r *Runner) persistTerminal(ctx context.Context, req RunRequest, turnID dom
 		o.NumTurns = res.NumTurns
 		o.TotalCostUSD = res.TotalCostUSD
 		o.ResultTextLen = res.ResultTextLen
+		if u := res.Usage; u != nil {
+			o.InputTokens = u.InputTokens
+			o.OutputTokens = u.OutputTokens
+			o.CacheReadInputTokens = u.CacheReadInputTokens
+			o.CacheCreationInputTokens = u.CacheCreationInputTokens
+		}
 	}
 
 	normalizer := claudetelemetry.NewNormalizer(r.Hooks.Clock, r.Hooks.IDs)

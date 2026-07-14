@@ -18,12 +18,13 @@
 // the stream's `result` line actually carried usage figures, one
 // provider.usage.observed event. Unlike the statusline usage event
 // (cumulative session totals at an arbitrary snapshot instant, no turn
-// linkage), the managed usage event is EXACTLY one turn's cost/duration
-// as reported by the provider's own result line, so it is stamped with
-// the run's TurnID — this is the "exact outcome attribution" capability
-// ADD §8.1 lists for managed mode, and the reason its idempotency key is
-// turn-scoped rather than timestamp-scoped: a re-delivered persist of the
-// same run's outcome is the same observation, not a new one.
+// linkage), the managed usage event is EXACTLY one turn's cost/duration/
+// token figures as reported by the provider's own result line, so it is
+// stamped with the run's TurnID — this is the "exact outcome attribution"
+// capability ADD §8.1 lists for managed mode, and the reason its
+// idempotency key is turn-scoped rather than timestamp-scoped: a
+// re-delivered persist of the same run's outcome is the same observation,
+// not a new one.
 //
 // # Privacy (Constitution §7 rule 2)
 //
@@ -81,6 +82,24 @@ type ManagedRunOutcome struct {
 	// nil when the result line carried no `result` field at all — a
 	// present-but-empty result is a genuine 0.
 	ResultTextLen *int
+
+	// The result line's per-turn token counters (issue #11: the LAST
+	// capture gap — the actual tokens one turn consumed). Observed on
+	// claude CLI 2.1.201's result-line `usage` object (internal/managed/
+	// testdata/stream_recorded_hi.jsonl); each is nil when the usage
+	// object omitted it, or when the result line carried no usage object
+	// at all (older CLI) — unknown is not zero, as everywhere else here.
+	InputTokens              *int64
+	OutputTokens             *int64
+	CacheReadInputTokens     *int64
+	CacheCreationInputTokens *int64
+
+	// ModelID is the model the stream's system init line declared for the
+	// run, "" when the stream never carried one — this field must never
+	// be guessed or defaulted. Stamped onto the usage event so ADR-047's
+	// cohort ladder can family-label the token sample, exactly like the
+	// statusline usage snapshot's model_id (#20 Phase 1).
+	ModelID string
 }
 
 // Failed reports whether this outcome normalizes to provider.turn.failed
@@ -148,7 +167,9 @@ func (n *Normalizer) managedUsageEvent(o ManagedRunOutcome, observedAt time.Time
 	if !o.ResultSeen {
 		return v1.Event{}, false
 	}
-	if o.TotalCostUSD == nil && o.DurationMs == nil && o.DurationAPIMs == nil && o.NumTurns == nil {
+	if o.TotalCostUSD == nil && o.DurationMs == nil && o.DurationAPIMs == nil && o.NumTurns == nil &&
+		o.InputTokens == nil && o.OutputTokens == nil &&
+		o.CacheReadInputTokens == nil && o.CacheCreationInputTokens == nil {
 		return v1.Event{}, false
 	}
 
@@ -172,6 +193,46 @@ func (n *Normalizer) managedUsageEvent(o ManagedRunOutcome, observedAt time.Time
 	}
 	if o.NumTurns != nil {
 		payload["num_turns"] = *o.NumTurns
+	}
+
+	// Per-turn token counters (issue #11): the raw components verbatim,
+	// under the provider's own field names, so research can re-derive any
+	// aggregate later without re-capturing. Absent counters stamp nothing.
+	if o.InputTokens != nil {
+		payload["input_tokens"] = *o.InputTokens
+	}
+	if o.OutputTokens != nil {
+		payload["output_tokens"] = *o.OutputTokens
+	}
+	if o.CacheReadInputTokens != nil {
+		payload["cache_read_input_tokens"] = *o.CacheReadInputTokens
+	}
+	if o.CacheCreationInputTokens != nil {
+		payload["cache_creation_input_tokens"] = *o.CacheCreationInputTokens
+	}
+	// total_tokens is THE per-turn sample ADR-047's cohort ladder
+	// (evaluation.RecentSimilarTurnTokens) and the token forecaster's
+	// P50/P80/P90 calibration read — defined here, deliberately, as
+	// input_tokens + output_tokens ONLY. Rationale: cache reads (and
+	// cache creation) are context-window traffic — tokens replayed from
+	// or written to the prompt cache, dominated by session history the
+	// turn did not choose — while input+output is the turn's own fresh
+	// work volume, the quantity the forecast is trying to predict. This
+	// sum choice is REVISITABLE (a future calibration pass may show the
+	// cache components carry predictive signal worth folding in); the raw
+	// components are persisted alongside precisely so revisiting never
+	// requires re-capturing. Both components must be present — a total
+	// synthesized from one known and one unknown half would be a
+	// fabrication (unknown is not zero).
+	if o.InputTokens != nil && o.OutputTokens != nil {
+		payload["total_tokens"] = *o.InputTokens + *o.OutputTokens
+	}
+	// The identity label riding the measurement (never a measurement
+	// itself, so it does not by itself justify emitting the event):
+	// stamped at observation granularity, like the statusline snapshot's
+	// model_id, so cohort membership survives mid-session /model switches.
+	if o.ModelID != "" {
+		payload["model_id"] = o.ModelID
 	}
 	ev.Payload = payload
 	return ev, true

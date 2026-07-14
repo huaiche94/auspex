@@ -65,6 +65,10 @@ func TestExportObservations_SeededSeries_WhitelistedLinesInOrder(t *testing.T) {
 	// Same occurred_at as a-usage: rowid (insertion order) breaks the tie.
 	seedEvent(t, db, "a-context", "provider.context.observed", newTime.Add(1*time.Minute), "sessA", "",
 		`{"used_tokens":12000,"window_tokens":200000,"used_percent":6}`)
+	// A managed-run usage event (issue #11): turn-stamped, carrying the
+	// per-turn token counters the calibration join reads.
+	seedEvent(t, db, "a-musage", "provider.usage.observed", newTime.Add(90*time.Second), "sessA", "turn-1",
+		`{"exit_code":0,"input_tokens":2100,"output_tokens":350,"cache_read_input_tokens":14000,"cache_creation_input_tokens":4200,"total_tokens":2450,"model_id":"claude-sonnet-4-5"}`)
 	seedEvent(t, db, "a-quota", "provider.quota.observed", newTime.Add(2*time.Minute), "sessA", "",
 		`{"limit_id":"five_hour","used_percent":12.5,"resets_at":"2026-06-14T15:00:00Z"}`)
 	seedEvent(t, db, "a-done", "provider.turn.completed", newTime.Add(3*time.Minute), "sessA", "",
@@ -80,18 +84,19 @@ func TestExportObservations_SeededSeries_WhitelistedLinesInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExportObservations: %v", err)
 	}
-	if summary.Rows != 7 || summary.Sessions != 2 || summary.TurnBoundaryRows != 3 {
-		t.Fatalf("summary = %+v, want Rows=7 Sessions=2 TurnBoundaryRows=3", summary)
+	if summary.Rows != 8 || summary.Sessions != 2 || summary.TurnBoundaryRows != 3 {
+		t.Fatalf("summary = %+v, want Rows=8 Sessions=2 TurnBoundaryRows=3", summary)
 	}
 
 	records := decodeObservationLines(t, buf.Bytes())
-	if len(records) != 7 {
-		t.Fatalf("got %d records, want 7", len(records))
+	if len(records) != 8 {
+		t.Fatalf("got %d records, want 8", len(records))
 	}
 	wantOrder := []string{
 		"provider.turn.started",     // sessA newTime
 		"provider.usage.observed",   // sessA +1m (rowid before a-context)
 		"provider.context.observed", // sessA +1m
+		"provider.usage.observed",   // sessA +1m30s (managed-run, turn-stamped)
 		"provider.quota.observed",   // sessA +2m
 		"provider.turn.completed",   // sessA +3m
 		"provider.usage.observed",   // sessB +1m
@@ -108,8 +113,8 @@ func TestExportObservations_SeededSeries_WhitelistedLinesInOrder(t *testing.T) {
 		}
 	}
 
-	start, usage, contextRec, quota, done, bUsage, bFailed :=
-		records[0], records[1], records[2], records[3], records[4], records[5], records[6]
+	start, usage, contextRec, managedUsage, quota, done, bUsage, bFailed :=
+		records[0], records[1], records[2], records[3], records[4], records[5], records[6], records[7]
 
 	if start.SessionID == nil || *start.SessionID != "sessA" || start.TurnID == nil || *start.TurnID != "turn-1" {
 		t.Errorf("turn.started identity: %+v", start)
@@ -139,6 +144,26 @@ func TestExportObservations_SeededSeries_WhitelistedLinesInOrder(t *testing.T) {
 		contextRec.WindowTokens == nil || *contextRec.WindowTokens != 200000 ||
 		contextRec.UsedPercent == nil || *contextRec.UsedPercent != 6 {
 		t.Errorf("context fields: %+v", contextRec)
+	}
+
+	// The managed-run usage row: turn-stamped, with the per-turn token
+	// projection intact (issue #11's calibration join surface) — and the
+	// statusline-only fields honestly absent.
+	if managedUsage.TurnID == nil || *managedUsage.TurnID != "turn-1" {
+		t.Errorf("managed usage turn_id = %v, want turn-1 (the join key)", managedUsage.TurnID)
+	}
+	if managedUsage.InputTokens == nil || *managedUsage.InputTokens != 2100 ||
+		managedUsage.OutputTokens == nil || *managedUsage.OutputTokens != 350 ||
+		managedUsage.CacheReadInputTokens == nil || *managedUsage.CacheReadInputTokens != 14000 ||
+		managedUsage.CacheCreationInputTokens == nil || *managedUsage.CacheCreationInputTokens != 4200 ||
+		managedUsage.TotalTokens == nil || *managedUsage.TotalTokens != 2450 {
+		t.Errorf("managed usage token fields: %+v", managedUsage)
+	}
+	if managedUsage.ModelID == nil || *managedUsage.ModelID != "claude-sonnet-4-5" {
+		t.Errorf("managed usage model_id = %v", managedUsage.ModelID)
+	}
+	if managedUsage.TotalCostUSD != nil || managedUsage.TotalLinesAdded != nil {
+		t.Errorf("managed usage leaked statusline-only fields: %+v", managedUsage)
 	}
 
 	if quota.LimitID == nil || *quota.LimitID != "five_hour" ||

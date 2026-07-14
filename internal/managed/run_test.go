@@ -188,6 +188,16 @@ func TestRunner_Run_HappyPath_GatesSpawnsParsesPersists(t *testing.T) {
 	if usage.Payload["total_cost_usd"] != 0.0417 {
 		t.Errorf("usage payload = %+v, want total_cost_usd 0.0417", usage.Payload)
 	}
+	// Issue #11 end-to-end through the runner: the fixture result line's
+	// token block arrives as raw components + the input+output total, and
+	// the init line's model rides along as the cohort label.
+	if usage.Payload["input_tokens"] != int64(2100) || usage.Payload["output_tokens"] != int64(350) ||
+		usage.Payload["total_tokens"] != int64(2450) {
+		t.Errorf("usage payload = %+v, want input/output/total tokens 2100/350/2450", usage.Payload)
+	}
+	if usage.Payload["model_id"] != "claude-sonnet-4-5" {
+		t.Errorf("usage payload model_id = %v, want claude-sonnet-4-5 (from the stream's init line)", usage.Payload["model_id"])
+	}
 	if usage.TurnID != string(outcome.TurnID) {
 		t.Errorf("usage TurnID = %q, want %q (exact turn attribution)", usage.TurnID, outcome.TurnID)
 	}

@@ -8,12 +8,25 @@
 // PUBLIC stream-json output format (`claude -p --output-format
 // stream-json --verbose`: system/assistant/user lines plus a terminal
 // `result` line carrying subtype/is_error/duration_ms/duration_api_ms/
-// num_turns/result/total_cost_usd), the same format ADD §22.1 names as
-// supported path 3 — they are NOT recordings of any real session (no real
-// transcripts, costs, or session IDs; every value is a fixture value
+// num_turns/result/total_cost_usd/usage), the same format ADD §22.1 names
+// as supported path 3 — they are NOT recordings of any real session (no
+// real transcripts, costs, or session IDs; every value is a fixture value
 // chosen for assertability). stream_unknown_lines.jsonl additionally
 // contains one deliberately unknown `type` and one non-JSON line to prove
 // the skip-not-crash contract.
+//
+// testdata/stream_recorded_hi.jsonl, by contrast, IS a real recording:
+// the verbatim stdout of `claude -p "hi" --output-format stream-json
+// --verbose`, recorded from claude CLI 2.1.201 on 2026-07-14 (owner-
+// approved; a harmless "hi" exchange, IDs kept as-is). It is the ground
+// truth the issue-#11 token capture was built against: the terminal
+// `result` line carries `usage` with input_tokens/output_tokens/
+// cache_read_input_tokens/cache_creation_input_tokens, the system `init`
+// line carries `model`, and the assistant lines' own `usage` objects
+// report output_tokens=2 mid-stream while the result line reports 157
+// for the same message — the observed proof that per-message usage is a
+// streaming snapshot and only the result line's totals are the turn's
+// usage (see stream.go's file doc comment).
 package managed
 
 import (
@@ -70,6 +83,18 @@ func TestReadStream_SuccessFixture(t *testing.T) {
 	if res.ResultTextLen == nil || *res.ResultTextLen != len("Done. I added the requested test.") {
 		t.Errorf("ResultTextLen = %v, want %d", res.ResultTextLen, len("Done. I added the requested test."))
 	}
+	if res.Usage == nil {
+		t.Fatal("Usage = nil, want the result line's token block")
+	}
+	if res.Usage.InputTokens == nil || *res.Usage.InputTokens != 2100 ||
+		res.Usage.OutputTokens == nil || *res.Usage.OutputTokens != 350 ||
+		res.Usage.CacheReadInputTokens == nil || *res.Usage.CacheReadInputTokens != 14000 ||
+		res.Usage.CacheCreationInputTokens == nil || *res.Usage.CacheCreationInputTokens != 4200 {
+		t.Errorf("Usage = %+v, want in/out/cache-read/cache-create 2100/350/14000/4200", res.Usage)
+	}
+	if summary.Model != "claude-sonnet-4-5" {
+		t.Errorf("Model = %q, want the init line's claude-sonnet-4-5", summary.Model)
+	}
 	// Raw lines are relayed verbatim (the human display surface).
 	if got, want := relay.String(), readStreamFixture(t, "stream_success.jsonl"); got != want {
 		t.Errorf("relay mismatch:\ngot:  %q\nwant: %q", got, want)
@@ -93,6 +118,65 @@ func TestReadStream_ErrorFixture(t *testing.T) {
 	// be unknown (nil), not 0 — unknown is not zero.
 	if res.ResultTextLen != nil {
 		t.Errorf("ResultTextLen = %v, want nil for an absent result field", *res.ResultTextLen)
+	}
+	// … and no `usage` object either (an older CLI or a partial error
+	// line): the whole block stays nil, never four fabricated zeros.
+	if res.Usage != nil {
+		t.Errorf("Usage = %+v, want nil for an absent usage object", res.Usage)
+	}
+}
+
+// TestReadStream_RecordedRealSession parses the REAL recorded probe
+// stream verbatim (provenance in the file doc comment: claude CLI
+// 2.1.201, 2026-07-14) — the one test grounded in observed provider
+// output rather than hand-authored fixtures, so a drift between the
+// modeled shape and what the CLI actually emits fails HERE first.
+func TestReadStream_RecordedRealSession(t *testing.T) {
+	summary := readStream(strings.NewReader(readStreamFixture(t, "stream_recorded_hi.jsonl")), nil)
+
+	// 9 system lines (hook_started/hook_response/hook_progress/init), 2
+	// assistant lines, and 1 rate_limit_event line — an out-of-taxonomy
+	// type the fail-open contract counts as skipped, never fatal.
+	if summary.SystemLines != 9 || summary.AssistantLines != 2 || summary.UserLines != 0 {
+		t.Errorf("line counts = system:%d assistant:%d user:%d, want 9/2/0",
+			summary.SystemLines, summary.AssistantLines, summary.UserLines)
+	}
+	if summary.SkippedLines != 1 {
+		t.Errorf("SkippedLines = %d, want 1 (the rate_limit_event line)", summary.SkippedLines)
+	}
+	if summary.Model != "claude-fable-5" {
+		t.Errorf("Model = %q, want claude-fable-5 (the recorded init line's model)", summary.Model)
+	}
+
+	res := summary.Result
+	if res == nil {
+		t.Fatal("Result = nil, want the recorded terminal result line")
+	}
+	if res.Subtype != "success" || res.IsError == nil || *res.IsError {
+		t.Errorf("Subtype/IsError = %q/%v, want success/false", res.Subtype, res.IsError)
+	}
+	if res.DurationMs == nil || *res.DurationMs != 7758 ||
+		res.DurationAPIMs == nil || *res.DurationAPIMs != 7615 ||
+		res.NumTurns == nil || *res.NumTurns != 1 ||
+		res.TotalCostUSD == nil || *res.TotalCostUSD != 0.160478 {
+		t.Errorf("result figures = dur %v api %v turns %v cost %v, want 7758/7615/1/0.160478",
+			res.DurationMs, res.DurationAPIMs, res.NumTurns, res.TotalCostUSD)
+	}
+	// The recorded result text is 262 bytes of UTF-8; only the length
+	// survives parsing (Constitution §7 rule 2).
+	if res.ResultTextLen == nil || *res.ResultTextLen != 262 {
+		t.Errorf("ResultTextLen = %v, want 262", res.ResultTextLen)
+	}
+	// The token block — the exact fields issue #11's capture rides on,
+	// with the values the CLI actually reported.
+	if res.Usage == nil {
+		t.Fatal("Usage = nil, want the recorded result line's usage block")
+	}
+	if res.Usage.InputTokens == nil || *res.Usage.InputTokens != 5322 ||
+		res.Usage.OutputTokens == nil || *res.Usage.OutputTokens != 157 ||
+		res.Usage.CacheReadInputTokens == nil || *res.Usage.CacheReadInputTokens != 14908 ||
+		res.Usage.CacheCreationInputTokens == nil || *res.Usage.CacheCreationInputTokens != 4225 {
+		t.Errorf("Usage = %+v, want in/out/cache-read/cache-create 5322/157/14908/4225", res.Usage)
 	}
 }
 

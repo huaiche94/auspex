@@ -39,6 +39,14 @@ Attribution model (best-effort, documented limits):
     surfaced as-is with a note — never clamped silently. A negative
     COST delta would indicate corrupt input (cumulative cost cannot
     shrink) and is likewise surfaced with a note, never dropped.
+
+Managed-run token actuals (issue #11) need NONE of the above modeling:
+`auspex run` persists a provider.usage.observed event that is already
+per-turn (the provider result line's own final accounting) and already
+turn-stamped, carrying input_tokens/output_tokens/cache_*_input_tokens
+plus total_tokens (= input + output; the sum choice is documented in
+internal/telemetry/claude/managedrun.go). This module only LOADS those
+fields; report.py joins them against token predictions on turn_id.
 """
 
 from __future__ import annotations
@@ -110,6 +118,15 @@ class Observation:
     total_lines_added: Optional[int]
     total_lines_removed: Optional[int]
     model_id: Optional[str]
+    # Managed-run per-turn token actuals (issue #11) — already per-turn,
+    # never cumulative; total_tokens = input + output (see module
+    # docstring). None = the row is not a managed-run usage event, or an
+    # older capture without the field.
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    cache_read_input_tokens: Optional[int]
+    cache_creation_input_tokens: Optional[int]
+    total_tokens: Optional[int]
     used_tokens: Optional[int]
     window_tokens: Optional[int]
     used_percent: Optional[float]
@@ -158,6 +175,11 @@ def load(path: Path) -> Iterator[Observation]:
                 total_lines_added=raw.get("total_lines_added"),
                 total_lines_removed=raw.get("total_lines_removed"),
                 model_id=raw.get("model_id"),
+                input_tokens=raw.get("input_tokens"),
+                output_tokens=raw.get("output_tokens"),
+                cache_read_input_tokens=raw.get("cache_read_input_tokens"),
+                cache_creation_input_tokens=raw.get("cache_creation_input_tokens"),
+                total_tokens=raw.get("total_tokens"),
                 used_tokens=raw.get("used_tokens"),
                 window_tokens=raw.get("window_tokens"),
                 used_percent=raw.get("used_percent"),

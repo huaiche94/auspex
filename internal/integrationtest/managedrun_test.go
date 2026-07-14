@@ -32,6 +32,7 @@ import (
 	"github.com/huaiche94/auspex/internal/cli"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/evaluation"
+	"github.com/huaiche94/auspex/internal/features"
 	"github.com/huaiche94/auspex/internal/orchestrator"
 	"github.com/huaiche94/auspex/internal/policy"
 	"github.com/huaiche94/auspex/internal/predictor/quota"
@@ -241,6 +242,25 @@ func TestManagedRun_EndToEnd_GatePersistedEventsAttribution(t *testing.T) {
 	if n := countEvents(`SELECT COUNT(*) FROM events WHERE event_type = 'provider.usage.observed' AND turn_id = ? AND payload_json LIKE '%total_cost_usd%'`, out.TurnID); n != 1 {
 		t.Errorf("turn-stamped usage rows = %d, want 1", n)
 	}
+	// Issue #11: the persisted usage event carries the per-turn token
+	// actuals — total_tokens (input + output) joined to the turn by
+	// turn_id, plus the init line's model label for the cohort ladder.
+	var usagePayloadJSON string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT payload_json FROM events WHERE event_type = 'provider.usage.observed' AND turn_id = ?`, out.TurnID,
+	).Scan(&usagePayloadJSON); err != nil {
+		t.Fatalf("read usage payload: %v", err)
+	}
+	var usagePayload map[string]any
+	if err := json.Unmarshal([]byte(usagePayloadJSON), &usagePayload); err != nil {
+		t.Fatalf("decode usage payload: %v", err)
+	}
+	if usagePayload["total_tokens"] != 2450.0 || usagePayload["input_tokens"] != 2100.0 || usagePayload["output_tokens"] != 350.0 {
+		t.Errorf("usage payload = %v, want total/input/output tokens 2450/2100/350 (the fixture result line's token block)", usagePayload)
+	}
+	if usagePayload["model_id"] != "claude-sonnet-4-5" {
+		t.Errorf("usage payload model_id = %v, want claude-sonnet-4-5", usagePayload["model_id"])
+	}
 	// A real prediction row proves the gate ran the REAL pipeline, not a
 	// fake (the same positive-control discipline evaluate_privacy_test
 	// uses).
@@ -347,5 +367,76 @@ func TestManagedRun_EndToEnd_BlockRefusesToSpawn(t *testing.T) {
 	}
 	if started != 1 {
 		t.Errorf("turn.started events = %d, want 1 (the gate's own record of the blocked attempt)", started)
+	}
+}
+
+// TestManagedRun_TokenActuals_CohortLadderWakesUp is issue #11's closing
+// assertion: ADR-047's cohort fallback ladder
+// (evaluation.SQLDataSource.RecentSimilarTurnTokens) shipped dormant —
+// documented as "activates for free when a payload carries total_tokens"
+// — and managed runs are that payload's first producer. Eight real
+// `auspex run` invocations over the real stack (eight, because that is
+// the ADD §15.2 sample gate the ladder's rungs answer at) must leave the
+// ladder returning a NON-empty per-turn token sample set, mirroring
+// datasource_sql_test.go's seeded ladder tests but with samples produced
+// by the production capture path end to end instead of hand-inserted
+// rows.
+func TestManagedRun_TokenActuals_CohortLadderWakesUp(t *testing.T) {
+	bin := buildFakeProviderBinary(t)
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", managedStreamFixture(t, "stream_success.jsonl"))
+
+	root, db := buildManagedRunRoot(t, nil)
+	ctx := context.Background()
+
+	for i := 0; i < 8; i++ {
+		var stdout, stderr bytes.Buffer
+		root.SetOut(&stdout)
+		root.SetErr(&stderr)
+		root.SetArgs([]string{
+			"run",
+			"--session-id", managedRunSession,
+			"--worktree-id", managedRunWorktree,
+			"--provider-bin", bin,
+			"--", managedRunPrompt,
+		})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("run %d: %v\nstderr: %s", i, err, stderr.String())
+		}
+	}
+
+	// Eight distinct turns, each with its own turn-stamped total_tokens
+	// sample (the turn-scoped idempotency key dedupes within a run, never
+	// across runs).
+	var turns int
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT turn_id) FROM events
+			WHERE event_type = 'provider.usage.observed'
+			AND turn_id IS NOT NULL AND payload_json LIKE '%"total_tokens":2450%'`,
+	).Scan(&turns); err != nil {
+		t.Fatalf("count turn-stamped usage events: %v", err)
+	}
+	if turns != 8 {
+		t.Fatalf("turn-stamped total_tokens usage events = %d distinct turns, want 8", turns)
+	}
+
+	src := evaluation.NewSQLDataSource(db)
+	similar, err := src.RecentSimilarTurnTokens(ctx, domain.SessionID(managedRunSession), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	// The seeded provider_sessions row carries no model/effort labels, so
+	// the identity rungs are honestly skipped and the provider rung
+	// answers — with the eight real samples, not the empty slice this
+	// method returned on every database before this capture existed.
+	if similar.Rung != features.CohortRungProvider {
+		t.Errorf("rung = %q, want %q", similar.Rung, features.CohortRungProvider)
+	}
+	if len(similar.Samples) != 8 {
+		t.Fatalf("len(samples) = %d, want 8 — the ladder did not wake up", len(similar.Samples))
+	}
+	for _, s := range similar.Samples {
+		if s != 2450 {
+			t.Fatalf("samples = %v: want every sample = 2450 (the fixture's input 2100 + output 350)", similar.Samples)
+		}
 	}
 }

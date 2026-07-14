@@ -33,6 +33,12 @@ func successfulOutcome() ManagedRunOutcome {
 		NumTurns:      ptrInt64(3),
 		TotalCostUSD:  ptrFloat64(0.0417),
 		ResultTextLen: ptrInt(34),
+
+		InputTokens:              ptrInt64(2100),
+		OutputTokens:             ptrInt64(350),
+		CacheReadInputTokens:     ptrInt64(14000),
+		CacheCreationInputTokens: ptrInt64(4200),
+		ModelID:                  "claude-sonnet-4-5",
 	}
 }
 
@@ -70,6 +76,72 @@ func TestNormalizeManagedRun_Success_TurnCompletedPlusUsage(t *testing.T) {
 	if usage.Payload["total_cost_usd"] != 0.0417 || usage.Payload["total_duration_ms"] != int64(2385) ||
 		usage.Payload["total_api_duration_ms"] != int64(2181) || usage.Payload["num_turns"] != int64(3) {
 		t.Errorf("usage payload = %+v, want the result line's four figures under the statusline-compatible keys", usage.Payload)
+	}
+	// Issue #11: the per-turn token components verbatim, plus the derived
+	// total_tokens = input + output (the documented sum choice — cache
+	// traffic excluded, see managedUsageEvent) and the model label.
+	if usage.Payload["input_tokens"] != int64(2100) || usage.Payload["output_tokens"] != int64(350) ||
+		usage.Payload["cache_read_input_tokens"] != int64(14000) ||
+		usage.Payload["cache_creation_input_tokens"] != int64(4200) {
+		t.Errorf("usage payload = %+v, want the four raw token counters verbatim", usage.Payload)
+	}
+	if usage.Payload["total_tokens"] != int64(2450) {
+		t.Errorf("usage payload total_tokens = %v, want 2450 (input 2100 + output 350, cache traffic excluded)", usage.Payload["total_tokens"])
+	}
+	if usage.Payload["model_id"] != "claude-sonnet-4-5" {
+		t.Errorf("usage payload model_id = %v, want claude-sonnet-4-5 (the init line's declaration)", usage.Payload["model_id"])
+	}
+}
+
+func TestNormalizeManagedRun_PartialTokens_NoFabricatedTotalOrModel(t *testing.T) {
+	n, clock := newTestNormalizer()
+	o := successfulOutcome()
+	// The usage object carried only output_tokens, and the stream never
+	// declared a model: total_tokens must NOT be synthesized from one
+	// known and one unknown half, and model_id must not be guessed.
+	o.InputTokens = nil
+	o.CacheReadInputTokens = nil
+	o.CacheCreationInputTokens = nil
+	o.ModelID = ""
+	events := n.NormalizeManagedRun(o, clock.Now())
+
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2 (output_tokens alone is still a real measurement)", len(events))
+	}
+	usage := events[1]
+	if usage.Payload["output_tokens"] != int64(350) {
+		t.Errorf("usage payload = %+v, want output_tokens 350 kept verbatim", usage.Payload)
+	}
+	for _, absent := range []string{"total_tokens", "input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "model_id"} {
+		if v, present := usage.Payload[absent]; present {
+			t.Errorf("usage payload carries %s = %v, want absent (unknown is not zero)", absent, v)
+		}
+	}
+}
+
+func TestNormalizeManagedRun_TokensOnlyResultLine_StillEmitsUsage(t *testing.T) {
+	n, clock := newTestNormalizer()
+	// A result line carrying ONLY the token block (no cost/duration/
+	// num_turns) still measured something: the usage event must not be
+	// suppressed by the older cost/duration-only trigger.
+	o := ManagedRunOutcome{
+		SessionID: "sess-m3", TurnID: "turn-m3", WorktreeID: "wt-m3",
+		ExitCode: 0, ResultSeen: true, ResultSubtype: "success",
+		InputTokens:  ptrInt64(5322),
+		OutputTokens: ptrInt64(157),
+	}
+	events := n.NormalizeManagedRun(o, clock.Now())
+
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2 (turn.completed + usage.observed)", len(events))
+	}
+	usage := events[1]
+	requireEnvelope(t, usage, v1.EventProviderUsageObserved, "sess-m3")
+	if usage.Payload["total_tokens"] != int64(5479) {
+		t.Errorf("usage payload total_tokens = %v, want 5479 (5322 + 157, the recorded probe's real figures)", usage.Payload["total_tokens"])
+	}
+	if _, present := usage.Payload["total_cost_usd"]; present {
+		t.Error("usage payload fabricated total_cost_usd on a tokens-only result line")
 	}
 }
 

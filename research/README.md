@@ -47,14 +47,20 @@ three capture gaps documented in issue #11 still block real calibration:
 1. **actuals coverage** — outcome events need turn correlation (#1's
    pipeline; today only `provider.turn.started` carries a turn_id in
    real sessions);
-2. **token actuals** — no payload carries per-turn `total_tokens` yet
-   (the ADR-047 ladder is dormant for the same reason);
+2. **token actuals** — managed runs (`auspex run`) capture per-turn
+   `total_tokens` (the provider result line's `usage`, input + output,
+   turn-stamped — which also wakes the ADR-047 cohort ladder); native
+   hook turns still lack a source (the statusline carries no per-turn
+   tokens), so token coverage speaks for managed-run turns only;
 3. **sample volume** — cohorts below the ADD §15.2 gate (8) are
    reported, never fitted.
 
-Once gates pass, `report.py` also emits per-cohort predicted-vs-actual
-coverage (did the actual land ≤ P50 / ≤ P80 / ≤ P90) — the replay-backed
-calibration evidence `Historical_Replay_Report.md` could not produce.
+With `--observations`, `report.py` emits the token-coverage section:
+per-turn predicted `token_p50/p80/p90` joined with the same turn's
+actual `total_tokens` on turn_id (only turns with BOTH sides count, and
+the join count is reported), yielding the fraction of turns whose actual
+landed ≤ P50 / ≤ P80 / ≤ P90 — the replay-backed calibration evidence
+`Historical_Replay_Report.md` could not produce.
 
 ## Per-turn actuals (observations export)
 
@@ -74,6 +80,12 @@ allowed. The attribution is explicitly best-effort:
   series make a 0 baseline a fabrication);
 - compaction can shrink `used_tokens`, so **negative context deltas are
   real and surfaced as-is with a note — never clamped silently**.
+
+Managed-run usage rows are the exception that needs no modeling:
+`auspex run` persists a per-turn, turn-stamped usage event carrying the
+provider result line's own token accounting
+(`input_tokens`/`output_tokens`/`cache_*_input_tokens`/`total_tokens`),
+so those actuals are read off directly and joined on `turn_id`.
 
 ## Layout
 

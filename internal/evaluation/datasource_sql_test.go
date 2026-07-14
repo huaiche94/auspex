@@ -460,7 +460,7 @@ func TestSQLDataSource_RecentSimilarTurnTokens_NoUsageEventsIsEmpty(t *testing.T
 		t.Fatalf("RecentSimilarTurnTokens: %v", err)
 	}
 	if len(similar.Samples) != 0 {
-		t.Errorf("samples = %v, want empty (no provider.usage.observed events carry total_tokens today)", similar.Samples)
+		t.Errorf("samples = %v, want empty (no usage events exist in this database)", similar.Samples)
 	}
 	if similar.Rung != features.CohortRungSession {
 		t.Errorf("rung = %q, want %q (no identity-labeled rung can answer with zero samples)", similar.Rung, features.CohortRungSession)
@@ -499,8 +499,9 @@ func setSessionIdentity(t *testing.T, db *sqlite.DB, sessionID, model, effort st
 
 // insertLabeledUsageEvent inserts a provider.usage.observed event the way
 // the post-Phase-1 normalizer emits it: events.provider populated and the
-// payload carrying identity labels alongside the (future) total_tokens
-// sample. sessionID is deliberately arbitrary — cohort candidates span
+// payload carrying identity labels alongside the total_tokens sample
+// (produced in production by managed runs — NormalizeManagedRun, issue
+// #11). sessionID is deliberately arbitrary — cohort candidates span
 // sessions.
 func insertLabeledUsageEvent(t *testing.T, db *sqlite.DB, eventID, sessionID, occurredAt string, tokens float64, modelID, effort string) {
 	t.Helper()

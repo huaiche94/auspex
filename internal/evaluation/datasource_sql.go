@@ -579,14 +579,20 @@ func countUnresolvedBlockers(nodes []progress.Node, edges []progress.Edge, curre
 // satisfy the interface) but not used to filter, documented here rather
 // than silently ignored, exactly as before this ladder existed.
 //
-// No usage payload carries a total_tokens field yet (the normalizer's
-// payload is cost/duration/lines + identity labels), so every rung
-// yields zero samples today and the method lands on the session rung
-// with an empty slice — RuleTokenForecaster's >= MinSimilarSamples gate
-// turns that into the cold-start default, unchanged. When a future
-// claude-provider wave adds total_tokens, the ladder activates for free
-// with no further change here (the same dormant-machinery contract the
-// pre-ladder implementation documented for its flat query).
+// Sample supply (issue #11): managed one-shot runs (`auspex run`) are
+// the total_tokens producers — internal/telemetry/claude's
+// NormalizeManagedRun stamps each run's turn-exact usage event with
+// total_tokens (input + output from the provider's own result line) and
+// a model_id label, exactly the payload shape this ladder reads, so the
+// once-dormant machinery here now answers from real data with no change
+// on this side (the dormant-machinery contract paying off as designed).
+// The statusline ingest path still carries NO per-turn token figure (its
+// usage snapshots are session-cumulative cost/duration), so native
+// hook-driven turns contribute nothing: on a database with fewer than
+// minSimilarTurnSamples managed-run events, every rung starves and the
+// method lands on the session rung — RuleTokenForecaster's
+// >= MinSimilarSamples gate turns that into the cold-start default,
+// exactly the pre-#11 behavior.
 func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
 	q := sqlite.QuerierFromContext(ctx, s.DB)
 

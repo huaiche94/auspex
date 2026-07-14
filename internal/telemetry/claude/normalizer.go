@@ -236,6 +236,12 @@ func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Tim
 	if ev.StopHookActive != nil {
 		payload["stop_hook_active"] = *ev.StopHookActive
 	}
+	// #20 Phase 0: the effort the completed turn actually ran under is a
+	// calibration label — recorded on the turn.completed event so future
+	// stratification (#11) can join it against the turn's prediction row.
+	if ev.EffortLevel != nil {
+		payload["effort"] = *ev.EffortLevel
+	}
 	out.Payload = payload
 	return out
 }

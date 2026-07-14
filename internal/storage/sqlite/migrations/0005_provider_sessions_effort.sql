@@ -1,0 +1,15 @@
+-- 0005_provider_sessions_effort.sql (#20 Phase 0, D-10)
+--
+-- provider_sessions.effort mirrors the model column's role: the LATEST
+-- observed reasoning-effort level for the session, fed by status-line
+-- snapshots (the only surface that carries effort continuously — hook
+-- payloads omit it on UserPromptSubmit) with COALESCE last-writer-wins
+-- semantics. It is the resolution CACHE for turn-level stamping onto
+-- predictions rows (migration 0046), not the turn-level record itself —
+-- effort is a turn-level variable (/fast mid-session), so the per-turn
+-- truth lives on the prediction row, resolved from here at evaluate time.
+--
+-- This backfills a gap number in the foundation range (0000-0009) after
+-- higher ranges have shipped — safe precisely because of issue #22's
+-- set-difference migration application.
+ALTER TABLE provider_sessions ADD COLUMN effort TEXT;

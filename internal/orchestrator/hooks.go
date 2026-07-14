@@ -128,7 +128,7 @@ func (d HookDeps) normalizer() *claudetelemetry.Normalizer {
 // nil-receiver-safe and returns only a bool, so this helper — like
 // persist and Correlate above — can never turn a hook invocation into a
 // failure (ADD §17.5 fail-open).
-func (d HookDeps) bootstrapSession(ctx context.Context, sessionID domain.SessionID, dir *string, model *string) {
+func (d HookDeps) bootstrapSession(ctx context.Context, sessionID domain.SessionID, dir *string, model, effort *string) {
 	if dir == nil || *dir == "" {
 		return
 	}
@@ -137,6 +137,7 @@ func (d HookDeps) bootstrapSession(ctx context.Context, sessionID domain.Session
 		Dir:       *dir,
 		Provider:  claudetelemetry.Provider,
 		Model:     model,
+		Effort:    effort,
 	})
 }
 
@@ -218,7 +219,7 @@ func statusLineIngest(ctx context.Context, deps HookDeps, stdin []byte) (claudep
 	// snapshot's workspace directory. The statusline is the one hook
 	// payload that carries a model identity, so this is also where
 	// provider_sessions.model gets populated (issue #17 deliverable 3).
-	deps.bootstrapSession(ctx, snap.SessionID, statusLineWorkspaceDir(snap), statusLineModel(snap))
+	deps.bootstrapSession(ctx, snap.SessionID, statusLineWorkspaceDir(snap), statusLineModel(snap), snap.EffortLevel)
 
 	observedAt := deps.Clock.Now()
 	events := deps.normalizer().NormalizeStatusLine(snap, observedAt)
@@ -432,7 +433,7 @@ func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudeho
 	// (the event is synthesized from prompt text, not a hook payload), so
 	// this is a documented no-op there: an offline evaluation targets a
 	// session some hook already registered, or honestly fails not_found.
-	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil)
+	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
 
 	observedAt := deps.Clock.Now()
 	event := deps.normalizer().NormalizeUserPromptSubmit(parsed, observedAt)
@@ -489,7 +490,7 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 	// so a session whose first observed hook is a Stop — e.g. Auspex
 	// installed mid-session — still gets registered rather than staying
 	// invisible to Resolve until its next prompt.
-	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil)
+	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
 	observedAt := deps.Clock.Now()
 	event := deps.normalizer().NormalizeStop(parsed, observedAt)
 	persisted := deps.persist(ctx, []v1.Event{event})
@@ -518,7 +519,7 @@ func HandleStopFailure(ctx context.Context, deps HookDeps, stdin []byte) (StopFa
 	}
 	// Issue #17: StopFailure payloads carry a cwd too — same reasoning as
 	// HandleStop above.
-	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil)
+	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
 	observedAt := deps.Clock.Now()
 	events := deps.normalizer().NormalizeStopFailure(parsed, observedAt)
 	persisted := deps.persist(ctx, events)

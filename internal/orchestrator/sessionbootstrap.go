@@ -99,6 +99,12 @@ type SessionBootstrap struct {
 	Dir       string
 	Provider  string
 	Model     *string
+	// Effort is the reasoning-effort level when the payload carried one
+	// (statusline effort.level — #20 Phase 0); same pointer semantics as
+	// Model. Like model, provider_sessions holds the LATEST observed
+	// value as the resolution cache for per-turn stamping (migration
+	// 0046); the turn-level record lives on the prediction row.
+	Effort *string
 }
 
 // SessionBootstrapper lazily registers the repositories -> worktrees ->
@@ -218,18 +224,20 @@ func (b *SessionBootstrapper) Bootstrap(ctx context.Context, req SessionBootstra
 		// provider_sessions: id IS the provider's session UUID (the file
 		// doc comment's ID-space section — this is what makes
 		// SQLDataSource.Resolve find the row). On conflict, only the model
-		// is touched, and only via COALESCE: a payload that carried a
-		// model updates it, a payload that carried none (excluded.model
-		// NULL) preserves whatever was already known — the Constitution's
-		// "unknown is not zero" made load-bearing in SQL. worktree_id/
-		// started_at keep their first-observation values (see this
-		// method's doc comment).
+		// and effort are touched, and only via COALESCE: a payload that
+		// carried a value updates it, a payload that carried none
+		// (excluded NULL) preserves whatever was already known — the
+		// Constitution's "unknown is not zero" made load-bearing in SQL.
+		// worktree_id/started_at keep their first-observation values (see
+		// this method's doc comment).
 		if _, err := q.ExecContext(txCtx, `
-			INSERT INTO provider_sessions (id, worktree_id, provider, provider_session_id, invocation_mode, model, started_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(id) DO UPDATE SET model = COALESCE(excluded.model, provider_sessions.model)`,
+			INSERT INTO provider_sessions (id, worktree_id, provider, provider_session_id, invocation_mode, model, effort, started_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET
+				model  = COALESCE(excluded.model, provider_sessions.model),
+				effort = COALESCE(excluded.effort, provider_sessions.effort)`,
 			string(req.SessionID), resolvedWorktreeID, req.Provider, string(req.SessionID),
-			invocationModeNativeHook, req.Model, now,
+			invocationModeNativeHook, req.Model, req.Effort, now,
 		); err != nil {
 			return err
 		}

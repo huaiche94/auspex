@@ -86,13 +86,22 @@ the implementation.
 
 ## 4. Phased TODO
 
-- [ ] **Phase 0 — capture** (small; should ride with #11 so calibration data
-  is labeled from day one):
-  - [ ] Turn-level usage observation carries `(provider, model_family,
-        effort_class)` + raw model id / raw effort string.
-  - [ ] `predictions` rows persist the same triple (new migration).
-  - [ ] Forecast card states which model the cost estimate assumed (today it
-        silently falls back to sonnet pricing when model is unresolved).
+- [x] **Phase 0 — capture** (landed 2026-07-14; #20's capture slice):
+  - [x] Turn-level identity is captured: statusline snapshots feed
+        `provider_sessions.model` + `effort` (migration 0005, COALESCE
+        last-writer-wins — the resolution cache), Stop-hook payloads stamp
+        the turn-end `effort` onto `provider.turn.completed` events
+        (hooks.md: hook payloads carry no model field, so the event-level
+        triple is effort-only; the FULL triple lives on the prediction
+        row, which is the surface calibration joins against).
+  - [x] `predictions` rows persist `(provider, model_id, model_family,
+        effort)` — migration 0046, stamped at EvaluateTurn time from the
+        session's latest observed identity; NULL when never observed.
+  - [x] Forecast card's cost estimate resolves the stamped model's price
+        family (fable/mythos/opus/sonnet/haiku — fable/mythos families and
+        current-generation opus prices added to the default table) and the
+        CostRange label says so; DefaultFamily fallback only when the
+        identity was never observed.
 - [ ] **Phase 1 — cohort filtering**: implement the full ADD §15.2 cohort in
   `RecentSimilarTurnTokens` with the §3.4 fallback ladder; reason codes for
   rung selection.

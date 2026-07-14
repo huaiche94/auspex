@@ -27,6 +27,13 @@ type StatusLineSnapshot struct {
 	ModelID          *string
 	ModelDisplayName *string
 
+	// EffortLevel is the reasoning-effort level the session is currently
+	// running at (statusline payload "effort.level" — the only surface
+	// that carries effort continuously; #20 Phase 0). nil means the
+	// payload carried none (model without effort support, or an older
+	// Claude Code).
+	EffortLevel *string
+
 	CurrentDir *string
 	ProjectDir *string
 
@@ -74,6 +81,10 @@ type rawStatusLine struct {
 		ID          *string `json:"id"`
 		DisplayName *string `json:"display_name"`
 	} `json:"model"`
+
+	Effort *struct {
+		Level *string `json:"level"`
+	} `json:"effort"`
 
 	Workspace *struct {
 		CurrentDir *string `json:"current_dir"`
@@ -181,6 +192,10 @@ func ParseStatusLine(raw []byte) (StatusLineSnapshot, error) {
 	if r.Model != nil {
 		snap.ModelID = r.Model.ID
 		snap.ModelDisplayName = r.Model.DisplayName
+	}
+
+	if r.Effort != nil {
+		snap.EffortLevel = r.Effort.Level
 	}
 
 	if r.Workspace != nil {

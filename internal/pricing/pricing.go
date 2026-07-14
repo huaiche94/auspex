@@ -90,9 +90,17 @@ const DefaultFamily = "default"
 // never runtime-fetched, expected to drift). Keys are lowercase family
 // substrings matched against the provider's model ID/display name.
 var defaultFamilyPrices = map[string]ModelPrice{
-	// Claude Opus class (e.g. claude-opus-4-1-20250805): $15 in / $75 out.
-	"opus": {InputUSDPerMTok: 15, OutputUSDPerMTok: 75},
-	// Claude Sonnet class (e.g. claude-sonnet-4-20250514): $3 in / $15 out.
+	// Claude Fable/Mythos class (e.g. claude-fable-5): $10 in / $50 out.
+	// #20 Phase 0: added when turn-level model stamping made family
+	// resolution real — the owner's own sessions run this class.
+	"fable": {InputUSDPerMTok: 10, OutputUSDPerMTok: 50},
+	// Same model class behind Project Glasswing's claude-mythos-5 id.
+	"mythos": {InputUSDPerMTok: 10, OutputUSDPerMTok: 50},
+	// Claude Opus class, current generation (claude-opus-4-6/4-7/4-8):
+	// $5 in / $25 out. (The retiring claude-opus-4-1 was $15/$75; this
+	// table prices the family a live model id actually resolves to.)
+	"opus": {InputUSDPerMTok: 5, OutputUSDPerMTok: 25},
+	// Claude Sonnet class (e.g. claude-sonnet-5): $3 in / $15 out.
 	"sonnet": {InputUSDPerMTok: 3, OutputUSDPerMTok: 15},
 	// Claude Haiku class (e.g. claude-haiku-4-5): $1 in / $5 out.
 	"haiku": {InputUSDPerMTok: 1, OutputUSDPerMTok: 5},

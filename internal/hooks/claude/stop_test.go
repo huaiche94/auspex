@@ -39,6 +39,11 @@ func TestParseStop(t *testing.T) {
 				if ev.TranscriptPath == nil {
 					t.Errorf("TranscriptPath = nil, want set")
 				}
+				// #20 Phase 0: hooks.md documents effort on Stop payloads
+				// (tool-use-context events) — the turn-end calibration label.
+				if ev.EffortLevel == nil || *ev.EffortLevel != "xhigh" {
+					t.Errorf("EffortLevel = %v, want xhigh", ev.EffortLevel)
+				}
 			},
 		},
 		{
@@ -50,6 +55,9 @@ func TestParseStop(t *testing.T) {
 				}
 				if ev.StopHookActive != nil {
 					t.Errorf("StopHookActive = %v, want nil (unknown, not false)", *ev.StopHookActive)
+				}
+				if ev.EffortLevel != nil {
+					t.Errorf("EffortLevel = %v, want nil (unknown, not a fabricated level)", *ev.EffortLevel)
 				}
 				if ev.TranscriptPath != nil {
 					t.Errorf("TranscriptPath = %v, want nil", *ev.TranscriptPath)

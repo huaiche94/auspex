@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -167,6 +168,20 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 	now := s.Clock.Now().UTC()
 	nowStr := now.Format(time.RFC3339Nano)
 
+	// #20 Phase 0: resolve the turn's identity stamp (model/effort from
+	// the session's latest observed identity, family via the pricing
+	// table's resolution) so the prediction row is labeled for
+	// calibration stratification (#11) from day one. Fail-open — an
+	// unobserved identity stamps NULLs, never blocks the evaluation.
+	modelID, effort := s.sessionIdentity(ctx, req.SessionID)
+	var modelFamily *string
+	if modelID != nil {
+		if _, family := s.pricingTable().Price(*modelID); family != "" {
+			modelFamily = &family
+		}
+	}
+	provider := req.Provider
+
 	featuresJSON, err := marshalFeatures(result.features)
 	if err != nil {
 		return app.Evaluation{}, err
@@ -216,10 +231,15 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 			// utilization percentage (migration 0045); nil stays NULL —
 			// unknown is not zero.
 			ProjectedContextUsedP90: result.quotaFC.ProjectedContextUsedP90,
-			Confidence:              result.risk.OverallRisk.Confidence,
-			Calibrated:              result.risk.OverallRisk.Calibrated,
-			ReasonCodesJSON:         predictionReasons,
-			CreatedAt:               nowStr,
+			// #20 Phase 0 identity stamp (migration 0046).
+			Provider:        &provider,
+			ModelID:         modelID,
+			ModelFamily:     modelFamily,
+			Effort:          effort,
+			Confidence:      result.risk.OverallRisk.Confidence,
+			Calibrated:      result.risk.OverallRisk.Calibrated,
+			ReasonCodesJSON: predictionReasons,
+			CreatedAt:       nowStr,
 		}); err != nil {
 			return err
 		}
@@ -534,6 +554,28 @@ func (s *Service) IssueAuthorization(ctx context.Context, turnID domain.TurnID, 
 		ExpiresAt:              expiresAt,
 		ConsumedAt:             nil,
 	}, nil
+}
+
+// sessionIdentity resolves the session's latest observed identity
+// (provider_sessions.model/effort, kept fresh by statusline ingest via
+// SessionBootstrapper's COALESCE upsert — #20 Phase 0) for stamping onto
+// the prediction row. Fail-open by design: a session never observed (or
+// any query error) resolves to nils — unknown is not zero, and identity
+// resolution must never fail an evaluation. Turn-level accuracy note: a
+// /model or /fast switch is observed at the next statusline refresh, so
+// the stamp can lag one refresh behind an intra-turn switch; the
+// turn-end truth for effort additionally lands on the turn.completed
+// event (NormalizeStop) for calibration cross-checks.
+func (s *Service) sessionIdentity(ctx context.Context, sessionID domain.SessionID) (modelID, effort *string) {
+	q := sqlite.QuerierFromContext(ctx, s.DB)
+	var m, e sql.NullString
+	if err := q.QueryRowContext(ctx,
+		`SELECT model, effort FROM provider_sessions WHERE id = ?`,
+		string(sessionID),
+	).Scan(&m, &e); err != nil {
+		return nil, nil
+	}
+	return nullStringPtr(m), nullStringPtr(e)
 }
 
 func validateEvaluateTurnRequest(req app.EvaluateTurnRequest) error {

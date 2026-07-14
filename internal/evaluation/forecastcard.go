@@ -141,11 +141,12 @@ func (s *Service) pricingTable() *pricing.Table {
 // (ADR-043). Returns ErrCodeNotFound (via getPrediction/
 // getPolicyDecisionByPredictionID) when no such evaluation exists.
 //
-// The model identity is unknown at this layer — prediction rows persist
-// no model column (migration 0041) — so the cost estimate always resolves
-// to the pricing table's labeled DefaultFamily fallback; the CostRange
-// carries that label so presenters can say which price assumption
-// produced the number.
+// The cost estimate resolves against the model stamped on the prediction
+// row (migration 0046, #20 Phase 0) — a turn evaluated while the session's
+// identity was known prices at that model's family, and the CostRange
+// carries the resolved family label so presenters say which price
+// assumption produced the number. A row stamped before the identity was
+// ever observed (NULL model_id) keeps the labeled DefaultFamily fallback.
 func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (ForecastCard, error) {
 	if id == "" {
 		return ForecastCard{}, &domain.Error{
@@ -216,7 +217,11 @@ func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (For
 	}
 
 	if card.TokensP50 != nil && card.TokensP90 != nil {
-		if cr, ok := s.pricingTable().EstimateTurnCost("", *card.TokensP50, *card.TokensP90); ok {
+		model := ""
+		if row.ModelID != nil {
+			model = *row.ModelID
+		}
+		if cr, ok := s.pricingTable().EstimateTurnCost(model, *card.TokensP50, *card.TokensP90); ok {
 			card.Cost = &cr
 		}
 	}

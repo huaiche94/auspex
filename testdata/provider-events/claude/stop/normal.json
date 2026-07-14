@@ -3,5 +3,8 @@
   "transcript_path": "/Users/dev/.claude/projects/auspex/sess_01H9X8K7QZ3M4N5P6R7S8T9V0W.jsonl",
   "cwd": "/Users/dev/projects/auspex",
   "hook_event_name": "Stop",
-  "stop_hook_active": false
+  "stop_hook_active": false,
+  "effort": {
+    "level": "xhigh"
+  }
 }

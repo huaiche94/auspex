@@ -89,10 +89,19 @@ type predictionRow struct {
 	// projection (percent, 0-100), nil when the forecaster had no usable
 	// context observation (unknown is not zero — migration 0045).
 	ProjectedContextUsedP90 *float64
-	Confidence              domain.Confidence
-	Calibrated              bool
-	ReasonCodesJSON         string
-	CreatedAt               string
+	// Provider/ModelID/ModelFamily/Effort are the turn's identity stamp
+	// (#20 Phase 0, migration 0046): which model/effort this prediction
+	// was made for, resolved at EvaluateTurn time from the session's
+	// latest observed identity. All nil when never observed — unknown is
+	// not zero; calibration (#11) stratifies by these labels.
+	Provider        *string
+	ModelID         *string
+	ModelFamily     *string
+	Effort          *string
+	Confidence      domain.Confidence
+	Calibrated      bool
+	ReasonCodesJSON string
+	CreatedAt       string
 }
 
 func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error {
@@ -107,8 +116,9 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 			quota_risk_score, context_risk_score, completion_risk_score,
 			blast_radius_risk_score, overall_risk_score,
 			projected_context_used_p90,
+			provider, model_id, model_family, effort,
 			confidence, calibrated, reason_codes_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(r.ID), string(r.TurnID), r.PredictorID, r.PredictorVersion, r.FeatureSetVersion,
 		nullableInt64(r.TokenP50), nullableInt64(r.TokenP80), nullableInt64(r.TokenP90),
 		nullableInt64(r.FilesReadP50), nullableInt64(r.FilesReadP90),
@@ -117,6 +127,7 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 		r.QuotaRiskScore, r.ContextRiskScore, r.CompletionRiskScore,
 		r.BlastRadiusRiskScore, r.OverallRiskScore,
 		nullableFloat64(r.ProjectedContextUsedP90),
+		nullableString(r.Provider), nullableString(r.ModelID), nullableString(r.ModelFamily), nullableString(r.Effort),
 		string(r.Confidence), boolToInt(r.Calibrated), r.ReasonCodesJSON, r.CreatedAt,
 	)
 	if err != nil {
@@ -136,6 +147,7 @@ func getPrediction(ctx context.Context, db *sqlite.DB, id domain.EvaluationID) (
 		       quota_risk_score, context_risk_score, completion_risk_score,
 		       blast_radius_risk_score, overall_risk_score,
 		       projected_context_used_p90,
+		       provider, model_id, model_family, effort,
 		       confidence, calibrated, reason_codes_json, created_at
 		FROM predictions WHERE id = ?`, string(id))
 	r, err := scanPrediction(row)
@@ -159,6 +171,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		filesChangedP50, filesChangedP90                sql.NullInt64
 		linesChangedP50, linesChangedP90                sql.NullInt64
 		projectedContextUsedP90                         sql.NullFloat64
+		provider, modelID, modelFamily, effort          sql.NullString
 	)
 	if err := row.Scan(
 		&id, &turnID, &predID, &predVersion, &featureVersion,
@@ -169,6 +182,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		&r.QuotaRiskScore, &r.ContextRiskScore, &r.CompletionRiskScore,
 		&r.BlastRadiusRiskScore, &r.OverallRiskScore,
 		&projectedContextUsedP90,
+		&provider, &modelID, &modelFamily, &effort,
 		&confidence, &calibrated, &reasonCodesJSON, &createdAt,
 	); err != nil {
 		return predictionRow{}, err
@@ -188,6 +202,10 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 	r.LinesChangedP50 = nullInt64Ptr(linesChangedP50)
 	r.LinesChangedP90 = nullInt64Ptr(linesChangedP90)
 	r.ProjectedContextUsedP90 = nullFloat64Ptr(projectedContextUsedP90)
+	r.Provider = nullStringPtr(provider)
+	r.ModelID = nullStringPtr(modelID)
+	r.ModelFamily = nullStringPtr(modelFamily)
+	r.Effort = nullStringPtr(effort)
 	r.Confidence = domain.Confidence(confidence)
 	r.Calibrated = calibrated != 0
 	r.ReasonCodesJSON = reasonCodesJSON
@@ -403,6 +421,14 @@ func nullFloat64Ptr(v sql.NullFloat64) *float64 {
 	}
 	x := v.Float64
 	return &x
+}
+
+func nullStringPtr(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	s := v.String
+	return &s
 }
 
 func nullableString(v *string) sql.NullString {

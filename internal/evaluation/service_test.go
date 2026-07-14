@@ -19,6 +19,77 @@ func baseRequest() app.EvaluateTurnRequest {
 	}
 }
 
+// TestEvaluateTurn_StampsSessionIdentity (#20 Phase 0, migration 0046): a
+// session whose identity was observed (provider_sessions.model/effort,
+// kept fresh by statusline ingest via SessionBootstrapper) stamps
+// provider/model_id/model_family/effort onto the prediction row — the
+// calibration label #11 stratifies by — and the card's cost estimate
+// resolves that model's price family instead of the default fallback.
+func TestEvaluateTurn_StampsSessionIdentity(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC))
+	svc, db := newTestService(t, clk, &sequentialIDs{prefix: "stamp"}, newFakeDataSource())
+	ctx := context.Background()
+
+	// Seed what SessionBootstrapper writes in production.
+	exec(t, db, `INSERT INTO repositories (id, canonical_root, git_common_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)`,
+		"repo-stamp", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO worktrees (id, repository_id, root_path, git_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"wt-stamp", "repo-stamp", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, model, effort, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"sess-stamp", "wt-stamp", "claude", "native-hook", "claude-fable-5", "xhigh", "2026-07-14T00:00:00Z")
+
+	eval, err := svc.EvaluateTurn(ctx, app.EvaluateTurnRequest{
+		SessionID: "sess-stamp", TurnID: "turn-stamp", Provider: "claude", PromptHash: "sha256:deadbeef",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateTurn: %v", err)
+	}
+
+	var provider, modelID, modelFamily, effort string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT provider, model_id, model_family, effort FROM predictions WHERE id = ?`, string(eval.ID),
+	).Scan(&provider, &modelID, &modelFamily, &effort); err != nil {
+		t.Fatalf("read back prediction stamp: %v", err)
+	}
+	if provider != "claude" || modelID != "claude-fable-5" || modelFamily != "fable" || effort != "xhigh" {
+		t.Errorf("stamp = %s/%s/%s/%s, want claude/claude-fable-5/fable/xhigh", provider, modelID, modelFamily, effort)
+	}
+
+	if _, err := svc.Decide(ctx, app.DecideRequest{EvaluationID: eval.ID}); err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	card, err := svc.ForecastCard(ctx, eval.ID)
+	if err != nil {
+		t.Fatalf("ForecastCard: %v", err)
+	}
+	if card.Cost == nil || card.Cost.ModelFamily != "fable" {
+		t.Fatalf("Cost = %+v, want the fable price family resolved from the stamped model", card.Cost)
+	}
+}
+
+// TestEvaluateTurn_UnknownIdentityStampsNull (#20 Phase 0): a session never
+// observed resolves to NULL stamps — unknown is not zero, and identity
+// resolution must never fail an evaluation.
+func TestEvaluateTurn_UnknownIdentityStampsNull(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC))
+	svc, db := newTestService(t, clk, &sequentialIDs{prefix: "nostamp"}, newFakeDataSource())
+	ctx := context.Background()
+
+	eval, err := svc.EvaluateTurn(ctx, baseRequest())
+	if err != nil {
+		t.Fatalf("EvaluateTurn: %v", err)
+	}
+	var modelID, modelFamily, effort any
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT model_id, model_family, effort FROM predictions WHERE id = ?`, string(eval.ID),
+	).Scan(&modelID, &modelFamily, &effort); err != nil {
+		t.Fatalf("read back prediction: %v", err)
+	}
+	if modelID != nil || modelFamily != nil || effort != nil {
+		t.Errorf("stamps = %v/%v/%v, want all NULL for an unobserved session", modelID, modelFamily, effort)
+	}
+}
+
 func TestEvaluateTurn_PersistsAndReturnsFrozenEvaluationDTO(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC))
 	ids := &sequentialIDs{prefix: "eval"}

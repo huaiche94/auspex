@@ -20,6 +20,13 @@ type StopEvent struct {
 	// provider payload as stop_hook_active). nil means the field was
 	// absent/null in the source payload — unknown, not false.
 	StopHookActive *bool
+
+	// EffortLevel is the reasoning-effort level the completed turn ran
+	// under (hooks.md: effort is "present for events that fire within a
+	// tool-use context, such as ... Stop ..., when the current model
+	// supports the effort parameter" — #20 Phase 0's turn-end calibration
+	// label). nil means the payload carried none.
+	EffortLevel *string
 }
 
 type rawStop struct {
@@ -28,6 +35,9 @@ type rawStop struct {
 	CWD            *string `json:"cwd"`
 	HookEventName  string  `json:"hook_event_name"`
 	StopHookActive *bool   `json:"stop_hook_active"`
+	Effort         *struct {
+		Level *string `json:"level"`
+	} `json:"effort"`
 }
 
 // ParseStop parses a Claude Code Stop hook stdin payload, tolerating
@@ -50,12 +60,16 @@ func ParseStop(raw []byte) (StopEvent, error) {
 		}
 	}
 
-	return StopEvent{
+	ev := StopEvent{
 		SessionID:      domain.SessionID(r.SessionID),
 		TranscriptPath: r.TranscriptPath,
 		CWD:            r.CWD,
 		StopHookActive: r.StopHookActive,
-	}, nil
+	}
+	if r.Effort != nil {
+		ev.EffortLevel = r.Effort.Level
+	}
+	return ev, nil
 }
 
 // StopFailureEvent is the parsed representation of a Claude Code

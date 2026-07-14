@@ -24,6 +24,10 @@ func TestDefaultTable_FamilyResolution(t *testing.T) {
 		{"Sonnet 4.5", "sonnet"},
 		{"claude-haiku-4-5", "haiku"},
 		{"Haiku 3.5", "haiku"},
+		{"claude-fable-5", "fable"},
+		{"Fable 5", "fable"},
+		{"claude-fable-5[1m]", "fable"},
+		{"claude-mythos-5", "mythos"},
 	}
 	for _, tc := range cases {
 		price, family := table.Price(tc.modelID)

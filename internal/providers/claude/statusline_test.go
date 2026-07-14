@@ -50,6 +50,11 @@ func TestParseStatusLine(t *testing.T) {
 				if snap.ModelID == nil || *snap.ModelID != "claude-opus-4-1-20250805" {
 					t.Errorf("ModelID = %v", snap.ModelID)
 				}
+				// #20 Phase 0: effort.level rides the statusline payload —
+				// the continuously-observed effort source.
+				if snap.EffortLevel == nil || *snap.EffortLevel != "high" {
+					t.Errorf("EffortLevel = %v, want high", snap.EffortLevel)
+				}
 				if snap.ContextInputTokens == nil || *snap.ContextInputTokens != 42000 {
 					t.Errorf("ContextInputTokens = %v", snap.ContextInputTokens)
 				}

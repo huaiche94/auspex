@@ -248,18 +248,20 @@ func validateRestorePath(worktreeRoot, rel string) (string, SkipReason, bool) {
 	if rel == "" {
 		return "", SkipUnreadable, false
 	}
-	if filepath.IsAbs(rel) || (len(rel) > 1 && rel[1] == ':') {
-		// Absolute paths (POSIX or Windows drive-letter) can never be a
-		// worktree-relative archive member Capture wrote.
-		return "", SkipPathTraversal, false
-	}
 	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
-		if seg == ".." {
-			return "", SkipPathTraversal, false
-		}
 		if seg == ".git" {
 			return "", SkipGitInternal, false
 		}
+	}
+	// filepath.IsLocal is the single authoritative "is this a plain
+	// worktree-relative member" test: it rejects absolute paths, ROOTED
+	// paths ("/x" — NOT IsAbs on Windows, which needs a drive letter),
+	// drive-letter forms, any lexical ".." escape, and Windows reserved
+	// device names (CON, NUL, ...) — several of which a hand-rolled
+	// check list gets wrong on exactly one platform (issue #6's first
+	// windows-latest run caught "/abs.txt" slipping past IsAbs there).
+	if !filepath.IsLocal(rel) {
+		return "", SkipPathTraversal, false
 	}
 
 	abs := filepath.Join(worktreeRoot, filepath.FromSlash(rel))

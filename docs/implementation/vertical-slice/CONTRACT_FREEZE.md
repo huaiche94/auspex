@@ -144,6 +144,17 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
 
 ## Amendments
 
+- **2026-07-14 — ADR-048 (#6): real repository checkpoint restore.**
+  `app.RestoreRepositoryCheckpointRequest` gains additive `Apply bool`
+  (zero value preserves checkpoint-b08's dry-run-only semantics exactly);
+  `app.RestoreResult` gains additive `SafetyCheckpointID` and
+  `UntrackedSkipped`. With Apply set and every ADD §19.6 gate passing,
+  `Service.Restore` now really restores: staged patch via `git apply
+  --index`, unstaged via `git apply`, untracked extraction (no-clobber,
+  capture-grade path safety). No ref is ever mutated (Constitution #9 —
+  structural, `git apply` cannot move refs); a dirty target captures a
+  safety checkpoint first. See ADR-048 for the full safety design.
+
 - **2026-07-14 — ADR-047 (#20 Phase 1): `RecentSimilarTurnTokens` returns
   its cohort rung.** `app.FeatureDataSource.RecentSimilarTurnTokens` (and
   the `internal/predictor/token.FeatureSource` narrow view) now return

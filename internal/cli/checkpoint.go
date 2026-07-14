@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/orchestrator"
 )
@@ -83,7 +84,73 @@ func NewCheckpointCmd(deps orchestrator.CheckpointCreateDeps) *cobra.Command {
 	create.Flags().StringVar(&taskID, "task-id", "", "Task ID to checkpoint")
 	create.Flags().StringVar(&worktreeID, "worktree-id", "", "Worktree ID to checkpoint")
 
+	var restoreID string
+	var apply, allowDirty bool
+	restore := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore a repository checkpoint (dry-run by default; --apply mutates)",
+		Long: "Runs the full ADD §19.6 restore check sequence (checksum, repository identity,\n" +
+			"dirty-target policy, git apply --check on both patches) and reports the verdict.\n" +
+			"With --apply, a passing check sequence is followed by the real restore: staged\n" +
+			"patch to index+worktree, unstaged patch to worktree, untracked files extracted\n" +
+			"(never overwriting existing paths). Restore never moves HEAD, never switches\n" +
+			"branches, never creates commits (ADR-048). A dirty target requires --allow-dirty\n" +
+			"and, when applying, is captured as a safety checkpoint first.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if restoreID == "" {
+				return &domain.Error{
+					Code:      domain.ErrCodeValidation,
+					Message:   "checkpoint restore: --id is required",
+					Retryable: false,
+				}
+			}
+			if deps.RepositoryCheckpoint == nil {
+				return &domain.Error{
+					Code:      domain.ErrCodeUnavailable,
+					Message:   "checkpoint restore: repository checkpoint service is not available",
+					Retryable: false,
+				}
+			}
+
+			result, err := deps.RepositoryCheckpoint.Restore(cmd.Context(), app.RestoreRepositoryCheckpointRequest{
+				ID:         domain.RepositoryCheckpointID(restoreID),
+				AllowDirty: allowDirty,
+				Apply:      apply,
+			})
+			if err != nil {
+				return err
+			}
+
+			out := checkpointRestoreOutput{
+				SchemaVersion:          "auspex.checkpoint-restore.v1",
+				RepositoryCheckpointID: string(result.ID),
+				Applied:                result.Applied,
+				DryRun:                 !apply,
+				UntrackedSkipped:       result.UntrackedSkipped,
+			}
+			if result.SafetyCheckpointID != nil {
+				id := string(*result.SafetyCheckpointID)
+				out.SafetyCheckpointID = &id
+			}
+			body, encErr := json.Marshal(out)
+			if encErr != nil {
+				return &domain.Error{
+					Code:      domain.ErrCodeInternal,
+					Message:   "checkpoint restore: encoding response: " + encErr.Error(),
+					Retryable: false,
+				}
+			}
+			_, writeErr := cmd.OutOrStdout().Write(append(body, '\n'))
+			return writeErr
+		},
+	}
+	restore.Flags().StringVar(&restoreID, "id", "", "Repository checkpoint ID to restore")
+	restore.Flags().BoolVar(&apply, "apply", false, "Perform the real restore (default is dry-run)")
+	restore.Flags().BoolVar(&allowDirty, "allow-dirty", false, "Proceed even when the target worktree has uncommitted changes (a safety checkpoint is captured first when applying)")
+
 	cmd.AddCommand(create)
+	cmd.AddCommand(restore)
 	return cmd
 }
 
@@ -92,4 +159,13 @@ type checkpointCreateOutput struct {
 	StateCheckpointID           string `json:"state_checkpoint_id"`
 	RepositoryCheckpointID      string `json:"repository_checkpoint_id"`
 	RepositoryCheckpointGitHead string `json:"repository_checkpoint_git_head"`
+}
+
+type checkpointRestoreOutput struct {
+	SchemaVersion          string   `json:"schema_version"`
+	RepositoryCheckpointID string   `json:"repository_checkpoint_id"`
+	Applied                bool     `json:"applied"`
+	DryRun                 bool     `json:"dry_run"`
+	SafetyCheckpointID     *string  `json:"safety_checkpoint_id,omitempty"`
+	UntrackedSkipped       []string `json:"untracked_skipped,omitempty"`
 }

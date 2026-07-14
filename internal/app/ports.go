@@ -317,11 +317,26 @@ type RepositoryCheckpointVerification struct {
 type RestoreRepositoryCheckpointRequest struct {
 	ID         domain.RepositoryCheckpointID
 	AllowDirty bool
+	// Apply requests a REAL, mutating restore (issue #6, ADR-048 — the
+	// amendment that ended the dry-run-only vertical-slice deferral).
+	// The zero value preserves the pre-ADR-048 semantics exactly: run
+	// every ADD §19.6 check, mutate nothing, Applied stays false.
+	Apply bool
 }
 
 type RestoreResult struct {
 	ID      domain.RepositoryCheckpointID
 	Applied bool
+	// SafetyCheckpointID is set when the restore captured the target's
+	// pre-restore state first (ADR-048: automatic on a dirty target) —
+	// the recovery handle if the operator regrets the restore. Nil when
+	// no safety checkpoint was taken (clean target, or dry-run).
+	SafetyCheckpointID *domain.RepositoryCheckpointID
+	// UntrackedSkipped lists untracked-archive entries the restore
+	// declined to write (path safety, no-clobber, caps), as
+	// "path: reason" strings. ADD §19.6's report duty for the apply
+	// step: nothing is silently dropped.
+	UntrackedSkipped []string
 }
 
 type RepositoryCheckpointService interface {

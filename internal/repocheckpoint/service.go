@@ -15,11 +15,10 @@ import (
 	"github.com/huaiche94/auspex/internal/gitx"
 )
 
-// Service implements app.RepositoryCheckpointService. Restore is
-// deliberately unimplemented here (returns ErrCodeUnavailable): ADD §19.6
-// makes actual restore a stretch goal, and this wave's DAG scopes real
-// restore to checkpoint-b08 ("RestoreDryRun") — Create and Verify are this
-// node's (checkpoint-b04's) full stated scope.
+// Service implements app.RepositoryCheckpointService: Create + Verify
+// (checkpoint-b04), Restore dry-run (checkpoint-b08), and — since issue
+// #6/ADR-048 ended the vertical-slice deferral — the real, mutating
+// restore behind RestoreRepositoryCheckpointRequest.Apply.
 type Service struct {
 	git           *gitx.Client
 	store         *Store
@@ -140,28 +139,28 @@ func (s *Service) Verify(ctx context.Context, id domain.RepositoryCheckpointID) 
 	}, nil
 }
 
-// Restore implements checkpoint-b08's dry-run scope: it evaluates whether
-// restoring req.ID's checkpoint onto its worktree's CURRENT state would
-// succeed (restoredryrun.go's full ADD §19.6 check sequence), but never
-// mutates the working tree, index, or refs — actual restore-that-mutates
-// remains explicitly out of vertical-slice scope (this node's own DAG risk note:
-// "actual restore is stretch/deferred"), so RestoreResult.Applied is
-// always false here, whether or not the dry-run would have succeeded.
+// Restore evaluates whether restoring req.ID's checkpoint onto its
+// worktree's CURRENT state would succeed (restoredryrun.go's full ADD
+// §19.6 check sequence) and — when req.Apply is set and every check
+// passed — performs the real restore (issue #6, ADR-048). The default
+// req.Apply=false preserves checkpoint-b08's dry-run-only semantics
+// exactly: nothing is ever mutated, Applied stays false.
 //
-// Mapping the dry-run's rich report onto the frozen, narrow
-// RestoreResult{ID, Applied} shape (this role cannot add fields to it —
-// ports.go is contract-integrator-owned): a dry-run that finds no problems
-// returns RestoreResult{ID, Applied:false}, nil — a successful dry-run,
-// nothing applied because dry-run never applies. A dry-run that finds one
-// or more problems (ADD §19.6's own checksum/identity/dirty-target/
-// apply-check failures) returns a non-nil ErrCodeConflict error instead of
-// a bare false-y success, with every problem joined into Message and
-// individually available in Details (frozen domain.Error shape,
-// CONTRACT_FREEZE.md) — a caller gets actionable diagnostics without a new
-// type this role is not permitted to add to the frozen contract.
+// The gate mapping is unchanged from the dry-run era: no problems →
+// success (Applied reports whether an apply then ran); one or more
+// problems (ADD §19.6's own checksum/identity/dirty-target/apply-check
+// failures) → a non-nil ErrCodeConflict error with every problem joined
+// into Message and individually available in Details (frozen
+// domain.Error shape), and NOTHING is applied regardless of req.Apply —
+// the dry-run verdict is the apply step's hard precondition, not a
+// parallel code path.
+//
 // AllowDirty, when true, downgrades a dirty-target finding from a
 // problem to an informational note (ADD §19.6: "reject dirty target
-// UNLESS safety checkpoint/force" — AllowDirty is this request's `force`).
+// UNLESS safety checkpoint/force" — AllowDirty is this request's
+// `force`). An APPLYING restore onto a dirty target additionally
+// captures a safety checkpoint of the pre-restore state first — see the
+// inline comment at the apply step for the full rationale.
 func (s *Service) Restore(ctx context.Context, req app.RestoreRepositoryCheckpointRequest) (app.RestoreResult, error) {
 	row, err := s.store.Get(ctx, req.ID)
 	if err != nil {
@@ -201,5 +200,53 @@ func (s *Service) Restore(ctx context.Context, req app.RestoreRepositoryCheckpoi
 		}
 	}
 
-	return app.RestoreResult{ID: req.ID, Applied: false}, nil
+	if !req.Apply {
+		return app.RestoreResult{ID: req.ID, Applied: false}, nil
+	}
+
+	// --- Real restore (issue #6, ADR-048) --------------------------------
+	// Every §19.6 gate above passed moments ago. One more safety layer
+	// before mutating: a DIRTY target (reachable only via AllowDirty) is
+	// about to have checkpoint state layered over someone's uncommitted
+	// work — capture it first, unconditionally, so the pre-restore state
+	// is recoverable by the same mechanism being exercised right now (ADD
+	// §19.6's "safety checkpoint" arm of the dirty-target rule). A clean
+	// target needs no safety net: its state is HEAD, which restore never
+	// moves (gitx.Apply's own no-ref-mutation guarantee). A safety-capture
+	// failure aborts the restore with nothing mutated — fail closed, never
+	// "proceed uninsured."
+	var safetyID *domain.RepositoryCheckpointID
+	if report.WorktreeDirty {
+		safety, err := s.Create(ctx, app.CreateRepositoryCheckpointRequest{
+			WorktreeID: row.WorktreeID,
+			TaskID:     row.TaskID,
+		})
+		if err != nil {
+			return app.RestoreResult{ID: req.ID, Applied: false}, fmt.Errorf("repocheckpoint: Restore: safety checkpoint of dirty target failed, nothing was restored: %w", err)
+		}
+		safetyID = &safety.ID
+	}
+
+	applyResult, err := RestoreApply(ctx, s.git, row, loc.Path)
+	if err != nil {
+		// RestoreApply's error already states exactly how far it got
+		// (nothing / staged only / patches-but-not-untracked); attach the
+		// safety checkpoint handle when one exists so the operator's
+		// recovery path is in the same message.
+		if safetyID != nil {
+			return app.RestoreResult{ID: req.ID, Applied: false, SafetyCheckpointID: safetyID}, fmt.Errorf("%w (pre-restore state is recoverable from safety checkpoint %s)", err, *safetyID)
+		}
+		return app.RestoreResult{ID: req.ID, Applied: false}, err
+	}
+
+	skipped := make([]string, 0, len(applyResult.UntrackedSkipped))
+	for _, sf := range applyResult.UntrackedSkipped {
+		skipped = append(skipped, fmt.Sprintf("%s: %s", sf.Path, sf.Reason))
+	}
+	return app.RestoreResult{
+		ID:                 req.ID,
+		Applied:            true,
+		SafetyCheckpointID: safetyID,
+		UntrackedSkipped:   skipped,
+	}, nil
 }

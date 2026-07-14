@@ -107,6 +107,74 @@ func (c *Client) ApplyCheck(ctx context.Context, worktreeDir string, patch []byt
 	return ApplyCheckResult{WouldApply: true}, nil
 }
 
+// ApplyScope selects which state Apply mutates, mirroring the two patch
+// scopes DiffPatch captures (staged = index-vs-HEAD, unstaged =
+// worktree-vs-index).
+type ApplyScope int
+
+const (
+	// ApplyToIndexAndWorktree replays a STAGED patch: `git apply --index`
+	// updates both the index and the working tree, so after it runs the
+	// index holds the captured staged state and the worktree matches it —
+	// exactly the pre-image the captured UNSTAGED patch then expects.
+	ApplyToIndexAndWorktree ApplyScope = iota
+	// ApplyToWorktree replays an UNSTAGED patch: plain `git apply`
+	// touches the working tree only, leaving the index where the staged
+	// replay put it.
+	ApplyToWorktree
+)
+
+// Apply runs a real, MUTATING `git apply --binary` of patch in worktreeDir
+// — the restore counterpart of ApplyCheck (issue #6, ADR-048; ADD §19.6's
+// actual apply step). It mutates ONLY the working tree and, for
+// ApplyToIndexAndWorktree, the index: `git apply` is incapable of moving
+// HEAD, switching branches, or creating commits, which is precisely why
+// restore is built on it (Constitution #9: never silently commit the
+// active branch).
+//
+// Callers are expected to have run ApplyCheck first (restore's dry-run
+// gate); this function still surfaces Git's own diagnostics verbatim on
+// failure rather than assuming the check already passed — the working
+// tree can legitimately change between a check and an apply.
+//
+// An empty patch is a documented no-op success, mirroring ApplyCheck's
+// own empty-patch case.
+func (c *Client) Apply(ctx context.Context, worktreeDir string, patch []byte, scope ApplyScope) error {
+	if len(bytes.TrimSpace(patch)) == 0 {
+		return nil
+	}
+
+	f, err := os.CreateTemp("", "auspex-restore-apply-*.patch")
+	if err != nil {
+		return err
+	}
+	patchPath := f.Name()
+	defer func() { _ = os.Remove(patchPath) }()
+
+	if _, err := f.Write(patch); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	args := []string{"apply", "--binary"}
+	if scope == ApplyToIndexAndWorktree {
+		args = append(args, "--index")
+	}
+	args = append(args, filepath.ToSlash(patchPath))
+
+	res, err := c.run(ctx, worktreeDir, args...)
+	if err != nil {
+		return err
+	}
+	if res.ExitCode != 0 {
+		return gitExitError("git apply", res)
+	}
+	return nil
+}
+
 // ListUntracked runs `git ls-files --others --exclude-standard -z` in
 // worktreeDir and returns the untracked, non-ignored file paths relative to
 // worktreeDir (ADD §19.4's fixed command list). --exclude-standard applies

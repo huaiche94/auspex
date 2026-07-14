@@ -63,19 +63,23 @@ type Querier interface {
 
 // ConnBeginner is satisfied by *sql.DB: it can reserve a single physical
 // connection. Claim needs BEGIN IMMEDIATE specifically (ADD §12.4) — a
-// plain *sql.Tx via BeginTx uses SQLite's default deferred BEGIN
-// (internal/storage/sqlite's DSN sets no _txlock override), which would
-// let two concurrent claimers both pass the SELECT before either UPDATEs,
-// re-introducing the double-claim race this node exists to prevent.
-// database/sql's *sql.Tx also does not expose a portable way to request
-// SQLite's non-standard "BEGIN IMMEDIATE" syntax through TxOptions. So
-// Claim instead reserves a single *sql.Conn (a pinned physical connection,
-// guaranteed not shared with any other caller for its lifetime) and issues
-// "BEGIN IMMEDIATE"/"COMMIT"/"ROLLBACK" as plain statements on it directly
-// — the same approach ADD §12.4's literal SQL block describes, and
-// independent of internal/app.TxRunner's generic WithTx (which is built
-// for ordinary deferred transactions, not this lease-specific locking
-// mode).
+// deferred BEGIN would let two concurrent claimers both pass the SELECT
+// before either UPDATEs, re-introducing the double-claim race this node
+// exists to prevent. database/sql's *sql.Tx does not expose a portable
+// way to request SQLite's non-standard "BEGIN IMMEDIATE" syntax through
+// TxOptions, so Claim reserves a single *sql.Conn (a pinned physical
+// connection, guaranteed not shared with any other caller for its
+// lifetime) and issues "BEGIN IMMEDIATE"/"COMMIT"/"ROLLBACK" as plain
+// statements on it directly — the same approach ADD §12.4's literal SQL
+// block describes.
+//
+// Historical note: this workaround predates issue #39, when
+// internal/storage/sqlite's DSN set no _txlock override and WithTx
+// transactions were DEFERRED. The DSN now pins _txlock=immediate, so the
+// same race is closed for every WithTx caller too; Claim keeps its
+// explicit pinned-connection form because its locking mode is
+// load-bearing per ADD §12.4's literal spec, not an incidental driver
+// default it should silently inherit.
 type ConnBeginner interface {
 	Conn(ctx context.Context) (*sql.Conn, error)
 }

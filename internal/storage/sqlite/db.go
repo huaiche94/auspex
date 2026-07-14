@@ -129,7 +129,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 // "_pragma" DSN convention.
 func dataSourceName(path string) string {
 	if path == ":memory:" {
-		return "file::memory:?cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
+		return "file::memory:?cache=shared&_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
 	}
 	// busy_timeout first, matching pragmaStatements' ordering below and
 	// for the same reason (foundation-07): journal_mode(WAL) itself briefly
@@ -141,6 +141,21 @@ func dataSourceName(path string) string {
 	v.Add("_pragma", "synchronous(NORMAL)")
 	v.Add("_pragma", "foreign_keys(ON)")
 	v.Add("_pragma", "temp_store(MEMORY)")
+	// _txlock=immediate (issue #39): every BeginTx transaction — i.e.
+	// every WithTx call, the write path by design — takes SQLite's write
+	// lock at BEGIN instead of deferring it to the first write. A
+	// DEFERRED read-then-write transaction in WAL mode fails with
+	// SQLITE_BUSY_SNAPSHOT (immediately, busy_timeout cannot help: its
+	// read snapshot is already stale) whenever another writer commits
+	// between its first read and first write — the race
+	// internal/scheduler/lease.go's ConnBeginner comment documented and
+	// worked around locally, surfaced for the general WithTx path by
+	// evaluation's 64-goroutine ConsumeAuthorization contention test on
+	// slow windows-latest runners. With IMMEDIATE, contending writers
+	// queue at BEGIN under busy_timeout(5000) and serialize cleanly.
+	// Read-only paths are unaffected: they run on the pool directly
+	// (QuerierFromContext without WithTx), never inside a transaction.
+	v.Add("_txlock", "immediate")
 	return "file:" + path + "?" + v.Encode()
 }
 
@@ -261,6 +276,12 @@ type txKey struct{}
 // transaction, stores it in ctx for the duration of fn, and commits on nil
 // error or rolls back otherwise. fn retrieves the active transaction via
 // TxFromContext(ctx) to issue queries against it.
+//
+// Transactions begin in IMMEDIATE mode (the DSN's _txlock=immediate,
+// issue #39): the write lock is taken at BEGIN, so concurrent WithTx
+// callers serialize under busy_timeout instead of a read-then-write
+// transaction dying mid-flight with SQLITE_BUSY_SNAPSHOT — see
+// dataSourceName's comment for the full rationale.
 func (d *DB) WithTx(ctx context.Context, fn app.TxFunc) error {
 	tx, err := d.sqlDB.BeginTx(ctx, nil)
 	if err != nil {

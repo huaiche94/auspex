@@ -287,6 +287,90 @@ func TestHookHandlers_Stop_Normalizes(t *testing.T) {
 	}
 }
 
+// fakeOpenTurns is a controllable orchestrator.OpenTurnResolver.
+type fakeOpenTurns struct {
+	turnID domain.TurnID
+	ok     bool
+	asked  []domain.SessionID
+}
+
+func (f *fakeOpenTurns) LatestStartedTurn(_ context.Context, sessionID domain.SessionID) (domain.TurnID, bool) {
+	f.asked = append(f.asked, sessionID)
+	return f.turnID, f.ok
+}
+
+func TestHookHandlers_Stop_StampsLatestStartedTurn(t *testing.T) {
+	// Issue #11 turn correlation: the terminal event must carry the
+	// session's latest started turn's ID — this is what activates the
+	// prediction↔actual join (ADR-046).
+	deps := baseHookDeps()
+	persister := &recordingPersister{}
+	deps.Persister = persister
+	deps.TxRunner = noopTxRunner{}
+	resolver := &fakeOpenTurns{turnID: "turn-open-1", ok: true}
+	deps.OpenTurns = resolver
+
+	if _, err := orchestrator.HandleStop(context.Background(), deps, readFixture(t, "stop", "normal.json")); err != nil {
+		t.Fatalf("HandleStop: %v", err)
+	}
+	if len(persister.calls) != 1 || len(persister.calls[0]) != 1 {
+		t.Fatalf("persist calls = %+v, want one batch of one event", persister.calls)
+	}
+	if got := persister.calls[0][0].TurnID; got != "turn-open-1" {
+		t.Fatalf("turn.completed TurnID = %q, want the resolved open turn", got)
+	}
+	if len(resolver.asked) != 1 {
+		t.Fatalf("resolver asked %d times, want 1", len(resolver.asked))
+	}
+}
+
+func TestHookHandlers_Stop_NoResolverOrNoOpenTurn_StampsNothing(t *testing.T) {
+	// Unknown is not zero: absent correlation stays an absent TurnID —
+	// never a fabricated one — on both the nil-resolver and the
+	// ok=false paths (pre-#11 behavior preserved exactly).
+	for name, resolver := range map[string]orchestrator.OpenTurnResolver{
+		"nil resolver": nil,
+		"no open turn": &fakeOpenTurns{ok: false},
+	} {
+		deps := baseHookDeps()
+		persister := &recordingPersister{}
+		deps.Persister = persister
+		deps.TxRunner = noopTxRunner{}
+		deps.OpenTurns = resolver
+
+		if _, err := orchestrator.HandleStop(context.Background(), deps, readFixture(t, "stop", "normal.json")); err != nil {
+			t.Fatalf("%s: HandleStop: %v", name, err)
+		}
+		if got := persister.calls[0][0].TurnID; got != "" {
+			t.Fatalf("%s: TurnID = %q, want empty", name, got)
+		}
+	}
+}
+
+func TestHookHandlers_StopFailure_StampsBothEmittedEvents(t *testing.T) {
+	// The rate-limit fixture normalizes into TWO events (turn.failed +
+	// rate_limit.hit); both belong to the same just-ended turn and both
+	// must carry its ID.
+	deps := baseHookDeps()
+	persister := &recordingPersister{}
+	deps.Persister = persister
+	deps.TxRunner = noopTxRunner{}
+	deps.OpenTurns = &fakeOpenTurns{turnID: "turn-open-2", ok: true}
+
+	if _, err := orchestrator.HandleStopFailure(context.Background(), deps, readFixture(t, "stopfailure", "rate_limit.json")); err != nil {
+		t.Fatalf("HandleStopFailure: %v", err)
+	}
+	events := persister.calls[0]
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2 (turn.failed + rate_limit.hit)", len(events))
+	}
+	for _, ev := range events {
+		if ev.TurnID != "turn-open-2" {
+			t.Fatalf("event %s TurnID = %q, want turn-open-2", ev.EventType, ev.TurnID)
+		}
+	}
+}
+
 func TestHookHandlers_Stop_MalformedInputFailsOpen(t *testing.T) {
 	deps := baseHookDeps()
 	result, err := orchestrator.HandleStop(context.Background(), deps, readFixture(t, "stop", "malformed.json"))

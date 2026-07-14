@@ -110,6 +110,27 @@ type HookDeps struct {
 	Correlator   *EventCorrelator
 	Forecast     ForecastCardSource
 	Bootstrapper *SessionBootstrapper
+
+	// OpenTurns optionally enables TURN correlation for terminal events
+	// (issue #11; ADR-046's "the join upgrades automatically once outcome
+	// events gain turn correlation"). The Stop/StopFailure hooks run in a
+	// fresh process that never saw the turn's UserPromptSubmit, so their
+	// events carry no TurnID of their own — this seam resolves the
+	// session's most recently STARTED turn so the terminal event can be
+	// stamped with it, which is what activates the prediction↔actual
+	// outcome join (retention's calibration_samples, the calibration
+	// export's actual side). nil disables stamping entirely — terminal
+	// events persist with SessionID only, exactly the pre-#11 behavior.
+	OpenTurns OpenTurnResolver
+}
+
+// OpenTurnResolver resolves a session's latest started turn. ok=false
+// means "no started turn is known" (a session whose first observed hook
+// is a Stop, a pre-Auspex session, or a resolver-side failure) — the
+// caller stamps nothing, never a fabricated ID. Implementations must be
+// fail-open: a lookup error is an ok=false, not a hook failure.
+type OpenTurnResolver interface {
+	LatestStartedTurn(ctx context.Context, sessionID domain.SessionID) (domain.TurnID, bool)
 }
 
 func (d HookDeps) normalizer() *claudetelemetry.Normalizer {
@@ -494,8 +515,52 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
 	observedAt := deps.Clock.Now()
 	event := deps.normalizer().NormalizeStop(parsed, observedAt)
-	persisted := deps.persist(ctx, []v1.Event{event})
+	events := []v1.Event{event}
+	deps.stampOpenTurn(ctx, parsed.SessionID, events)
+	persisted := deps.persist(ctx, events)
 	return StopResult{EventsNormalized: 1, Persisted: persisted}, nil
+}
+
+// stampOpenTurn fills TurnID on every event in evs that lacks one, using
+// the session's most recently STARTED turn (issue #11 turn correlation —
+// see HookDeps.OpenTurns). Sessions are turn-serial (Claude Code runs one
+// turn at a time), so the latest started turn is by construction the one
+// a terminal hook is reporting on. Two disclosed edge semantics:
+//
+//   - A turn.started orphaned by a crash (no terminal event ever fired)
+//     is superseded the moment the NEXT turn starts — latest-started
+//     matching therefore never mis-attributes a stop backward across a
+//     newer turn; the orphan simply stays outcome-less (honest).
+//   - A re-entrant Stop (stop_hook_active) stamps the SAME turn a second
+//     time; downstream joins take the EARLIEST terminal event per turn
+//     (retention's lookupTurnOutcomes), so the duplicate is inert.
+//
+// Fail-open like every other hook seam: nil resolver or ok=false stamps
+// nothing, and an already-populated TurnID is never overwritten (the
+// managed one-shot path mints and stamps its own).
+func (d HookDeps) stampOpenTurn(ctx context.Context, sessionID domain.SessionID, evs []v1.Event) {
+	if d.OpenTurns == nil {
+		return
+	}
+	needed := false
+	for i := range evs {
+		if evs[i].TurnID == "" {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return
+	}
+	turnID, ok := d.OpenTurns.LatestStartedTurn(ctx, sessionID)
+	if !ok || turnID == "" {
+		return
+	}
+	for i := range evs {
+		if evs[i].TurnID == "" {
+			evs[i].TurnID = string(turnID)
+		}
+	}
 }
 
 // StopFailureResult is HandleStopFailure's return value.
@@ -523,6 +588,10 @@ func HandleStopFailure(ctx context.Context, deps HookDeps, stdin []byte) (StopFa
 	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
 	observedAt := deps.Clock.Now()
 	events := deps.normalizer().NormalizeStopFailure(parsed, observedAt)
+	// Turn correlation covers the failure path too: both the turn.failed
+	// event AND the companion rate_limit.hit (when emitted) belong to the
+	// same just-ended turn.
+	deps.stampOpenTurn(ctx, parsed.SessionID, events)
 	persisted := deps.persist(ctx, events)
 	return StopFailureResult{
 		EventsNormalized: len(events),

@@ -231,6 +231,13 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 				Clock: clk,
 				IDs:   ids,
 			},
+			// Turn correlation for terminal events (issue #11): the
+			// Stop/StopFailure hooks resolve the session's latest
+			// started turn from the SAME events table the
+			// UserPromptSubmit hook stamped it into, activating the
+			// prediction↔actual outcome join (ADR-046's documented
+			// upgrade point).
+			OpenTurns: &orchestrator.OpenTurnStore{DB: db},
 			// The REAL evaluation.Service doubles as the issue-#14
 			// forecast-card source (it satisfies orchestrator.
 			// ForecastCardSource — ForecastCard/LatestForecastCard read

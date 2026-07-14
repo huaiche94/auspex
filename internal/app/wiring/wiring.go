@@ -140,6 +140,16 @@ type HookSupport struct {
 	// against (most tests, minimal compositions).
 	SessionResolver orchestrator.SessionResolver
 
+	// OpenTurns optionally enables turn correlation for terminal hook
+	// events (issue #11, orchestrator.HookDeps.OpenTurns): when non-nil,
+	// Stop/StopFailure events are stamped with the session's latest
+	// started turn's ID, activating the prediction↔actual outcome join
+	// (ADR-046). The real value is cmd/auspex's events-table adapter;
+	// nil disables stamping — terminal events persist with SessionID
+	// only, the pre-#11 behavior, which is the right degrade for
+	// compositions without an events store to resolve against.
+	OpenTurns orchestrator.OpenTurnResolver
+
 	// Bootstrapper optionally enables the issue-#17 lazy session
 	// bootstrap (internal/orchestrator/sessionbootstrap.go): when
 	// non-nil, every hook handler registers the session's repositories/
@@ -262,6 +272,7 @@ func (a *App) RootCmd() *cobra.Command {
 		Evaluation:   a.services.Evaluation,
 		Forecast:     a.services.Hooks.Forecast,
 		Bootstrapper: a.services.Hooks.Bootstrapper,
+		OpenTurns:    a.services.Hooks.OpenTurns,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()

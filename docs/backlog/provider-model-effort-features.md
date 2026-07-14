@@ -102,9 +102,18 @@ the implementation.
         current-generation opus prices added to the default table) and the
         CostRange label says so; DefaultFamily fallback only when the
         identity was never observed.
-- [ ] **Phase 1 — cohort filtering**: implement the full ADD §15.2 cohort in
-  `RecentSimilarTurnTokens` with the §3.4 fallback ladder; reason codes for
-  rung selection.
+- [x] **Phase 1 — cohort filtering** (landed 2026-07-14, ADR-047):
+  `RecentSimilarTurnTokens` implements the §3.4 fallback ladder
+  (provider+family+effort → provider+family → provider → session-recent,
+  first rung meeting the §15.2 ≥8 gate answers; turn-side-unlabeled rungs
+  skipped, never matched-as-empty) and returns which rung answered; the
+  forecaster emits one `TOKEN_COHORT_*` reason code per empirical base.
+  Usage observations now carry `model_id`/`effort` payload labels
+  (observation-granularity capture — the sample-side half Phase 0's
+  event stamp left out). Task class + repository remain honestly out of
+  the ladder (still absent from the sample surface); the ladder is
+  dormant until a total-token payload field exists, per ADR-047's
+  "honest scope".
 - [ ] **Phase 2 — empirical calibration** (blocked on Phase 0 + #11 data):
   - [ ] Per-cohort quota deltas replacing `coldstart.go` constants
         (ADD §15.3 step 5).

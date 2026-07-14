@@ -78,7 +78,7 @@ func (a tokenSourceBridge) Progress(ctx context.Context, sessionID domain.Sessio
 	return a.source.Progress(ctx, resolved.TaskID)
 }
 
-func (a tokenSourceBridge) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
+func (a tokenSourceBridge) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error) {
 	return a.source.RecentSimilarTurnTokens(ctx, sessionID, class)
 }
 

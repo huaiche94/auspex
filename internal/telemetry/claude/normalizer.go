@@ -173,6 +173,21 @@ func (n *Normalizer) usageEvent(snap claudeprovider.StatusLineSnapshot, observed
 	if snap.TotalLinesRemoved != nil {
 		payload["total_lines_removed"] = *snap.TotalLinesRemoved
 	}
+	// #20 Phase 1: cohort labels at observation granularity. The status
+	// line is the only surface carrying model+effort continuously (the
+	// same rationale as provider_sessions' 0005 resolution cache), and a
+	// usage sample without identity labels is unlabeled history the
+	// cohort ladder (ADD §15.2, ADR-047) can never re-label after a
+	// mid-session /model or /fast switch. Labels are additive metadata —
+	// they never gate emission (the usage-field check above is
+	// unchanged), and absent identity stamps nothing: unknown is not
+	// zero.
+	if snap.ModelID != nil {
+		payload["model_id"] = *snap.ModelID
+	}
+	if snap.EffortLevel != nil {
+		payload["effort"] = *snap.EffortLevel
+	}
 	ev.Payload = payload
 	return ev, true
 }

@@ -455,8 +455,11 @@ type FeatureDataSource interface {
 
 	// RecentSimilarTurnTokens returns raw total-token observations for
 	// recent turns matching the token forecaster's "similar" cohort
-	// (ADD §15.2).
-	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error)
+	// (ADD §15.2), selected via the provider/model/effort fallback
+	// ladder, plus which ladder rung answered (#20 Phase 1, ADR-047 —
+	// the amendment that widened this method's return from a bare
+	// []float64 so rung selection is reason-codeable).
+	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error)
 
 	// Quota returns the current quota observations for a session (Stage 3
 	// input, ForecastQuotaRequest.Quota).

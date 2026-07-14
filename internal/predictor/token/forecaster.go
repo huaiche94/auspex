@@ -34,11 +34,13 @@ type FeatureSource interface {
 	Progress(ctx context.Context, sessionID domain.SessionID) (features.ProgressFeatures, bool, error)
 
 	// RecentSimilarTurnTokens returns raw total-token observations for
-	// recent turns matching provider + model family + task class +
-	// repository cohort (ADD §15.2's "similar" set). Used only when its
-	// length is >= MinSimilarSamples; below that this package always uses
-	// the ADD §14.6 cold-start default instead (ADD §15.2's explicit gate).
-	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error)
+	// recent turns matching the ADD §15.2 "similar" cohort, selected by
+	// the source's provider/model/effort fallback ladder, plus which
+	// rung answered (#20 Phase 1, ADR-047). Samples are used only when
+	// their count is >= MinSimilarSamples; below that this package
+	// always uses the ADD §14.6 cold-start default instead (ADD §15.2's
+	// explicit gate), regardless of rung.
+	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error)
 }
 
 // RuleTokenForecaster is the Wave 3 (Version 1, rule-based/heuristic)
@@ -111,7 +113,7 @@ func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.Foreca
 
 	// --- Base P50/P90 (ADD §15.2: empirical once >=8 similar samples,
 	// else cold-start default) ------------------------------------------
-	basePfifty, baseP90, baseIsEmpirical, err := f.base(ctx, req.SessionID, class.Class)
+	basePfifty, baseP90, baseIsEmpirical, cohortReason, err := f.base(ctx, req.SessionID, class.Class)
 	if err != nil {
 		return domain.TokenForecast{}, err
 	}
@@ -120,9 +122,12 @@ func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.Foreca
 	} else {
 		// Empirical base sharpens the estimate but this is still not a
 		// calibrated probability (mirrors scope.RuleScopeEstimator's same
-		// discipline for session-blended estimates).
+		// discipline for session-blended estimates). The cohort rung code
+		// says WHICH similar-set answered (#20 Phase 1) — a provider-wide
+		// or session-only base must not be mistaken for a model-exact one
+		// when reading the persisted reason codes later.
 		confidence = domain.ConfidenceMedium
-		reasons = append(reasons, domain.ReasonTelemetrySparse)
+		reasons = append(reasons, domain.ReasonTelemetrySparse, cohortReason)
 	}
 	if class.Class == features.TaskClassUnknown {
 		reasons = append(reasons, domain.ReasonPredictionColdStart)
@@ -199,23 +204,25 @@ func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.Foreca
 	}, nil
 }
 
-// base returns (p50, p90, isEmpirical, error): the empirical base from
-// RecentSimilarTurnTokens when at least MinSimilarSamples observations are
-// available (ADD §15.2's "count(similar) >= 8" gate), else the ADD §14.6
-// cold-start default scaled by baseTurnTokens.
-func (f *RuleTokenForecaster) base(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (p50, p90 float64, isEmpirical bool, err error) {
+// base returns (p50, p90, isEmpirical, cohortReason, error): the empirical
+// base from RecentSimilarTurnTokens when at least MinSimilarSamples
+// observations are available (ADD §15.2's "count(similar) >= 8" gate),
+// else the ADD §14.6 cold-start default scaled by baseTurnTokens.
+// cohortReason maps the answering ladder rung to its reason code (#20
+// Phase 1) and is meaningful only when isEmpirical is true.
+func (f *RuleTokenForecaster) base(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (p50, p90 float64, isEmpirical bool, cohortReason domain.ReasonCode, err error) {
 	min := f.MinSimilarSamples
 	if min <= 0 {
 		min = 8
 	}
 
-	samples, err := f.Source.RecentSimilarTurnTokens(ctx, sessionID, class)
+	similar, err := f.Source.RecentSimilarTurnTokens(ctx, sessionID, class)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, 0, false, "", err
 	}
-	if len(samples) >= min {
-		q := predictor.EmpiricalQuantiles(samples)
-		return q.P50, q.P90, true, nil
+	if len(similar.Samples) >= min {
+		q := predictor.EmpiricalQuantiles(similar.Samples)
+		return q.P50, q.P90, true, cohortRungReason(similar.Rung), nil
 	}
 
 	mult := lookupColdStartMultiplier(class)
@@ -226,7 +233,24 @@ func (f *RuleTokenForecaster) base(ctx context.Context, sessionID domain.Session
 	// Auspex_Predictor_Design_Supplement.md (38000/61000/94000 ~=
 	// 1 : 1.6 : 2.47), rounded to a conservative, explainable constant
 	// rather than reverse-engineering a precise ratio from one example.
-	return base, base * 2.0, false, nil
+	return base, base * 2.0, false, "", nil
+}
+
+// cohortRungReason maps a fallback-ladder rung to the reason code the
+// forecast carries for it. An unknown rung (a future source speaking a
+// newer ladder vocabulary) maps to the session-only code — the most
+// conservative claim, never overstating cohort specificity.
+func cohortRungReason(rung features.SimilarTurnCohortRung) domain.ReasonCode {
+	switch rung {
+	case features.CohortRungModelEffort:
+		return domain.ReasonTokenCohortModelEffort
+	case features.CohortRungModelFamily:
+		return domain.ReasonTokenCohortModelFamily
+	case features.CohortRungProvider:
+		return domain.ReasonTokenCohortProviderOnly
+	default:
+		return domain.ReasonTokenCohortSessionOnly
+	}
 }
 
 // scopeMultiplier implements ADD §15.2's scope_multiplier verbatim, using

@@ -144,6 +144,18 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
 
 ## Amendments
 
+- **2026-07-14 — ADR-047 (#20 Phase 1): `RecentSimilarTurnTokens` returns
+  its cohort rung.** `app.FeatureDataSource.RecentSimilarTurnTokens` (and
+  the `internal/predictor/token.FeatureSource` narrow view) now return
+  `features.SimilarTurnTokens{Samples, Rung}` instead of a bare
+  `[]float64`, so the ADD §15.2 cohort fallback ladder's answering rung is
+  reason-codeable on the persisted prediction row. Sanctioned by ADR-044's
+  own "changes require an ADR" rule; every implementer and test fake
+  updated in the same change. Four additive `domain.ReasonCode` values
+  (`TOKEN_COHORT_MODEL_EFFORT` / `TOKEN_COHORT_MODEL_FAMILY` /
+  `TOKEN_COHORT_PROVIDER_ONLY` / `TOKEN_COHORT_SESSION_ONLY`) join the
+  taxonomy under the same additive sanction as the ADR-043 codes below.
+
 - **2026-07-13 — ADR-044 (REC-01): feature-lookup port frozen.**
   `app.FeatureDataSource` + `app.ResolvedSession` added to
   `internal/app/ports.go`, promoting `internal/evaluation.DataSource`'s

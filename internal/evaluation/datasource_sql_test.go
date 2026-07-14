@@ -15,6 +15,7 @@ package evaluation_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -412,12 +413,15 @@ func TestSQLDataSource_RecentSimilarTurnTokens_NoUsageEventsIsEmpty(t *testing.T
 	ids := seedRepoWorktreeSessionTask(t, db)
 	src := evaluation.NewSQLDataSource(db)
 
-	samples, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
 	if err != nil {
 		t.Fatalf("RecentSimilarTurnTokens: %v", err)
 	}
-	if len(samples) != 0 {
-		t.Errorf("samples = %v, want empty (no provider.usage.observed events carry total_tokens today)", samples)
+	if len(similar.Samples) != 0 {
+		t.Errorf("samples = %v, want empty (no provider.usage.observed events carry total_tokens today)", similar.Samples)
+	}
+	if similar.Rung != features.CohortRungSession {
+		t.Errorf("rung = %q, want %q (no identity-labeled rung can answer with zero samples)", similar.Rung, features.CohortRungSession)
 	}
 }
 
@@ -428,15 +432,159 @@ func TestSQLDataSource_RecentSimilarTurnTokens_RealTotalTokensField(t *testing.T
 	insertEvent(t, db, "ev-2", ids.sessionID, "provider.usage.observed", "2026-07-12T00:02:00Z", map[string]any{"total_tokens": 6000.0})
 	src := evaluation.NewSQLDataSource(db)
 
-	samples, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
 	if err != nil {
 		t.Fatalf("RecentSimilarTurnTokens: %v", err)
 	}
-	if len(samples) != 2 {
-		t.Fatalf("len(samples) = %d, want 2", len(samples))
+	if len(similar.Samples) != 2 {
+		t.Fatalf("len(samples) = %d, want 2", len(similar.Samples))
 	}
-	if samples[0] != 4000.0 || samples[1] != 6000.0 {
-		t.Errorf("samples = %v, want [4000 6000] sorted ascending", samples)
+	if similar.Samples[0] != 4000.0 || similar.Samples[1] != 6000.0 {
+		t.Errorf("samples = %v, want [4000 6000] sorted ascending", similar.Samples)
+	}
+	if similar.Rung != features.CohortRungSession {
+		t.Errorf("rung = %q, want %q (2 samples is below the ladder gate, so the session fallback answers)", similar.Rung, features.CohortRungSession)
+	}
+}
+
+// setSessionIdentity stamps the seeded session's latest observed identity
+// (the ladder's turn-side labels — what statusline ingest's COALESCE
+// upsert maintains in production).
+func setSessionIdentity(t *testing.T, db *sqlite.DB, sessionID, model, effort string) {
+	t.Helper()
+	exec(t, db, `UPDATE provider_sessions SET model = ?, effort = ? WHERE id = ?`, model, effort, sessionID)
+}
+
+// insertLabeledUsageEvent inserts a provider.usage.observed event the way
+// the post-Phase-1 normalizer emits it: events.provider populated and the
+// payload carrying identity labels alongside the (future) total_tokens
+// sample. sessionID is deliberately arbitrary — cohort candidates span
+// sessions.
+func insertLabeledUsageEvent(t *testing.T, db *sqlite.DB, eventID, sessionID, occurredAt string, tokens float64, modelID, effort string) {
+	t.Helper()
+	payload := map[string]any{"total_tokens": tokens}
+	if modelID != "" {
+		payload["model_id"] = modelID
+	}
+	if effort != "" {
+		payload["effort"] = effort
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	exec(t, db, `
+		INSERT INTO events (event_id, schema_version, event_type, occurred_at, observed_at, source, provider, session_id, payload_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		eventID, "auspex.event.v1", "provider.usage.observed", occurredAt, occurredAt, "statusline", "claude", sessionID, string(b),
+	)
+}
+
+// seedCohortLadderFixture writes a provider-wide sample population with
+// three identity strata (numbers chosen so each ladder rung has a
+// distinct, gate-crossing answer):
+//   - 8 × (fable, high)   → 100k tokens each: the exact cohort
+//   - 8 × (fable, low)    → 200k tokens each: family matches, effort doesn't
+//   - 8 × (haiku, high)   → 300k tokens each: provider matches, family doesn't
+func seedCohortLadderFixture(t *testing.T, db *sqlite.DB) {
+	t.Helper()
+	for i := 0; i < 8; i++ {
+		ts := fmt.Sprintf("2026-07-12T01:%02d:00Z", i)
+		insertLabeledUsageEvent(t, db, fmt.Sprintf("ev-exact-%d", i), "other-session-a", ts, 100_000, "claude-fable-5", "high")
+		insertLabeledUsageEvent(t, db, fmt.Sprintf("ev-family-%d", i), "other-session-b", ts, 200_000, "claude-fable-5", "low")
+		insertLabeledUsageEvent(t, db, fmt.Sprintf("ev-provider-%d", i), "other-session-c", ts, 300_000, "claude-haiku-4-5", "high")
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_ExactCohortRungAnswers(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	setSessionIdentity(t, db, ids.sessionID, "claude-fable-5", "high")
+	seedCohortLadderFixture(t, db)
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if similar.Rung != features.CohortRungModelEffort {
+		t.Fatalf("rung = %q, want %q", similar.Rung, features.CohortRungModelEffort)
+	}
+	if len(similar.Samples) != 8 {
+		t.Fatalf("len(samples) = %d, want exactly the 8 exact-cohort samples", len(similar.Samples))
+	}
+	for _, s := range similar.Samples {
+		if s != 100_000 {
+			t.Fatalf("samples = %v: a non-exact-cohort sample (family or effort mismatch) leaked into the exact rung", similar.Samples)
+		}
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_DropEffortRung(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	// Turn ran at an effort no sample matches: the exact rung starves,
+	// drop-effort answers from BOTH fable strata (16 samples).
+	setSessionIdentity(t, db, ids.sessionID, "claude-fable-5", "max")
+	seedCohortLadderFixture(t, db)
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if similar.Rung != features.CohortRungModelFamily {
+		t.Fatalf("rung = %q, want %q", similar.Rung, features.CohortRungModelFamily)
+	}
+	if len(similar.Samples) != 16 {
+		t.Fatalf("len(samples) = %d, want 16 (both fable strata, no haiku)", len(similar.Samples))
+	}
+	for _, s := range similar.Samples {
+		if s != 100_000 && s != 200_000 {
+			t.Fatalf("samples = %v: a family-mismatched sample leaked into the drop-effort rung", similar.Samples)
+		}
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_DropModelRung(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	// Turn ran on a family no sample matches: both model rungs starve,
+	// the provider rung answers with everything.
+	setSessionIdentity(t, db, ids.sessionID, "claude-opus-4-8", "high")
+	seedCohortLadderFixture(t, db)
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if similar.Rung != features.CohortRungProvider {
+		t.Fatalf("rung = %q, want %q", similar.Rung, features.CohortRungProvider)
+	}
+	if len(similar.Samples) != 24 {
+		t.Fatalf("len(samples) = %d, want all 24 provider-wide samples", len(similar.Samples))
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_UnlabeledTurnSkipsIdentityRungs(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	// No setSessionIdentity: the turn's model/effort were never observed.
+	// Unknown is not zero — the identity rungs must be skipped, not
+	// matched-as-empty, and the provider rung still answers.
+	seedCohortLadderFixture(t, db)
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if similar.Rung != features.CohortRungProvider {
+		t.Fatalf("rung = %q, want %q", similar.Rung, features.CohortRungProvider)
+	}
+	if len(similar.Samples) != 24 {
+		t.Fatalf("len(samples) = %d, want all 24 provider-wide samples", len(similar.Samples))
 	}
 }
 
@@ -866,6 +1014,6 @@ func (a sqlTokenAdapter) Progress(ctx context.Context, sessionID domain.SessionI
 	}
 	return a.src.Progress(ctx, resolved.TaskID)
 }
-func (a sqlTokenAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
+func (a sqlTokenAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error) {
 	return a.src.RecentSimilarTurnTokens(ctx, sessionID, class)
 }

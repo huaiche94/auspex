@@ -272,8 +272,8 @@ func (f qa02DataSource) Progress(_ context.Context, _ *domain.TaskID) (features.
 	return features.ProgressFeatures{CriticalPathLength: 50}, true, nil
 }
 
-func (f qa02DataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) ([]float64, error) {
-	return nil, nil
+func (f qa02DataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
+	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
 
 func (f qa02DataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
@@ -332,7 +332,7 @@ func (a qa02TokenAdapter) Session(ctx context.Context, s domain.SessionID) (feat
 func (a qa02TokenAdapter) Progress(ctx context.Context, s domain.SessionID) (features.ProgressFeatures, bool, error) {
 	return a.src.Progress(ctx, &a.taskID)
 }
-func (a qa02TokenAdapter) RecentSimilarTurnTokens(ctx context.Context, s domain.SessionID, c features.TaskClass) ([]float64, error) {
+func (a qa02TokenAdapter) RecentSimilarTurnTokens(ctx context.Context, s domain.SessionID, c features.TaskClass) (features.SimilarTurnTokens, error) {
 	return a.src.RecentSimilarTurnTokens(ctx, s, c)
 }
 

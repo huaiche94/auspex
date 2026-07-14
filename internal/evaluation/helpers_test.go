@@ -175,11 +175,11 @@ func (f *fakeDataSource) Progress(_ context.Context, _ *domain.TaskID) (features
 	return f.progFeatures, f.progOK, nil
 }
 
-func (f *fakeDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) ([]float64, error) {
+func (f *fakeDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
 	if f.recentSimilarTurnTokensErr != nil {
-		return nil, f.recentSimilarTurnTokensErr
+		return features.SimilarTurnTokens{}, f.recentSimilarTurnTokensErr
 	}
-	return f.similarTokens, nil
+	return features.SimilarTurnTokens{Samples: f.similarTokens, Rung: features.CohortRungSession}, nil
 }
 
 func (f *fakeDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
@@ -273,7 +273,7 @@ func (a tokenSourceAdapter) Session(ctx context.Context, sessionID domain.Sessio
 func (a tokenSourceAdapter) Progress(ctx context.Context, sessionID domain.SessionID) (features.ProgressFeatures, bool, error) {
 	return a.src.Progress(ctx, a.src.taskID)
 }
-func (a tokenSourceAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
+func (a tokenSourceAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error) {
 	return a.src.RecentSimilarTurnTokens(ctx, sessionID, class)
 }
 

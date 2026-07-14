@@ -136,8 +136,8 @@ func (f *fakeRealauthDataSource) Progress(_ context.Context, _ *domain.TaskID) (
 	return f.progFeatures, true, nil
 }
 
-func (f *fakeRealauthDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) ([]float64, error) {
-	return nil, nil
+func (f *fakeRealauthDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
+	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
 
 func (f *fakeRealauthDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
@@ -190,7 +190,7 @@ func (a realauthTokenAdapter) Session(ctx context.Context, sessionID domain.Sess
 func (a realauthTokenAdapter) Progress(ctx context.Context, sessionID domain.SessionID) (features.ProgressFeatures, bool, error) {
 	return a.src.Progress(ctx, a.src.taskID)
 }
-func (a realauthTokenAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
+func (a realauthTokenAdapter) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error) {
 	return a.src.RecentSimilarTurnTokens(ctx, sessionID, class)
 }
 

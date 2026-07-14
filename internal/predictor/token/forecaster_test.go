@@ -24,8 +24,9 @@ type fakeSource struct {
 	progOK  bool
 	progErr error
 
-	similar    []float64
-	similarErr error
+	similar     []float64
+	similarRung features.SimilarTurnCohortRung
+	similarErr  error
 }
 
 func (f fakeSource) Classification(ctx context.Context, sessionID domain.SessionID) (features.Classification, features.PromptFeatures, error) {
@@ -40,8 +41,8 @@ func (f fakeSource) Progress(ctx context.Context, sessionID domain.SessionID) (f
 	return f.prog, f.progOK, f.progErr
 }
 
-func (f fakeSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) ([]float64, error) {
-	return f.similar, f.similarErr
+func (f fakeSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error) {
+	return features.SimilarTurnTokens{Samples: f.similar, Rung: f.similarRung}, f.similarErr
 }
 
 var _ FeatureSource = fakeSource{}
@@ -227,6 +228,70 @@ func TestTokenForecastColdStartReasonCode(t *testing.T) {
 	if !containsReason(got.ReasonCodes, domain.ReasonPredictionColdStart) {
 		t.Errorf("expected %s in reason codes, got %v", domain.ReasonPredictionColdStart, got.ReasonCodes)
 	}
+}
+
+func TestTokenForecastCohortRungReasonCodes(t *testing.T) {
+	// #20 Phase 1: an empirical base must say WHICH ladder rung supplied
+	// its samples, and exactly one cohort code may appear. An unknown
+	// rung vocabulary maps to the session-only code (the most
+	// conservative claim).
+	eight := []float64{1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000}
+	cohortCodes := []domain.ReasonCode{
+		domain.ReasonTokenCohortModelEffort,
+		domain.ReasonTokenCohortModelFamily,
+		domain.ReasonTokenCohortProviderOnly,
+		domain.ReasonTokenCohortSessionOnly,
+	}
+	cases := []struct {
+		rung features.SimilarTurnCohortRung
+		want domain.ReasonCode
+	}{
+		{features.CohortRungModelEffort, domain.ReasonTokenCohortModelEffort},
+		{features.CohortRungModelFamily, domain.ReasonTokenCohortModelFamily},
+		{features.CohortRungProvider, domain.ReasonTokenCohortProviderOnly},
+		{features.CohortRungSession, domain.ReasonTokenCohortSessionOnly},
+		{features.SimilarTurnCohortRung("some-future-rung"), domain.ReasonTokenCohortSessionOnly},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.rung), func(t *testing.T) {
+			source := fakeSource{
+				class:       features.Classification{Class: features.TaskClassBugfixLocal, Confidence: domain.ConfidenceLow},
+				similar:     eight,
+				similarRung: tc.rung,
+			}
+			f := NewRuleTokenForecaster(source)
+			got, err := f.ForecastTokens(context.Background(), baseReq(minimalScope()))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !containsReason(got.ReasonCodes, tc.want) {
+				t.Errorf("expected %s in reason codes, got %v", tc.want, got.ReasonCodes)
+			}
+			for _, code := range cohortCodes {
+				if code != tc.want && containsReason(got.ReasonCodes, code) {
+					t.Errorf("unexpected extra cohort code %s in %v", code, got.ReasonCodes)
+				}
+			}
+		})
+	}
+
+	t.Run("cold start carries no cohort code", func(t *testing.T) {
+		source := fakeSource{
+			class:       features.Classification{Class: features.TaskClassBugfixLocal, Confidence: domain.ConfidenceLow},
+			similar:     []float64{1, 2, 3}, // below the gate
+			similarRung: features.CohortRungModelEffort,
+		}
+		f := NewRuleTokenForecaster(source)
+		got, err := f.ForecastTokens(context.Background(), baseReq(minimalScope()))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		for _, code := range cohortCodes {
+			if containsReason(got.ReasonCodes, code) {
+				t.Errorf("cohort code %s must not appear on a cold-start forecast, got %v", code, got.ReasonCodes)
+			}
+		}
+	})
 }
 
 func TestTokenForecastDeterministic(t *testing.T) {

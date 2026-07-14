@@ -68,6 +68,31 @@ const (
 	ReasonTurnCostBudgetCheckpointExceeded ReasonCode = "TURN_COST_BUDGET_CHECKPOINT_EXCEEDED"
 )
 
+// ReasonTokenCohort* report which rung of the ADD §15.2 similar-turn
+// cohort fallback ladder supplied a token forecast's empirical base
+// (#20 Phase 1, ADR-047; ladder defined in
+// docs/backlog/provider-model-effort-features.md §3.4). Additive to the
+// taxonomy under the same sanction as the ADR-043 codes above. Exactly
+// one is emitted when the empirical branch answers; none when the
+// forecast fell through to the cold-start default (which keeps emitting
+// PREDICTION_COLD_START, unchanged). They describe which sample cohort
+// was used — never a probability claim (Constitution principle #2).
+const (
+	// ReasonTokenCohortModelEffort: base quantiles came from turns
+	// matching the full provider + model family + effort triple.
+	ReasonTokenCohortModelEffort ReasonCode = "TOKEN_COHORT_MODEL_EFFORT"
+	// ReasonTokenCohortModelFamily: effort was dropped to meet the
+	// sample gate; base matched provider + model family.
+	ReasonTokenCohortModelFamily ReasonCode = "TOKEN_COHORT_MODEL_FAMILY"
+	// ReasonTokenCohortProviderOnly: model was dropped too; base matched
+	// provider-wide turns only.
+	ReasonTokenCohortProviderOnly ReasonCode = "TOKEN_COHORT_PROVIDER_ONLY"
+	// ReasonTokenCohortSessionOnly: no identity-labeled rung met the
+	// gate; base came from this session's own recent turns (the
+	// pre-ladder cohort).
+	ReasonTokenCohortSessionOnly ReasonCode = "TOKEN_COHORT_SESSION_ONLY"
+)
+
 // ScopeEstimate is the Predictor pipeline's Stage 1 output: what work a
 // turn is expected to require, not how many tokens it will cost (ADD §14.1).
 //

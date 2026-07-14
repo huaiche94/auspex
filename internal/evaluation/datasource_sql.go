@@ -76,6 +76,7 @@ import (
 
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/features"
+	"github.com/huaiche94/auspex/internal/pricing"
 	"github.com/huaiche94/auspex/internal/progress"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
@@ -87,6 +88,12 @@ import (
 // does not own.
 type SQLDataSource struct {
 	DB *sqlite.DB
+
+	// Pricing is the model-family resolution table the cohort ladder
+	// (RecentSimilarTurnTokens, #20 Phase 1) uses to normalize model IDs
+	// into families. Optional, following Service.Pricing's exact
+	// convention: nil falls back to pricing.DefaultTable().
+	Pricing *pricing.Table
 
 	// nodes/edges are checkpoint's own exported, read-only-safe stores
 	// (internal/progress.NodeStore/EdgeStore) reused directly rather than
@@ -507,23 +514,197 @@ func countUnresolvedBlockers(nodes []progress.Node, edges []progress.Edge, curre
 // --- 6. RecentSimilarTurnTokens ---------------------------------------------
 
 // RecentSimilarTurnTokens queries claude-provider's events table for recent
-// provider.usage.observed total-token observations for this session,
-// matching internal/predictor/token.FeatureSource.RecentSimilarTurnTokens's
-// exact contract (a flat []float64 of raw total-token counts, consumed by
-// RuleTokenForecaster.base only when len(samples) >= MinSimilarSamples,
-// default 8 — see internal/predictor/token/forecaster.go). "Similar cohort"
-// per ADD §15.2 would ideally also filter by provider/model family/task
-// class/repository, but claude-provider's usage.observed payload does not
-// carry a task-class tag (task classification is this package's own
-// derived signal, computed after the fact — see Classification above, not
-// persisted back onto the usage event), so this method's cohort is "recent
-// usage observations for this exact session" — a real, non-fabricated
-// signal, narrower than the ADD's full cohort definition but honestly
-// scoped to what the schema actually carries. The class parameter is
-// therefore accepted (to satisfy the interface) but not used to filter;
-// documented here rather than silently ignored.
-func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, _ features.TaskClass) ([]float64, error) {
+// provider.usage.observed total-token observations matching the ADD §15.2
+// "similar" cohort, selected via the provider/model/effort fallback ladder
+// (#20 Phase 1, ADR-047; docs/backlog/provider-model-effort-features.md
+// §3.4): the turn's identity is resolved from provider_sessions (the same
+// resolution cache EvaluateTurn's prediction stamp uses), candidate
+// observations are drawn provider-wide, and the most specific rung whose
+// sample count meets the ADD §15.2 gate answers —
+//
+//	provider + model family + effort  (CohortRungModelEffort)
+//	provider + model family           (CohortRungModelFamily)
+//	provider                          (CohortRungProvider)
+//	this session's recent turns       (CohortRungSession — the pre-ladder
+//	                                   behavior, and the terminal fallback)
+//
+// A rung whose TURN-side label is unobserved is skipped rather than
+// matched-as-empty (unknown is not zero: an unlabeled turn must not
+// pretend to match unlabeled samples). Sample-side labels come from the
+// usage payload's model_id/effort (stamped by claude-telemetry's
+// normalizer at observation granularity — session-level labels would
+// mis-assign cohorts after a mid-session /model or /fast switch); model
+// family is resolved through the same pricing-table rules the prediction
+// stamp uses, so cohort membership and the persisted prediction label
+// can never disagree on family.
+//
+// The full ADD §15.2 cohort also names task class + repository; neither
+// is carried on the sample surface (task classification is this
+// package's own derived signal, computed after the fact and never
+// persisted back onto usage events; events.repository_id is not
+// populated by the statusline ingest path), so those dimensions remain
+// honestly out of the ladder — the class parameter is accepted (to
+// satisfy the interface) but not used to filter, documented here rather
+// than silently ignored, exactly as before this ladder existed.
+//
+// No usage payload carries a total_tokens field yet (the normalizer's
+// payload is cost/duration/lines + identity labels), so every rung
+// yields zero samples today and the method lands on the session rung
+// with an empty slice — RuleTokenForecaster's >= MinSimilarSamples gate
+// turns that into the cold-start default, unchanged. When a future
+// claude-provider wave adds total_tokens, the ladder activates for free
+// with no further change here (the same dormant-machinery contract the
+// pre-ladder implementation documented for its flat query).
+func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
 	q := sqlite.QuerierFromContext(ctx, s.DB)
+
+	provider, turnFamily, turnEffort := s.turnCohortIdentity(ctx, sessionID)
+	if provider != "" {
+		pool, err := s.cohortCandidates(ctx, q, provider)
+		if err != nil {
+			return features.SimilarTurnTokens{}, err
+		}
+
+		rungs := []struct {
+			id     features.SimilarTurnCohortRung
+			usable bool
+			match  func(c cohortCandidate) bool
+		}{
+			{
+				id:     features.CohortRungModelEffort,
+				usable: turnFamily != "" && turnEffort != "",
+				match:  func(c cohortCandidate) bool { return c.family == turnFamily && c.effort == turnEffort },
+			},
+			{
+				id:     features.CohortRungModelFamily,
+				usable: turnFamily != "",
+				match:  func(c cohortCandidate) bool { return c.family == turnFamily },
+			},
+			{
+				id:     features.CohortRungProvider,
+				usable: true,
+				match:  func(cohortCandidate) bool { return true },
+			},
+		}
+		for _, r := range rungs {
+			if !r.usable {
+				continue
+			}
+			var samples []float64
+			for _, c := range pool {
+				if len(samples) == recentSimilarTurnTokensLimit {
+					break
+				}
+				if r.match(c) {
+					samples = append(samples, c.tokens)
+				}
+			}
+			if len(samples) >= minSimilarTurnSamples {
+				// Sorted for the same determinism rationale as the
+				// session rung below (quantiles are order-insensitive).
+				sort.Float64s(samples)
+				return features.SimilarTurnTokens{Samples: samples, Rung: r.id}, nil
+			}
+		}
+	}
+
+	samples, err := s.sessionRecentTurnTokens(ctx, q, sessionID)
+	if err != nil {
+		return features.SimilarTurnTokens{}, err
+	}
+	return features.SimilarTurnTokens{Samples: samples, Rung: features.CohortRungSession}, nil
+}
+
+// cohortCandidate is one provider-wide usage observation eligible for
+// cohort matching: its total-token sample plus the identity labels it
+// was stamped with at observation time. Unlabeled candidates (family/
+// effort empty) still belong to the provider rung — the label absence
+// excludes them from the narrower rungs only.
+type cohortCandidate struct {
+	tokens float64
+	family string
+	effort string
+}
+
+// turnCohortIdentity resolves the evaluated turn's cohort identity from
+// provider_sessions (provider + latest observed model/effort — the same
+// source and fail-open discipline as Service.sessionIdentity's
+// prediction stamp; a lookup failure or never-observed session resolves
+// to empties, never blocks the forecast). The model resolves to its
+// pricing family so cohort matching operates on the same normalization
+// the prediction row's model_family column persists.
+func (s *SQLDataSource) turnCohortIdentity(ctx context.Context, sessionID domain.SessionID) (provider, family, effort string) {
+	q := sqlite.QuerierFromContext(ctx, s.DB)
+	var p string
+	var m, e sql.NullString
+	if err := q.QueryRowContext(ctx,
+		`SELECT provider, model, effort FROM provider_sessions WHERE id = ?`,
+		string(sessionID),
+	).Scan(&p, &m, &e); err != nil {
+		return "", "", ""
+	}
+	if m.Valid {
+		_, family = s.pricingTable().Price(m.String)
+	}
+	if e.Valid {
+		effort = e.String
+	}
+	return p, family, effort
+}
+
+// cohortCandidates fetches the provider-wide candidate pool: recent
+// usage.observed events for provider (across all sessions), keeping only
+// rows that actually carry a total_tokens sample, each labeled with its
+// payload-stamped model family and effort.
+func (s *SQLDataSource) cohortCandidates(ctx context.Context, q sqlite.Querier, provider string) ([]cohortCandidate, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT payload_json FROM events
+		WHERE provider = ? AND event_type = 'provider.usage.observed'
+		ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
+		provider, cohortCandidatePoolLimit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: query cohort candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var pool []cohortCandidate
+	for rows.Next() {
+		var payloadJSON string
+		if err := rows.Scan(&payloadJSON); err != nil {
+			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: scan cohort row: %w", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: decode cohort payload: %w", err)
+		}
+		v, ok := payload["total_tokens"]
+		if !ok {
+			continue
+		}
+		tokens, ok := toFloat64(v)
+		if !ok {
+			continue
+		}
+		c := cohortCandidate{tokens: tokens}
+		if modelID, ok := payload["model_id"].(string); ok {
+			_, c.family = s.pricingTable().Price(modelID)
+		}
+		if effort, ok := payload["effort"].(string); ok {
+			c.effort = effort
+		}
+		pool = append(pool, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: %w", err)
+	}
+	return pool, nil
+}
+
+// sessionRecentTurnTokens is the pre-ladder cohort, verbatim: recent
+// usage.observed total-token observations for this exact session,
+// regardless of identity labels.
+func (s *SQLDataSource) sessionRecentTurnTokens(ctx context.Context, q sqlite.Querier, sessionID domain.SessionID) ([]float64, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT payload_json FROM events
 		WHERE session_id = ? AND event_type = 'provider.usage.observed'
@@ -545,21 +726,6 @@ func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID d
 		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: decode payload: %w", err)
 		}
-		// claude-provider's usageEvent payload (normalizer.go) does not
-		// carry a single "total tokens" field today — it carries cost/
-		// duration/lines-changed observations (total_cost_usd,
-		// total_duration_ms, total_api_duration_ms, total_lines_added/
-		// removed). There is no total-token count in this payload shape
-		// yet; context.observed's used_tokens is a context-window
-		// position, not a per-turn token cost. Rather than silently
-		// treating an unrelated field as a token count, this loop only
-		// ever appends a sample when a genuine total-token-shaped field
-		// is present, so today's real payload shape yields an empty
-		// (not fabricated) slice — RuleTokenForecaster's own >=8-sample
-		// gate already treats that as "use the cold-start default",
-		// exactly the correct degradation once a future claude-provider
-		// wave adds a total-token payload field, this method activates
-		// for free with no further change here.
 		if v, ok := payload["total_tokens"]; ok {
 			if f, ok := toFloat64(v); ok {
 				out = append(out, f)
@@ -578,6 +744,35 @@ func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID d
 }
 
 const recentSimilarTurnTokensLimit = 50
+
+// minSimilarTurnSamples is the ladder's per-rung answer gate, mirroring
+// RuleTokenForecaster.MinSimilarSamples' default (the single ADD §15.2
+// "count(similar) >= 8" constant, applied here to rung SELECTION and
+// there to empirical-vs-cold-start): a rung with fewer matches falls
+// through to the next wider rung rather than answering with a sample
+// set the forecaster would reject anyway — which would hide the wider
+// rung's potentially sufficient samples behind a too-narrow one.
+const minSimilarTurnSamples = 8
+
+// cohortCandidatePoolLimit bounds the provider-wide candidate fetch: one
+// recentSimilarTurnTokensLimit's worth of headroom per identity-filtered
+// rung above the session fallback (exact, drop-effort, drop-model), plus
+// one spare — so even when the narrowest rung's matches are diluted 4:1
+// in the recent stream, a full rung answer can still be assembled from
+// one query rather than tuning a bespoke constant per rung.
+const cohortCandidatePoolLimit = 4 * recentSimilarTurnTokensLimit
+
+// pricingTable mirrors Service.pricingTable's convention exactly (see
+// forecastcard.go): Pricing is optional, nil falls back to the default
+// table, so every existing NewSQLDataSource call site keeps compiling
+// and cohort family resolution can never disagree with the prediction
+// stamp's resolution by construction.
+func (s *SQLDataSource) pricingTable() *pricing.Table {
+	if s.Pricing != nil {
+		return s.Pricing
+	}
+	return pricing.DefaultTable()
+}
 
 // --- 7. Quota ----------------------------------------------------------------
 

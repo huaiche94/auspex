@@ -116,6 +116,15 @@ func TestNormalizeStatusLine(t *testing.T) {
 			if got := ev.Payload["total_cost_usd"]; got != 1.2345 {
 				t.Errorf("usage total_cost_usd = %v, want 1.2345", got)
 			}
+			// #20 Phase 1: usage observations carry cohort identity labels
+			// so future token samples are stratifiable at observation
+			// granularity (ADR-047).
+			if got := ev.Payload["model_id"]; got != "claude-opus-4-1-20250805" {
+				t.Errorf("usage model_id = %v, want claude-opus-4-1-20250805", got)
+			}
+			if got := ev.Payload["effort"]; got != "high" {
+				t.Errorf("usage effort = %v, want high", got)
+			}
 		}
 	}
 }

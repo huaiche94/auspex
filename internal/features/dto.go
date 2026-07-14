@@ -86,3 +86,39 @@ type ClassifierInput struct {
 	Prompt   PromptFeatures
 	Progress *ProgressFeatures
 }
+
+// SimilarTurnCohortRung identifies which rung of the ADD §15.2 cohort
+// fallback ladder answered a RecentSimilarTurnTokens lookup (#20 Phase 1;
+// docs/backlog/provider-model-effort-features.md §3.4). Rungs are ordered
+// most- to least-specific; the data source picks the highest rung whose
+// sample count meets the §15.2 gate and reports which one it was, so the
+// forecaster can attach an honest reason code instead of presenting a
+// provider-wide sample set as a model-exact one.
+type SimilarTurnCohortRung string
+
+const (
+	// CohortRungModelEffort: samples matched provider + model family +
+	// effort — the full normalized triple.
+	CohortRungModelEffort SimilarTurnCohortRung = "provider_model_effort"
+	// CohortRungModelFamily: effort dropped; samples matched provider +
+	// model family.
+	CohortRungModelFamily SimilarTurnCohortRung = "provider_model_family"
+	// CohortRungProvider: model dropped too; samples matched provider
+	// only.
+	CohortRungProvider SimilarTurnCohortRung = "provider"
+	// CohortRungSession: the pre-ladder behavior — recent observations
+	// for this exact session, regardless of identity labels. Also the
+	// terminal rung when no wider rung meets the sample gate (its
+	// samples may then be fewer than the gate; the forecaster's own
+	// >= MinSimilarSamples check decides cold-start, unchanged).
+	CohortRungSession SimilarTurnCohortRung = "session"
+)
+
+// SimilarTurnTokens is RecentSimilarTurnTokens' result: the raw
+// total-token samples of the selected cohort rung, plus which rung
+// selected them. Samples may be empty (no observations carry a
+// total-token field yet — honest cold-start); Rung is always set.
+type SimilarTurnTokens struct {
+	Samples []float64
+	Rung    SimilarTurnCohortRung
+}

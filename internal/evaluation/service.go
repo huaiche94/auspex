@@ -118,6 +118,16 @@ type pipelineResult struct {
 	risk     app.CombineRiskResult
 	decision policy.Decision
 	features featuresSnapshot
+	// modelID/effort are the session's observed identity (#20 Phase 0),
+	// resolved once in runPipeline (it feeds the cost estimate below AND
+	// the prediction-row stamp in EvaluateTurn — one query, two uses).
+	modelID *string
+	effort  *string
+	// cost is the turn's estimated cost range under the observed model's
+	// price family, nil when the token forecast carried no usable band —
+	// the same estimate the forecast card renders, computed pre-decision
+	// so the ADR-043 increment-3 budget rule can see it.
+	cost *pricing.CostRange
 }
 
 // featuresSnapshot is the Go-level shape persisted verbatim (as JSON) into
@@ -168,12 +178,14 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 	now := s.Clock.Now().UTC()
 	nowStr := now.Format(time.RFC3339Nano)
 
-	// #20 Phase 0: resolve the turn's identity stamp (model/effort from
-	// the session's latest observed identity, family via the pricing
-	// table's resolution) so the prediction row is labeled for
-	// calibration stratification (#11) from day one. Fail-open — an
-	// unobserved identity stamps NULLs, never blocks the evaluation.
-	modelID, effort := s.sessionIdentity(ctx, req.SessionID)
+	// #20 Phase 0: the turn's identity stamp (model/effort from the
+	// session's latest observed identity — resolved once inside
+	// runPipeline, which also priced the token forecast under it for the
+	// ADR-043 increment-3 budget rule), family via the pricing table's
+	// resolution, so the prediction row is labeled for calibration
+	// stratification (#11) from day one. Fail-open — an unobserved
+	// identity stamps NULLs, never blocks the evaluation.
+	modelID, effort := result.modelID, result.effort
 	var modelFamily *string
 	if modelID != nil {
 		if _, family := s.pricingTable().Price(*modelID); family != "" {

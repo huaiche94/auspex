@@ -8,6 +8,7 @@ import (
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/pricing"
 )
 
 // runPipeline runs the full Scope -> Token -> Quota -> Risk -> Policy
@@ -88,10 +89,33 @@ func (s *Service) runPipeline(ctx context.Context, req app.EvaluateTurnRequest) 
 		return pipelineResult{}, fmt.Errorf("evaluation: load prior runway hit confirmation: %w", err)
 	}
 
+	// #20 Phase 0 identity + ADR-043 increment-3 cost estimate: resolve
+	// the session's observed model once (fail-open — nils when never
+	// observed), price the token forecast under it, and let the policy
+	// stage compare that range against any user-declared budget. This is
+	// the same estimate the forecast card renders read-back; computing it
+	// here too keeps the budget decision and the displayed number from
+	// ever disagreeing (same table, same model, same quantiles).
+	modelID, effort := s.sessionIdentity(ctx, req.SessionID)
+	var costEstimate *pricing.CostRange
+	if tokenForecast.TokensP50 > 0 || tokenForecast.TokensP90 > 0 {
+		model := ""
+		if modelID != nil {
+			model = *modelID
+		}
+		if cr, ok := s.pricingTable().EstimateTurnCost(model, tokenForecast.TokensP50, tokenForecast.TokensP90); ok {
+			costEstimate = &cr
+		}
+	}
+
 	decision := s.Decider.Decide(policy.DecideRequest{
 		Risk:                    riskResult,
 		Runway:                  runwayForecast,
 		PriorRunwayHitConfirmed: priorConfirmed,
+		// Cost feeds the ADR-043 increment-3 cost-budget rule
+		// (policy/costbudget.go); nil (no estimate) keeps the rule
+		// silent, and an unset budget keeps it inactive regardless.
+		Cost: costEstimate,
 		// Quota feeds the ADR-043 increment-2 / D-08 context-utilization
 		// threshold rule (policy/context.go): policy sees the raw
 		// projected context P90 directly, because D-08's thresholds are
@@ -144,6 +168,9 @@ func (s *Service) runPipeline(ctx context.Context, req app.EvaluateTurnRequest) 
 		risk:     riskResult,
 		decision: decision,
 		features: snapshot,
+		modelID:  modelID,
+		effort:   effort,
+		cost:     costEstimate,
 	}, nil
 }
 

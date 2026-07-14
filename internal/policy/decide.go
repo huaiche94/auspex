@@ -5,6 +5,7 @@ import (
 
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/pricing"
 )
 
 // Decision is this package's own richer decision shape. It carries
@@ -125,6 +126,15 @@ type DecideRequest struct {
 	// expression of it.
 	Quota domain.QuotaForecast
 
+	// Cost is the turn's estimated cost range (pricing.EstimateTurnCost
+	// over the Stage-2 token forecast and the session's stamped model —
+	// #20 Phase 0), consumed by the ADR-043 increment-3 cost-budget rule
+	// (costbudget.go). ADDITIVE on this package-local request type, same
+	// sanction as Quota above: nil means "no cost estimate — the budget
+	// rule stays silent," so every pre-existing caller keeps exactly its
+	// previous behavior.
+	Cost *pricing.CostRange
+
 	// ExplicitDeny signals an external explicit deny/security decision
 	// (ADD §17.3 priority 1) that this package did not itself compute
 	// (out of this package's boundary — detecting a security policy deny
@@ -194,6 +204,15 @@ type Config struct {
 	// 預設值的事"). The zero value is false: thresholds ship ACTIVE, per
 	// the owner-approved decision.
 	DisableContextUtilizationThresholds bool
+
+	// TurnCostBudgetUSD is ADR-043 increment 3's user-declared per-turn
+	// cost budget (costbudget.go). The zero value means NO budget is
+	// declared and the rule is entirely inactive — ADR-043: "absence of
+	// a budget means the resource is simply not policy-active (explicit
+	// degradation, never a guess)". Deliberately NOT normalized to any
+	// default: unlike the context ceiling, no objective number exists to
+	// default to.
+	TurnCostBudgetUSD float64
 }
 
 // DefaultConfig returns the documented day-one threshold set (ADD §17.4's
@@ -305,7 +324,13 @@ func (d *Decider) Decide(req DecideRequest) Decision {
 		return riskBandDecision(req.Risk)
 	}()
 
-	return applyContextThresholds(base, req, cfg)
+	// Resource-threshold overlays run in ADR-043's resource order —
+	// context (increment 2), then cost budget (increment 3) — each with
+	// the same never-downgrade ladder, so their composition is
+	// order-insensitive for the ACTION (the strongest tier wins) and both
+	// tiers' reason codes always survive.
+	base = applyContextThresholds(base, req, cfg)
+	return applyTurnCostBudget(base, req, cfg)
 }
 
 // runwayPauseDecision implements ADD §17.3 priority 3 and §17.4's

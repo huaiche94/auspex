@@ -55,6 +55,19 @@ const (
 	ReasonContextCheckpointThresholdExceeded ReasonCode = "CONTEXT_CHECKPOINT_THRESHOLD_EXCEEDED"
 )
 
+// ReasonTurnCostBudget* are ADR-043 increment 3's user-declared per-turn
+// cost-budget threshold states (internal/policy/costbudget.go), additive
+// to the taxonomy under the same sanction as the CONTEXT_* pair above:
+// WARN-tier when the projected worst-case turn cost exceeds the declared
+// budget, CHECKPOINT-tier when even the optimistic projection does. They
+// describe a comparison between an ESTIMATED cost range and a
+// user-declared number — never a probability claim (Constitution
+// principle #2).
+const (
+	ReasonTurnCostBudgetWarnExceeded       ReasonCode = "TURN_COST_BUDGET_WARN_EXCEEDED"
+	ReasonTurnCostBudgetCheckpointExceeded ReasonCode = "TURN_COST_BUDGET_CHECKPOINT_EXCEEDED"
+)
+
 // ScopeEstimate is the Predictor pipeline's Stage 1 output: what work a
 // turn is expected to require, not how many tokens it will cost (ADD §14.1).
 //

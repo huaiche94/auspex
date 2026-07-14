@@ -86,3 +86,19 @@ CHECKPOINT_AND_RUN, confidence-gated so cold-start projections stay
 silent, adjustable/disable-able via `internal/policy.Config`) in
 `internal/policy/context.go`, with the projection persisted (migration
 0045) and rendered on every forecast-card surface.
+
+Increment 3 (cost budget) shipped 2026-07-14 (issue #13):
+`policy.Config.TurnCostBudgetUSD` — inactive at the zero value per this
+ADR's "absence of a budget means not policy-active" — with a two-tier
+rule in `internal/policy/costbudget.go` on the honest cost range the
+pipeline now computes pre-decision under the session's stamped model
+(#20 Phase 0): worst-case estimate over budget → WARN, even the
+optimistic estimate over budget → CHECKPOINT_AND_RUN; same
+never-downgrade ladder and reason-code disclosure as increment 2, no
+cold-start confidence gate (a declared budget is user opt-in, and the
+decision's Calibrated/Confidence fields still disclose estimate
+quality). Config surface: the programmatic `Service.Policy` seam — the
+YAML config chain remains the recorded composition-root gap. Time
+budget (increment 4) still awaits duration telemetry (#15/#11); the
+`domain.ResourceForecast` sibling list remains open with
+contract-integrator.

@@ -3,11 +3,13 @@ package evaluation_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/policy"
 )
 
 func baseRequest() app.EvaluateTurnRequest {
@@ -64,6 +66,50 @@ func TestEvaluateTurn_StampsSessionIdentity(t *testing.T) {
 	}
 	if card.Cost == nil || card.Cost.ModelFamily != "fable" {
 		t.Fatalf("Cost = %+v, want the fable price family resolved from the stamped model", card.Cost)
+	}
+}
+
+// TestEvaluateTurn_CostBudgetEscalatesDecision (ADR-043 increment 3): a
+// user-declared per-turn budget below even the optimistic cold-start
+// estimate escalates the decision to CHECKPOINT_AND_RUN through the real
+// pipeline — proving runPipeline prices the token forecast under the
+// session's stamped model and hands it to the policy stage.
+func TestEvaluateTurn_CostBudgetEscalatesDecision(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC))
+	svc, db := newTestService(t, clk, &sequentialIDs{prefix: "budget"}, newFakeDataSource())
+	svc.Policy = policy.Config{TurnCostBudgetUSD: 0.01} // below the fable cold-start LowUSD (~$0.032)
+	ctx := context.Background()
+
+	exec(t, db, `INSERT INTO repositories (id, canonical_root, git_common_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)`,
+		"repo-budget", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO worktrees (id, repository_id, root_path, git_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"wt-budget", "repo-budget", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, model, started_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"sess-budget", "wt-budget", "claude", "native-hook", "claude-fable-5", "2026-07-14T00:00:00Z")
+
+	eval, err := svc.EvaluateTurn(ctx, app.EvaluateTurnRequest{
+		SessionID: "sess-budget", TurnID: "turn-budget", Provider: "claude", PromptHash: "sha256:deadbeef",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateTurn: %v", err)
+	}
+	decision, err := svc.Decide(ctx, app.DecideRequest{EvaluationID: eval.ID})
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if decision.Action != app.PolicyCheckpointAndRun {
+		t.Errorf("Action = %v, want CHECKPOINT_AND_RUN — even the optimistic estimate exceeds the declared budget", decision.Action)
+	}
+
+	// The persisted decision row discloses the budget reason code.
+	var reasons string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT reason_codes_json FROM policy_decisions WHERE prediction_id = ?`, string(eval.ID),
+	).Scan(&reasons); err != nil {
+		t.Fatalf("read back decision reasons: %v", err)
+	}
+	if !strings.Contains(reasons, string(domain.ReasonTurnCostBudgetCheckpointExceeded)) {
+		t.Errorf("persisted reasons %s missing %s", reasons, domain.ReasonTurnCostBudgetCheckpointExceeded)
 	}
 }
 

@@ -133,7 +133,13 @@ func ExtractPromptFeatures(raw string) PromptFeatures {
 	pf.MentionsTests = has("test", "tests", "testing", "unittest", "unittests", "spec", "specs", "coverage") || phrase("unit test", "integration test")
 	pf.MentionsSchemaOrAPI = has("schema", "api", "apis", "endpoint", "endpoints", "contract", "protocol")
 	pf.MentionsSecurity = has("security", "auth", "authentication", "authorization", "secret", "secrets", "vulnerability", "cve", "injection", "sanitize", "csrf", "xss")
-	pf.MentionsPerformance = has("performance", "slow", "latency", "profiling", "profile", "benchmark", "throughput", "regression",
+	// "regression" is deliberately absent (#49): in a dev context it names a
+	// reappeared BUG far more often than a performance drop ("there was a
+	// regression after the last release"), and the classifier's verb-less
+	// rescue rule would have routed those bug reports to
+	// performance-investigation. Genuine perf regressions still match via
+	// "performance"/"slow"/"latency"/etc.
+	pf.MentionsPerformance = has("performance", "slow", "latency", "profiling", "profile", "benchmark", "throughput",
 		"optimize", "optimise", "optimization", "optimisation", "speedup", "faster", "perf")
 	pf.MentionsDocumentation = has("document", "documentation", "readme", "docs", "changelog", "comment", "comments", "docstring",
 		"tutorial", "guide", "guides", "documenting")

@@ -100,6 +100,36 @@ func TestClassifierConfidentClassification(t *testing.T) {
 			prompt: "optimize the query planner, it feels slow",
 			want:   TaskClassPerformanceInvestigation,
 		},
+		// Issue #49: an action verb (fix/refactor/implement) co-occurring
+		// with an investigate verb predicts the WORKLOAD — the action class
+		// must win, not inspection. These are the verb-collision cases the
+		// #42 vocabulary widening ("review", "understand", "audit") shipped
+		// without coverage.
+		{
+			name:   "issue #49: review + refactor -> refactor-local, not inspection",
+			prompt: "review and refactor the policy engine",
+			want:   TaskClassRefactorLocal,
+		},
+		{
+			name:   "issue #49: fix + review -> bugfix-local, not inspection",
+			prompt: "fix the login bug, then review the diff with me",
+			want:   TaskClassBugfixLocal,
+		},
+		{
+			name:   "issue #49: implement + understand -> feature-local, not inspection",
+			prompt: "implement the cache layer and help me understand the eviction flow",
+			want:   TaskClassFeatureLocal,
+		},
+		{
+			name:   "issue #49: investigate + performance with no action verb keeps performance-investigation",
+			prompt: "review the slow dashboard queries",
+			want:   TaskClassPerformanceInvestigation,
+		},
+		{
+			name:   "issue #49: pure investigate verb still inspection",
+			prompt: "audit the dependency graph of the scheduler",
+			want:   TaskClassInspection,
+		},
 	}
 
 	for _, c := range cases {
@@ -141,6 +171,11 @@ func TestClassifierReturnsUnknownWithInsufficientSignal(t *testing.T) {
 		// unknown by design. See ExtractPromptFeatures' vocabulary
 		// comment.
 		{name: "generic update verb stays unknown by design", prompt: "update the dependency to the latest release"},
+		// Issue #49: "regression" left the performance vocabulary — in a dev
+		// context it names a reappeared bug, not a perf drop, and the
+		// verb-less rescue rule was routing bug reports to
+		// performance-investigation.
+		{name: "bare regression report stays unknown", prompt: "there was a regression after the last release"},
 	}
 
 	for _, c := range cases {

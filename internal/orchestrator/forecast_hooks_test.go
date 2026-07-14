@@ -248,15 +248,16 @@ func TestHookHandlers_HighContextCardRendersThresholdState(t *testing.T) {
 		t.Fatalf("HandleStatusLineEmitLine: %v", err)
 	}
 	// normal.json carries exact context tokens (42000+1800 of 200000 =
-	// 21.9%), so the segment splits measured → projected (D-14).
-	if !strings.Contains(line, "context [██████████████████··] 21.9% → worst-case ~91% (warn)") {
-		t.Errorf("emit-line = %q, want the measured→projected context segment", line)
+	// 21.9%), so the measurement leads (bar tracks it) and the persisted
+	// projection renders as the parenthetical upper bound (D-15, #41).
+	if !strings.Contains(line, "context [████················] 21.9% (p90 ≤91%) (warn)") {
+		t.Errorf("emit-line = %q, want the measured-first context segment", line)
 	}
 }
 
 // --- statusline --emit-line ---------------------------------------------
 
-func TestHookHandlers_StatusLineEmitLine_ModelOnlyWhenNoForecast(t *testing.T) {
+func TestHookHandlers_StatusLineEmitLine_SnapshotSegmentsWhenNoForecast(t *testing.T) {
 	deps := baseHookDeps() // no Forecast wired
 	result, line, err := orchestrator.HandleStatusLineEmitLine(context.Background(), deps, readFixture(t, "statusline", "normal.json"))
 	if err != nil {
@@ -265,10 +266,12 @@ func TestHookHandlers_StatusLineEmitLine_ModelOnlyWhenNoForecast(t *testing.T) {
 	if result.EventsNormalized != 4 {
 		t.Errorf("EventsNormalized = %d, want 4 (ingest identical to HandleStatusLine)", result.EventsNormalized)
 	}
-	// normal.json's model.display_name is "Opus 4.1" and its seven_day
-	// window reads 11.2% — the weekly segment is snapshot data, so it
-	// renders even with no Forecast wired at all.
-	if want := statusBrand + " Opus 4.1" + statusSep + "◷ weekly limit ~11%"; line != want {
+	// normal.json's model.display_name is "Opus 4.1", its seven_day
+	// window reads 11.2%, and its context tokens read 21.9% — the weekly
+	// and measured-context segments are snapshot data, so they render
+	// even with no Forecast wired at all (no parenthetical bound without
+	// a persisted projection).
+	if want := statusBrand + " Opus 4.1" + statusSep + "◷ weekly ~11%" + statusSep + statusCtx219; line != want {
 		t.Errorf("line = %q, want %q", line, want)
 	}
 }
@@ -279,11 +282,14 @@ func TestHookHandlers_StatusLineEmitLine_ModelOnlyWhenNoForecast(t *testing.T) {
 const (
 	statusReset = "\x1b[0m"
 	statusDim   = "\x1b[2m"
-	statusBrand = "\x1b[36max✈" + statusReset
+	statusBrand = "\x1b[36max»" + statusReset
 	statusSep   = statusDim + " │ " + statusReset
-	// D-13 v2.1: the policy segment renders the whole severity scale
-	// with the active step lit and the rest dimmed.
-	statusScaleWarn = statusDim + "RUN" + statusReset + "  \x1b[33m⚠ WARN" + statusReset + "  " + statusDim + "CHECKPOINT_AND_RUN" + statusReset + "  " + statusDim + "BLOCK" + statusReset
+	// D-15 (issue #41): the policy segment renders only the active
+	// action, lit with its icon and semantic color.
+	statusBadgeWarn = "\x1b[33m⚠ WARN" + statusReset
+	// normal.json's measured context: 42000+1800 of 200000 = 21.9%,
+	// 21.9/5 → 4 filled cells.
+	statusCtx219 = "\x1b[32mcontext [████················] 21.9%" + statusReset
 )
 
 func TestHookHandlers_StatusLineEmitLine_WithLatestForecast(t *testing.T) {
@@ -295,7 +301,7 @@ func TestHookHandlers_StatusLineEmitLine_WithLatestForecast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HandleStatusLineEmitLine: %v", err)
 	}
-	if want := statusBrand + " Opus 4.1" + statusSep + "🔮 probably (50%) < 8000 tokens" + statusSep + "◷ weekly limit ~11%" + statusSep + statusScaleWarn; line != want {
+	if want := statusBrand + " Opus 4.1" + statusSep + "◷ weekly ~11%" + statusSep + statusCtx219 + statusSep + statusBadgeWarn; line != want {
 		t.Errorf("line = %q, want %q", line, want)
 	}
 	if forecast.gotSessionID == "" {
@@ -303,7 +309,7 @@ func TestHookHandlers_StatusLineEmitLine_WithLatestForecast(t *testing.T) {
 	}
 }
 
-func TestHookHandlers_StatusLineEmitLine_ColdStartAndErrorDegradeToModelOnly(t *testing.T) {
+func TestHookHandlers_StatusLineEmitLine_ColdStartAndErrorDegradeToSnapshotSegments(t *testing.T) {
 	for name, forecast := range map[string]*fakeForecastSource{
 		"cold start": {latestOK: false},
 		"card error": {latestErr: &domain.Error{Code: domain.ErrCodeUnavailable, Message: "down"}},
@@ -314,8 +320,8 @@ func TestHookHandlers_StatusLineEmitLine_ColdStartAndErrorDegradeToModelOnly(t *
 		if err != nil {
 			t.Fatalf("%s: HandleStatusLineEmitLine: %v", name, err)
 		}
-		if line != statusBrand+" Opus 4.1"+statusSep+"◷ weekly limit ~11%" {
-			t.Errorf("%s: line = %q, want model+weekly fallback (no forecast segments)", name, line)
+		if line != statusBrand+" Opus 4.1"+statusSep+"◷ weekly ~11%"+statusSep+statusCtx219 {
+			t.Errorf("%s: line = %q, want the snapshot-only fallback (no forecast segments)", name, line)
 		}
 	}
 }

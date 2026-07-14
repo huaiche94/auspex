@@ -385,11 +385,14 @@ func TestStatusLine_EmitLinePrintsOneCompactLine(t *testing.T) {
 	// from the renderer so a regression cannot rewrite its expectations.
 	const (
 		reset = "\x1b[0m"
-		brand = "\x1b[36max✈" + reset
+		brand = "\x1b[36max»" + reset
 		sep   = "\x1b[2m │ " + reset
 	)
-	scaleWarn := "\x1b[2mRUN" + reset + "  \x1b[33m⚠ WARN" + reset + "  \x1b[2mCHECKPOINT_AND_RUN" + reset + "  \x1b[2mBLOCK" + reset
-	if want := brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + scaleWarn + "\n"; out.String() != want {
+	// D-15 (#41): no token segment, and the policy segment is just the
+	// active action; the test card carries no context projection and the
+	// payload no measurement, so the line is model + badge only.
+	badgeWarn := "\x1b[33m⚠ WARN" + reset
+	if want := brand + " Opus 4.1" + sep + badgeWarn + "\n"; out.String() != want {
 		t.Errorf("emit-line output = %q, want %q", out.String(), want)
 	}
 }
@@ -405,7 +408,7 @@ func TestStatusLine_EmitLine_MalformedInputStillPrintsFallback(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute should fail open, got: %v", err)
 	}
-	if out.String() != "\x1b[36max✈\x1b[0m\n" {
+	if out.String() != "\x1b[36max»\x1b[0m\n" {
 		t.Errorf("output = %q, want the bare fallback line — the status bar must never go blank", out.String())
 	}
 }

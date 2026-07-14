@@ -238,17 +238,18 @@ func statusLineIngest(ctx context.Context, deps HookDeps, stdin []byte) (claudep
 // shared implementation, so the two cannot drift) and additionally
 // composes the one-line display text:
 //
-//	ax✈ <model> │ 🔮 probably (50%) < <n> tokens │ context [<bar>] <cur>% → worst-case ~<pct>% │ ◷ weekly limit ~<pct>% │ <policy scale>
+//	ax» <model> │ ◷ weekly ~<pct>% │ context [<bar>] <cur>% (p90 ≤<pct>%) │ ✓ RUN
 //
 // using the latest persisted evaluation for the session when one exists
-// (deps.Forecast.LatestForecastCard), else just "ax✈ <model>" plus the
-// weekly-limit segment when the snapshot carried one (that segment is
-// live snapshot data, not card data). Every degradation is fail-open into
-// a shorter line, never an error and never an empty line: malformed stdin
-// renders bare "ax✈", a missing model omits the model segment, a
-// missing/errored card omits the forecast segments — a status line must
-// keep rendering even when Auspex cannot parse its own input (the same
-// ADD §17.5 discipline HandleStatusLine already documents).
+// (deps.Forecast.LatestForecastCard), else just "ax» <model>" plus the
+// weekly and measured-context segments when the snapshot carried them
+// (those segments are live snapshot data, not card data). Every
+// degradation is fail-open into a shorter line, never an error and never
+// an empty line: malformed stdin renders bare "ax»", a missing model
+// omits the model segment, a missing/errored card omits the forecast
+// segments — a status line must keep rendering even when Auspex cannot
+// parse its own input (the same ADD §17.5 discipline HandleStatusLine
+// already documents).
 func HandleStatusLineEmitLine(ctx context.Context, deps HookDeps, stdin []byte) (StatusLineResult, string, error) {
 	snap, result, parsedOK := statusLineIngest(ctx, deps, stdin)
 	if !parsedOK {

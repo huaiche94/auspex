@@ -184,6 +184,13 @@ flowchart TD
 - **另釐清（owner 問）：** 「打字中即時預估」現行 statusline 架構做不到（payload 無輸入緩衝區、無 keystroke 觸發、最早鉤子是 UserPromptSubmit）——該需求屬 M12 VS Code 擴充（#10，blocked on M6）；「送出前預估」已有 `auspex evaluate --prompt-file -`。
 - **可逆性：** 高——常數與顯示皆單點；#11 校準落地後 cold-start 常數整組被取代。
 
+## D-15 — Statusline v3：owner 重設計（issue #41；token 段下架見 #42）
+
+- **日期／情境：** 2026-07-14。Owner 以 mock 直接指定新版式（未開選項）：`ax» <model> │ ◷ weekly ~37% │ context [bar] 4.0% (p95 ≤5%) │ ✓ RUN`。背景：①token 段的 P50 被證實是 cold-start 常數（3210 = 6000 × 0.5 × 1.5^(1/6)，逆向工程對到小數，#42）——不會動的數字沒有訊號價值；②owner 實機觀察到 `14.8% → worst-case ~11%` 的矛盾（stale 投影錨在較早 baseline，D-14 的顯示拆分沒有下限保護）。
+- **決定：** ①token 段自 statusline 下架，預估留在卡片表面（additionalContext／`auspex evaluate`），#42 讓預估會動之後才回來（回歸時 gate on 校準或 cohort 樣本數，不是無條件恢復）；②段序改 model│weekly│context│policy；③weekly 標籤去掉 "limit"；④context 段改實測優先——bar 與主數字都是 live 實測，投影降為括號上界 `(p90 ≤N%)`，渲染值 clamp 到 `max(投影, 實測)`（worst case 低於現值是矛盾不是資訊）；無實測時保留 projection-only 的 worst-case 措辭；無 card 時實測照樣渲染（snapshot 資料不依賴卡片）；⑤policy 只顯示當前 action（icon＋語意色），量表外 action 仍原樣顯示；⑥品牌字形 `ax✈` → `ax»`。
+- **Constitution #2 修正：** owner mock 寫 `p95`，pipeline 算的是 P90（`ProjectedContextUsedP90`）——標籤渲染為 `p90`，量詞必須對得上實際計算的分位數。
+- **可逆性：** 高——純 presenter 層，測試 byte-exact pin，D-13 v2.1 版式一個 commit 可回復。
+
 ---
 
 ## Lead 自行判斷（未開選項、已知會）

@@ -328,7 +328,8 @@ const (
 // Model, ContextUsedPercent, and WeeklyLimitUsedPercent come from the
 // LIVE statusline snapshot (measurements); Card carries the persisted
 // per-turn forecast (predictions). Keeping them separate on the input is
-// what lets the context segment show "measured → projected" honestly.
+// what lets the context segment lead with the measurement and mark the
+// projection as the estimate it is.
 type StatusLineInput struct {
 	Model string
 	Card  *ForecastCard
@@ -341,26 +342,29 @@ type StatusLineInput struct {
 }
 
 // StatusLineText renders the one-line statusline display (issue #14
-// deliverable 4; resolves issue #12 friction #2's ingest-only gap; icons
-// and semantic colors are issue #29; the plain-language format is the
-// owner's D-13 decision, issue #31; measured→projected split is D-14):
+// deliverable 4; icons and semantic colors are issue #29; v3 layout is
+// the owner's D-15 decision, issue #41):
 //
-//	ax✈ <model> │ 🔮 probably (50%) < <n> tokens │ context [<bar>] <cur>% → worst-case ~<pct>% │ ◷ weekly limit ~<pct>% │ <policy scale>
+//	ax» <model> │ ◷ weekly ~<pct>% │ context [<bar>] <cur>% (p90 ≤<pct>%) │ ✓ RUN
 //
-// model may be empty (renders as bare "ax✈") and card may be nil (no
+// model may be empty (renders as bare "ax»") and card may be nil (no
 // persisted evaluation for the session yet), so the status bar always has
-// something to show. "probably (50%)" is plain-language phrasing of the
-// P50 quantile: the percentage is rendered DATA, not a fixed label, so
-// when calibration (#11) can stand behind sharper quantiles the number
-// tightens without a format change — and the parenthetical keeps the
-// quantile visible while the full "uncalibrated estimate" labeling stays
-// on the card surfaces (Constitution #2; D-13 records the tension). The
-// cost range was dropped from the line by the same decision (still on the
-// card / `auspex evaluate`). The context segment (ADR-043 increment 2)
-// appears only when a projection was persisted — unknown contributes
-// nothing rather than a fabricated 0% — and carries the D-08 threshold
-// state ("(warn)"/"(checkpoint)"): textual suffixes stay alongside the
-// yellow/red coloring so the signal survives grep and colorblindness
+// something to show. The token segment was dropped in v3 (#41): the
+// cold-start P50 is effectively a constant (#42), and a number that never
+// moves carries no signal — the forecast stays on the card surfaces
+// (additionalContext / `auspex evaluate`) until #42 makes it move. The
+// context segment leads with the LIVE measurement (one decimal — it is
+// exact; bar tracks it too) whenever the snapshot carries one, with the
+// persisted projection reduced to a parenthetical upper bound. The
+// rendered bound is clamped to max(projected, measured): the projection
+// was anchored at an earlier turn's baseline, and a "worst case" below
+// the current measurement is a contradiction, not information (#41). The
+// label says p90 because that is the quantile the pipeline computes —
+// the owner's mock said p95, corrected per Constitution #2. A
+// projection-only render (no measurement) keeps the worst-case wording;
+// no projection contributes nothing rather than a fabricated 0%. The
+// D-08 threshold state ("(warn)"/"(checkpoint)") stays textual alongside
+// the yellow/red coloring so the signal survives grep and colorblindness
 // alike. weeklyLimitUsedPercent is the LIVE seven-day quota window from
 // the current snapshot (real data since #27), independent of the card so
 // it renders even on forecast-cold sessions; it stays uncolored until
@@ -371,47 +375,48 @@ type StatusLineInput struct {
 // method so the nil-card fallback is one code path, not caller-side
 // duplication.
 func StatusLineText(in StatusLineInput) string {
-	head := ansiCyan + "ax✈" + ansiReset
+	head := ansiCyan + "ax»" + ansiReset
 	if in.Model != "" {
 		head += " " + in.Model
 	}
 	parts := []string{head}
-	if in.Card != nil {
-		if in.Card.TokensP50 != nil {
-			parts = append(parts, fmt.Sprintf("🔮 probably (50%%) < %d tokens", *in.Card.TokensP50))
-		}
-		if in.Card.ContextProjectedP90 != nil {
-			pct := *in.Card.ContextProjectedP90
-			var seg string
-			if in.ContextUsedPercent != nil {
-				// Measurement first (one decimal — it is exact), then
-				// the projection with its estimate marker: the reader
-				// sees exactly how much of the number is prediction.
-				seg = fmt.Sprintf("context %s %.1f%% → worst-case ~%.0f%%", contextBar(pct), *in.ContextUsedPercent, pct)
-			} else {
-				seg = fmt.Sprintf("context worst-case %s ~%.0f%%", contextBar(pct), pct)
-			}
-			switch {
-			case in.Card.ContextCheckpointThresholdExceeded:
-				seg = ansiRed + seg + " (checkpoint)" + ansiReset
-			case in.Card.ContextWarnThresholdExceeded:
-				seg = ansiYellow + seg + " (warn)" + ansiReset
-			default:
-				seg = ansiGreen + seg + ansiReset
-			}
-			parts = append(parts, seg)
-		}
-	}
 	if in.WeeklyLimitUsedPercent != nil {
-		parts = append(parts, fmt.Sprintf("◷ weekly limit ~%.0f%%", *in.WeeklyLimitUsedPercent))
+		parts = append(parts, fmt.Sprintf("◷ weekly ~%.0f%%", *in.WeeklyLimitUsedPercent))
+	}
+	var projected *float64
+	if in.Card != nil {
+		projected = in.Card.ContextProjectedP90
+	}
+	var seg string
+	switch {
+	case in.ContextUsedPercent != nil:
+		cur := *in.ContextUsedPercent
+		seg = fmt.Sprintf("context %s %.1f%%", contextBar(cur), cur)
+		if projected != nil {
+			seg += fmt.Sprintf(" (p90 ≤%.0f%%)", math.Max(*projected, cur))
+		}
+	case projected != nil:
+		seg = fmt.Sprintf("context worst-case %s ~%.0f%%", contextBar(*projected), *projected)
+	}
+	if seg != "" {
+		switch {
+		case in.Card != nil && in.Card.ContextCheckpointThresholdExceeded:
+			seg = ansiRed + seg + " (checkpoint)" + ansiReset
+		case in.Card != nil && in.Card.ContextWarnThresholdExceeded:
+			seg = ansiYellow + seg + " (warn)" + ansiReset
+		default:
+			seg = ansiGreen + seg + ansiReset
+		}
+		parts = append(parts, seg)
 	}
 	if in.Card != nil && in.Card.PolicyAction != "" {
-		parts = append(parts, policyScale(in.Card.PolicyAction))
+		parts = append(parts, policyBadge(in.Card.PolicyAction))
 	}
 	return strings.Join(parts, ansiDim+" │ "+ansiReset)
 }
 
-// contextBar renders the projected worst-case usage as a 20-cell bar
+// contextBar renders the segment's headline percentage — the live
+// measurement when one exists, else the projection — as a 20-cell bar
 // (one cell per 5%), e.g. [██████··············] — D-13 v2.1: the bar
 // makes the runway legible without parsing the number.
 func contextBar(pct float64) string {
@@ -426,13 +431,13 @@ func contextBar(pct float64) string {
 	return "[" + strings.Repeat("█", filled) + strings.Repeat("·", cells-filled) + "]"
 }
 
-// policyScale renders ALL four policy actions in severity order with the
-// active one lit (icon + color) and the rest dimmed — a first-time user
-// sees where the current decision sits on the scale, not just a word
-// (D-13 v2.1). An action outside the known scale renders alone as its
-// raw string — never dropped, never mislabeled as part of the scale.
-func policyScale(active app.PolicyAction) string {
-	scale := []struct {
+// policyBadge renders ONLY the active policy action, lit with its icon
+// and semantic color — D-15 (issue #41) dropped D-13 v2.1's full
+// severity scale: one word reads faster on a crowded bar. An action
+// outside the known set renders as its raw string — never dropped,
+// never mislabeled.
+func policyBadge(active app.PolicyAction) string {
+	known := []struct {
 		action app.PolicyAction
 		icon   string
 		color  string
@@ -442,25 +447,12 @@ func policyScale(active app.PolicyAction) string {
 		{app.PolicyCheckpointAndRun, "⚑", ansiMagenta},
 		{app.PolicyBlock, "✖", ansiRed},
 	}
-	known := false
-	for _, s := range scale {
+	for _, s := range known {
 		if s.action == active {
-			known = true
-			break
+			return s.color + s.icon + " " + string(active) + ansiReset
 		}
 	}
-	if !known {
-		return string(active)
-	}
-	parts := make([]string, 0, len(scale))
-	for _, s := range scale {
-		if s.action == active {
-			parts = append(parts, s.color+s.icon+" "+string(s.action)+ansiReset)
-		} else {
-			parts = append(parts, ansiDim+string(s.action)+ansiReset)
-		}
-	}
-	return strings.Join(parts, "  ")
+	return string(active)
 }
 
 func (c ForecastCard) labelText() string {

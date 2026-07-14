@@ -339,21 +339,28 @@ func TestStatusLineText(t *testing.T) {
 	const (
 		reset  = "\x1b[0m"
 		dim    = "\x1b[2m"
-		brand  = "\x1b[36max✈" + reset // cyan
+		brand  = "\x1b[36max»" + reset // cyan
 		sep    = dim + " │ " + reset   // dim separator
 		green  = "\x1b[32m"
 		yellow = "\x1b[33m"
 		red    = "\x1b[31m"
-		// D-13 v2.1: the policy segment shows the WHOLE severity scale,
-		// active step lit, the rest dimmed.
-		scaleRun  = green + "✓ RUN" + reset + "  " + dim + "WARN" + reset + "  " + dim + "CHECKPOINT_AND_RUN" + reset + "  " + dim + "BLOCK" + reset
-		scaleWarn = dim + "RUN" + reset + "  " + yellow + "⚠ WARN" + reset + "  " + dim + "CHECKPOINT_AND_RUN" + reset + "  " + dim + "BLOCK" + reset
-		// 20-cell bars: 91% → 18 filled, 97% → 19 filled.
+		// D-15 (issue #41): the policy segment shows ONLY the active
+		// action, lit with its icon and semantic color.
+		badgeRun  = green + "✓ RUN" + reset
+		badgeWarn = yellow + "⚠ WARN" + reset
+		// 20-cell bars: 91% → 18 filled, 97% → 19 filled; the measured
+		// 26.8% → 5 filled, 14.8% → 3 filled.
 		bar91 = "[██████████████████··]"
 		bar97 = "[███████████████████·]"
+		bar27 = "[█████···············]"
+		bar15 = "[███·················]"
 	)
 	weekly := 31.4
 	ctxCur := 26.8173
+	staleCur := 14.84
+	staleCard := fullTestCard()
+	staleCard.ContextProjectedP90 = ptrF64(11)
+	staleCard.ContextWarnThresholdExceeded = false
 	cases := []struct {
 		name string
 		in   evaluation.StatusLineInput
@@ -361,28 +368,35 @@ func TestStatusLineText(t *testing.T) {
 	}{
 		{"no model no card", evaluation.StatusLineInput{}, brand},
 		{"model only", evaluation.StatusLineInput{Model: "Opus 4.1"}, brand + " Opus 4.1"},
-		// D-13: no cost segment on the line; the P50 renders as a
-		// plain-language probability with the quantile in parentheses.
-		// Without a live measurement the context segment keeps the
-		// projection-only wording.
+		// D-15: no token segment on the line (#41/#42); without a live
+		// measurement the context segment keeps the projection-only
+		// worst-case wording.
 		{"full", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &card},
-			brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + yellow + "context worst-case " + bar91 + " ~91% (warn)" + reset + sep + scaleWarn},
+			brand + " Opus 4.1" + sep + yellow + "context worst-case " + bar91 + " ~91% (warn)" + reset + sep + badgeWarn},
 		{"context without threshold decision", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &noThresholdCard},
-			brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + green + "context worst-case " + bar91 + " ~91%" + reset + sep + scaleWarn},
+			brand + " Opus 4.1" + sep + green + "context worst-case " + bar91 + " ~91%" + reset + sep + badgeWarn},
 		{"checkpoint marker outranks warn", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &checkpointCard},
-			brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + red + "context worst-case " + bar97 + " ~97% (checkpoint)" + reset + sep + scaleWarn},
-		// D-14: with a live measurement the segment splits measured →
-		// projected — one decimal on the measurement (it is exact), the
-		// estimate marker stays on the projection.
-		{"measured context splits from projection", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &card, ContextUsedPercent: &ctxCur},
-			brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + yellow + "context " + bar91 + " 26.8% → worst-case ~91% (warn)" + reset + sep + scaleWarn},
+			brand + " Opus 4.1" + sep + red + "context worst-case " + bar97 + " ~97% (checkpoint)" + reset + sep + badgeWarn},
+		// D-15: the measurement leads (one decimal — it is exact; the
+		// bar tracks it), the projection is a parenthetical upper bound.
+		{"measured context leads, projection parenthetical", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &card, ContextUsedPercent: &ctxCur},
+			brand + " Opus 4.1" + sep + yellow + "context " + bar27 + " 26.8% (p90 ≤91%) (warn)" + reset + sep + badgeWarn},
+		// A measurement renders even with no card at all — it is live
+		// snapshot data; no parenthetical without a projection.
+		{"measured context without card", evaluation.StatusLineInput{Model: "Opus 4.1", ContextUsedPercent: &ctxCur},
+			brand + " Opus 4.1" + sep + green + "context " + bar27 + " 26.8%" + reset},
+		// A stale persisted projection below the live measurement clamps
+		// to the measurement — "worst case" can never read below
+		// "current" (#41).
+		{"stale projection clamps to measurement", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &staleCard, ContextUsedPercent: &staleCur},
+			brand + " Opus 4.1" + sep + green + "context " + bar15 + " 14.8% (p90 ≤15%)" + reset + sep + badgeWarn},
 		// The weekly segment is snapshot data, independent of the card:
 		// it renders on a forecast-cold session (uncolored until #21
-		// gives it honest thresholds) and slots before the policy scale.
+		// gives it honest thresholds) and slots right after the model.
 		{"weekly limit without card", evaluation.StatusLineInput{Model: "Opus 4.1", WeeklyLimitUsedPercent: &weekly},
-			brand + " Opus 4.1" + sep + "◷ weekly limit ~31%"},
+			brand + " Opus 4.1" + sep + "◷ weekly ~31%"},
 		{"full with weekly", evaluation.StatusLineInput{Model: "Opus 4.1", Card: &card, WeeklyLimitUsedPercent: &weekly},
-			brand + " Opus 4.1" + sep + "🔮 probably (50%) < 8000 tokens" + sep + yellow + "context worst-case " + bar91 + " ~91% (warn)" + reset + sep + "◷ weekly limit ~31%" + sep + scaleWarn},
+			brand + " Opus 4.1" + sep + "◷ weekly ~31%" + sep + yellow + "context worst-case " + bar91 + " ~91% (warn)" + reset + sep + badgeWarn},
 	}
 	for _, tc := range cases {
 		if got := evaluation.StatusLineText(tc.in); got != tc.want {
@@ -390,16 +404,16 @@ func TestStatusLineText(t *testing.T) {
 		}
 	}
 
-	// A card without a token forecast contributes only its action —
-	// never "probably < 0 tokens", and an unknown context projection
-	// contributes no "context ~0%" segment either (unknown is not zero).
+	// A card without a context projection contributes only its action —
+	// an unknown projection contributes no "context ~0%" segment
+	// (unknown is not zero).
 	coldCard := evaluation.ForecastCard{PolicyAction: app.PolicyRun}
-	if got, want := evaluation.StatusLineText(evaluation.StatusLineInput{Model: "Sonnet 4", Card: &coldCard}), brand+" Sonnet 4"+sep+scaleRun; got != want {
+	if got, want := evaluation.StatusLineText(evaluation.StatusLineInput{Model: "Sonnet 4", Card: &coldCard}), brand+" Sonnet 4"+sep+badgeRun; got != want {
 		t.Errorf("cold card: StatusLineText = %q, want %q", got, want)
 	}
 
-	// An action outside the known scale renders alone as its raw string —
-	// never dropped, never mislabeled as a step on the scale.
+	// An action outside the known set renders alone as its raw string —
+	// never dropped, never mislabeled.
 	unknownCard := evaluation.ForecastCard{PolicyAction: app.PolicyAction("FUTURE_ACTION")}
 	if got, want := evaluation.StatusLineText(evaluation.StatusLineInput{Model: "Sonnet 4", Card: &unknownCard}), brand+" Sonnet 4"+sep+"FUTURE_ACTION"; got != want {
 		t.Errorf("unknown action: StatusLineText = %q, want %q", got, want)

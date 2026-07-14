@@ -60,6 +60,22 @@ flowchart TD
     D9 ==>|✅ #17 + #13 context 增量| D9A[本 session 收預估體驗線]
     D9 -.->|✗ 只做 #17| D9B[最小關鍵路徑]
     D9 -.->|✗ 推到 #7 daemon| D9C[進度最多但品質風險]
+
+    D9A --> D10{D-10 model/effort 預測參數 gap}
+    D10 ==>|✅ backlog 文件 + issue #20 排序| D10A[docs/backlog/ 新文件<br/>#20 排 #13 後、與 #11 綑綁]
+    D10 -.->|✗ 草案 ADR Proposed| D10B[佔 0047、立 Proposed 先例]
+    D10 -.->|✗ 併入 #13 範圍| D10C[資源軸/特徵軸混流]
+    D10 -.->|✗ 只留文件不開 issue| D10D[易被遺忘]
+
+    D10A --> D11{D-11 rate-limit 視窗策略}
+    D11 ==>|✅ 全部抓 + binding constraint| D11A[parser 泛型化 #21<br/>policy 取最早耗盡視窗]
+    D11 -.->|✗ 只看 5hr| D11B[weekly 撞牆盲區]
+    D11 -.->|✗ 只看最嚴 weekly| D11C[短程 5hr 盲區]
+
+    D11A --> D12{D-12 下輪開場}
+    D12 ==>|✅ #21+#20 Phase 0 捕捉先| D12A[capture-before-model 紀律<br/>晚一天=一天 unlabeled]
+    D12 -.->|✗ #11 校準骨架先| D12B[缺標籤恐返工]
+    D12 -.->|✗ #7 daemon 先| D12C[資料飛輪慢幾週]
 ```
 
 ---
@@ -122,6 +138,26 @@ flowchart TD
 
 - **選項：** ①**#17 + #13 context 增量（✅）**——預估體驗線一次收乾淨；②只做 #17——最小關鍵路徑；③一路推到 #7 daemon——不建議（安全敏感大工程塞在長 session 尾端）。
 - **後果：** 本 session 範圍鎖定；#7 daemon 為下一 session 的第一優先。
+
+## D-10 — Predictor 的 provider/model/effort 參數 gap（issue #20）
+
+- **日期／情境：** 2026-07-13。Owner 詢問預測公式是否把 claude（model, effort）／codex（model, reasoning, speed）當輸入參數。稽核結論：provider/model cohort 在 ADD §15.2/§15.3 **有設計但未實作**（實際 cohort 只有同 session 近期觀測、quota delta 寫死 2.0/6.0）；effort/reasoning/speed **連設計都不存在**；`predictions` 表未存 model/effort 欄位，歷史預測無法事後分層校準。另發現 model/effort 是 turn 級變數（mid-session 可 `/model`、`/fast` 切換），現有 session 級 `provider_sessions.model` 放錯層。
+- **選項（文件形式）：** ①**backlog 設計文件（✅）**——`docs/backlog/` 新類別，零 blast radius，日後可升格 ADR；②草案 ADR（Proposed）——佔 0047 編號、破全 Accepted 慣例，且尚無決策可記；③併入 #13——資源軸（context/cost/rate limit）與特徵軸（誰在跑、用多少力）混流，#13 膨脹。
+- **選項（追蹤）：** ①**開 issue + 建議排序（✅）**——#20 建議排在 #13 之後、Phase 0（capture）與 #11 綑綁：校準要分層的正是這些欄位，晚一天記錄就是一天的 unlabeled history；②開 issue 不排序；③只留文件——repo 無純文件 todo 先例，易被遺忘。
+- **後果：** `docs/backlog/provider-model-effort-features.md`（四階段：capture → cohort filtering → empirical calibration → codex wiring；capture-before-model 紀律，本文件不提任何係數）＋ issue #20。優先順序調整為 #13 →（#11 ＋ #20 Phase 0）→ #7 → #6 → #9 → #8 → #10。
+- **可逆性：** 高——純新增文件與 issue；排序調整只是順序，#20 Phase 1+ 仍可獨立重排。
+
+## D-11 — Rate-limit 視窗策略（issue #21）
+
+- **日期／情境：** 2026-07-13。Owner 提出：Claude 有 session (5hr)、weekly (all models)、weekly (Fable) 多種限制，該看哪個？稽核發現 parser 寫死只認 `five_hour`/`seven_day`，per-model weekly 被靜默丟棄；domain 層本已支援 N 視窗。
+- **選項：** ①**全部抓 + binding constraint（✅）**——parser 泛型化（未知視窗照收，forward compatible），policy 對每視窗投影後取最早耗盡者。優：永遠看到真瓶頸、provider 改限制免改程式。缺：卡片多一行。Blast radius：小。②只看 5hr——weekly 撞牆全盲，且 Codex 已移除 5hr、此路正在變窄。③只看最嚴 weekly——短 session 內 5hr binding 時會錯過即時風險，且 per-model 視窗不看 model 歸屬會誤報。
+- **後果：** issue #21 追蹤實作；與 #20 Phase 0 綁定（weekly (Fable) 是否 binding 取決於 turn 的 model）。第一步是在 owner 機器抓一次真實 statusline payload 確認 per-model 視窗的 JSON key。
+- **可逆性：** 高——純捕捉面擴充，policy 選擇邏輯獨立可調。
+
+## D-12 — 下輪開場優先序（E2E 回饋 session 定案）
+
+- **選項：** ①**#21 + #20 Phase 0 捕捉先（✅）**——capture-before-model 紀律：晚一天記錄就是一天 unlabeled 歷史，#11 校準要分層的正是這些欄位；②#11 校準骨架先（缺標籤恐返工）；③#7 daemon 先（資料飛輪慢幾週）。
+- **首次 E2E 回饋紀錄（2026-07-13）：** owner 的互動 session 仍掛改名前設定（見到舊 `pf✈`、未見預估卡）——結論：hooks 在 session 啟動時快照，改設定需重開 session。卡片觀感回饋延至 owner 實際體驗後（下次 session 結尾再問）。
 
 ---
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/huaiche94/auspex/internal/config"
@@ -260,6 +261,13 @@ func TestLoadFile_ExistingFile_ReadsBytes(t *testing.T) {
 }
 
 func TestLoadFile_UnreadableFile_Errors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Mode 0o000 maps only onto Windows' read-only file attribute,
+		// which blocks writes but not reads — the "permission-denied
+		// read" premise cannot be established via chmod there (issue
+		// #24), same as sqlite's unwritable-directory test.
+		t.Skip("windows: chmod cannot make a file unreadable")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "no-permission.yaml")
 	if err := os.WriteFile(path, []byte(validDefaults), 0o000); err != nil {

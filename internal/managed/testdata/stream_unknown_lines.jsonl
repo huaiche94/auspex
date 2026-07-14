@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","cwd":"/tmp/project","session_id":"sess-managed-3","model":"claude-sonnet-4-5"}
+{"type":"future_event_kind","payload":{"answer":42},"session_id":"sess-managed-3"}
+this line is not JSON at all
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"ok"}]},"session_id":"sess-managed-3"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":104,"num_turns":1,"result":"","session_id":"sess-managed-3","total_cost_usd":0.0009}

@@ -71,6 +71,18 @@ import (
 // to a future managed-runner or interactive registration mode.
 const invocationModeNativeHook = "native-hook"
 
+// InvocationModeManagedStreamJSON is the provider_sessions.invocation_mode
+// value for sessions registered by the managed one-shot runner (`auspex
+// run`, issue #8 — ADD §8.1's `claude -p --output-format stream-json`
+// path). The spelling matches ADD §16's policy vocabulary
+// (invocation_mode_in: [managed_app_server, managed_stream_json]) so a
+// future policy rule can target managed sessions without a data
+// migration, and so the row honestly records HOW the session was driven
+// rather than fabricating the hook default (Constitution rule 3: provider
+// capability/mode differences are surfaced explicitly, never silently
+// assumed away).
+const InvocationModeManagedStreamJSON = "managed_stream_json"
+
 // RepoResolver is the narrow, package-local view of *gitx.Client this
 // bootstrapper actually consumes — the same one-method-view convention
 // SessionResolver (correlate.go) established over app.FeatureDataSource.
@@ -105,6 +117,16 @@ type SessionBootstrap struct {
 	// value as the resolution cache for per-turn stamping (migration
 	// 0046); the turn-level record lives on the prediction row.
 	Effort *string
+	// InvocationMode records HOW the session is being driven
+	// (provider_sessions.invocation_mode). Empty means the hook default
+	// (invocationModeNativeHook) — every pre-issue-#8 caller in hooks.go
+	// leaves it empty and keeps its exact prior behavior; the managed
+	// one-shot runner passes InvocationModeManagedStreamJSON. Like the
+	// worktree binding, the mode is first-observation-wins on conflict
+	// (the managed runner bootstraps BEFORE its gate evaluation runs, so
+	// a managed session's row is born managed even though the shared
+	// gate path re-bootstraps it with the hook default a moment later).
+	InvocationMode string
 }
 
 // SessionBootstrapper lazily registers the repositories -> worktrees ->
@@ -169,6 +191,11 @@ func (b *SessionBootstrapper) Bootstrap(ctx context.Context, req SessionBootstra
 		// outside any repository legitimately has no repositories/
 		// worktrees chain to register.
 		return false
+	}
+
+	invocationMode := req.InvocationMode
+	if invocationMode == "" {
+		invocationMode = invocationModeNativeHook
 	}
 
 	now := b.Clock.Now().UTC().Format(time.RFC3339Nano)
@@ -237,7 +264,7 @@ func (b *SessionBootstrapper) Bootstrap(ctx context.Context, req SessionBootstra
 				model  = COALESCE(excluded.model, provider_sessions.model),
 				effort = COALESCE(excluded.effort, provider_sessions.effort)`,
 			string(req.SessionID), resolvedWorktreeID, req.Provider, string(req.SessionID),
-			invocationModeNativeHook, req.Model, req.Effort, now,
+			invocationMode, req.Model, req.Effort, now,
 		); err != nil {
 			return err
 		}

@@ -304,6 +304,20 @@ func (a *App) RootCmd() *cobra.Command {
 		return cli.NewEvaluateCmd(hookDeps)
 	})
 
+	// run (issue #8, ADD §8.1 managed one-shot MVP): swapped
+	// unconditionally, like evaluate, because its one required service
+	// (Evaluation, for the pre-prompt gate) is a required field this
+	// container cannot exist without, and it shares the SAME hookDeps —
+	// deliberately, so the gate `auspex run` enforces before spawning the
+	// provider is the exact evaluation path the UserPromptSubmit hook
+	// runs (internal/managed's doc). Nil Persister/Bootstrapper/Forecast
+	// degrade per HookDeps' own documented contracts (no telemetry
+	// persisted, no lazy session registration, no forecast card) — the
+	// run itself still gates and executes.
+	replaceSubcommand(root, "run", func(_ string) *cobra.Command {
+		return cli.NewRunCmd(hookDeps)
+	})
+
 	checkpointDeps := orchestrator.CheckpointCreateDeps{
 		StateCheckpoint:      a.services.StateCheckpoint,
 		RepositoryCheckpoint: a.services.RepositoryCheckpoint,

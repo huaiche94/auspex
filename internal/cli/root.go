@@ -63,6 +63,7 @@ func NewRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newGCCmd(),
 		newExportCmd(),
+		newRunCmd(),
 	)
 
 	return WithJSONErrorRendering(root)
@@ -370,6 +371,28 @@ func newExportCmd() *cobra.Command {
 		},
 	})
 	return cmd
+}
+
+// newRunCmd builds the standalone-stub `auspex run` leaf (ADD §8.1
+// managed one-shot mode, issue #8). A stub ONLY on this bare tree —
+// internal/app/wiring.App.RootCmd() replaces it with NewRunCmd's real
+// handler (run.go), the same stub-then-swap pattern `evaluate`/`gc`
+// follow: a caller with no wired evaluation/telemetry services still gets
+// an honest "not yet available" instead of a runner that would spawn a
+// provider with no gate behind it. ArbitraryArgs (not NoArgs, unlike the
+// other stubs) because the real command's shape is `run [flags] --
+// <prompt>` — the stub must accept the same invocation and answer with
+// the stub error, not a usage error. `auspex shell` (ADD §8.2) is a later
+// issue-#8 increment and deliberately has no command here at all.
+func newRunCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "run [flags] -- <prompt>",
+		Short: "Run a provider one-shot prompt under Auspex's managed gate",
+		Args:  cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("run")
+		},
+	}
 }
 
 // newDoctorCmd builds `auspex doctor`. Stub: environment/provider

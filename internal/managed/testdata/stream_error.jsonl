@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","cwd":"/tmp/project","session_id":"sess-managed-2","model":"claude-sonnet-4-5"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":912,"duration_api_ms":730,"num_turns":1,"session_id":"sess-managed-2","total_cost_usd":0.0031}

@@ -2,13 +2,20 @@
 """Data-readiness + calibration-coverage report over a calibration export.
 
 Usage:
-    python3 research/calibration/report.py calibration.jsonl [--json]
+    python3 research/calibration/report.py calibration.jsonl [--json] \\
+        [--observations observations.jsonl]
 
 Grounding discipline (research/README.md): cohorts below the ADD §15.2
 sample gate (8) are REPORTED as insufficient, never fitted. With today's
 capture gaps (no per-turn token actuals, sparse outcome correlation) the
 readiness section is the report's whole value; the coverage section
 activates by itself as the gaps close.
+
+With --observations, the report also folds in the per-turn ACTUALS
+readiness derived from `auspex export observations` (observations.py's
+best-effort attribution): how many turns exist, how many are closed by a
+terminal event, and how many have derivable cost/context deltas — the
+issue #11 gap this dataset exists to close.
 """
 
 from __future__ import annotations
@@ -22,13 +29,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from load import Record, load  # noqa: E402
+from observations import derive_turn_actuals, summarize_turn_actuals  # noqa: E402
+from observations import load as load_observations  # noqa: E402
 
 # ADD §15.2's "count(similar) >= 8" gate, the same constant the Go side
 # uses (RuleTokenForecaster.MinSimilarSamples, minSimilarTurnSamples).
 SAMPLE_GATE = 8
 
 
-def build_report(records: list[Record]) -> dict:
+def build_report(records: list[Record], turn_actuals: dict | None = None) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
     with_actual = sum(1 for r in records if r.actual_known)
@@ -53,6 +62,18 @@ def build_report(records: list[Record]) -> dict:
         "yet — token P50/P80/P90 coverage cannot be computed (ADR-047's "
         "ladder is dormant for the same reason)"
     )
+    if turn_actuals is None:
+        gaps.append(
+            "no observations export supplied (--observations) — per-turn "
+            "cost/context ACTUAL deltas were not assessed; export with "
+            "`auspex export observations` to close issue #11's actuals gap"
+        )
+    elif turn_actuals["cost_derivable_turns"] == 0:
+        gaps.append(
+            "0 turns have a derivable cost delta: the observation series "
+            "lacks pre-turn baselines or in-window usage samples (or every "
+            "turn is unclosed) — per-turn cost actuals remain blocked"
+        )
 
     cohorts = [
         {
@@ -81,6 +102,9 @@ def build_report(records: list[Record]) -> dict:
         "cohorts": cohorts,
         "cohorts_meeting_gate": sum(1 for c in cohorts if c["meets_gate"]),
         "sample_gate": SAMPLE_GATE,
+        # None (not zeros) when no observations export was supplied —
+        # unknown is not zero.
+        "per_turn_actuals": turn_actuals,
         "readiness_gaps": gaps,
     }
 
@@ -114,6 +138,29 @@ def render_text(report: dict) -> str:
             f"{c['rows']} rows — {mark}"
         )
 
+    actuals = report["per_turn_actuals"]
+    if actuals is not None:
+        lines.append("")
+        lines.append("per-turn actuals readiness (observations export):")
+        lines.append(f"  turn.started events: {actuals['turns']}")
+        lines.append(f"  closed by a terminal event: {actuals['closed_turns']}")
+        lines.append(
+            f"  with derivable cost delta: {actuals['cost_derivable_turns']}"
+        )
+        lines.append(
+            f"  with derivable context delta: {actuals['context_derivable_turns']}"
+        )
+        if actuals["negative_context_deltas"]:
+            lines.append(
+                f"  negative context deltas (compaction; surfaced as-is): "
+                f"{actuals['negative_context_deltas']}"
+            )
+        if actuals["negative_cost_deltas"]:
+            lines.append(
+                f"  NEGATIVE cost deltas (input suspect — cumulative cost "
+                f"cannot shrink): {actuals['negative_cost_deltas']}"
+            )
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -124,11 +171,23 @@ def render_text(report: dict) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("export", type=Path, help="calibration export JSONL path")
+    parser.add_argument(
+        "--observations",
+        type=Path,
+        default=None,
+        help="observations export JSONL path (auspex export observations) "
+        "for the per-turn actuals readiness section",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args()
 
     records = list(load(args.export))
-    report = build_report(records)
+    turn_actuals = None
+    if args.observations is not None:
+        turn_actuals = summarize_turn_actuals(
+            derive_turn_actuals(list(load_observations(args.observations)))
+        )
+    report = build_report(records, turn_actuals)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

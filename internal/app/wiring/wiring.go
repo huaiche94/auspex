@@ -340,8 +340,11 @@ func (a *App) RootCmd() *cobra.Command {
 
 	// export (FR-170/171, issue #11) rides the same retention-engine
 	// wiring gc does — the exporter is the engine itself, so the same
-	// nil-gate applies for the same reason.
-	if exporter, ok := a.services.GC.Runner.(cli.CalibrationExporter); ok && a.services.GC.Runner != nil {
+	// nil-gate applies for the same reason. The assertion is on the full
+	// cli.Exporter union (calibration + observations): NewExportCmd swaps
+	// the WHOLE export family at once, so a runner serving only one
+	// dataset keeps the stubs rather than half-wiring the family.
+	if exporter, ok := a.services.GC.Runner.(cli.Exporter); ok && a.services.GC.Runner != nil {
 		replaceSubcommand(root, "export", func(_ string) *cobra.Command {
 			return cli.NewExportCmd(exporter)
 		})

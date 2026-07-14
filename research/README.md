@@ -1,9 +1,10 @@
 # research/ — offline calibration pipeline (M13, issue #11)
 
 The offline half of the calibration loop: reads `auspex export
-calibration` JSONL, reports data readiness, and — once per-cohort sample
-gates pass — produces the empirical quantiles and residual reports that
-feed coefficients back into the predictor.
+calibration` and `auspex export observations` JSONL, reports data
+readiness, derives per-turn ACTUAL cost/context deltas, and — once
+per-cohort sample gates pass — produces the empirical quantiles and
+residual reports that feed coefficients back into the predictor.
 
 ## Grounding discipline (binding)
 
@@ -17,12 +18,19 @@ Tuning against n≈0 is indistinguishable from guessing.
 ## Usage
 
 ```sh
-# 1. Export the dataset (de-identified by construction, FR-170/171):
+# 1. Export the datasets (de-identified by construction, FR-170/171):
 auspex export calibration --out calibration.jsonl
+auspex export observations --out observations.jsonl
 
 # 2. Data-readiness report (works from day zero — an empty dataset is a
-#    valid, honest input):
-python3 research/calibration/report.py calibration.jsonl
+#    valid, honest input). --observations adds the per-turn actuals
+#    readiness section:
+python3 research/calibration/report.py calibration.jsonl \
+    --observations observations.jsonl
+
+# 3. Per-turn actual cost/context deltas (best-effort attribution —
+#    see observations.py's docstring for the model and its limits):
+python3 research/calibration/observations.py observations.jsonl
 ```
 
 No third-party dependencies — standard library only, so the report runs
@@ -48,14 +56,41 @@ Once gates pass, `report.py` also emits per-cohort predicted-vs-actual
 coverage (did the actual land ≤ P50 / ≤ P80 / ≤ P90) — the replay-backed
 calibration evidence `Historical_Replay_Report.md` could not produce.
 
+## Per-turn actuals (observations export)
+
+Statusline usage totals are SESSION-CUMULATIVE (`total_cost_usd` only
+grows), so "this turn cost $0.12" is a subtraction across snapshots —
+a modeling step the Go bridges refuse (capture-before-model discipline).
+`auspex export observations` therefore ships the raw series
+(usage/context/quota snapshots) plus turn boundary events, and
+`calibration/observations.py` derives the deltas HERE, where modeling is
+allowed. The attribution is explicitly best-effort:
+
+- snapshots lag the work they measure, so samples between a turn's
+  terminal event and the next turn's start are attributed to the
+  finished turn;
+- a turn with no pre-turn baseline sample is **underivable**, never
+  assumed to start from 0 (resumed sessions and retention-truncated
+  series make a 0 baseline a fabrication);
+- compaction can shrink `used_tokens`, so **negative context deltas are
+  real and surfaced as-is with a note — never clamped silently**.
+
 ## Layout
 
 - `calibration/load.py` — JSONL loader + schema validation
   (`auspex.calibration-export.v1`).
+- `calibration/observations.py` — JSONL loader + schema validation
+  (`auspex.observations-export.v1`) and the per-turn cost/context delta
+  derivation. Runs standalone (text or `--json`) and feeds report.py's
+  per-turn actuals section.
 - `calibration/report.py` — readiness + (data permitting) coverage
-  report. Output is plain text to stdout; `--json` for machine form.
+  report; `--observations observations.jsonl` adds the per-turn actuals
+  readiness section. Output is plain text to stdout; `--json` for
+  machine form.
 
-De-identification note: the export contains opaque row IDs, enums,
+De-identification note: the exports contain opaque row IDs, enums,
 numbers, and timestamps only (see `internal/retention/export.go`'s
-package comment). Nothing in this directory may join it back to prompts,
-paths, or identities — there is nothing to join to.
+package comment; the observations export is a payload WHITELIST
+projection, see `internal/retention/observations.go`). Nothing in this
+directory may join them back to prompts, paths, or identities — there is
+nothing to join to.

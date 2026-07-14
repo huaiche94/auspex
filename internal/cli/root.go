@@ -315,9 +315,10 @@ func newGCCmd() *cobra.Command {
 	}
 }
 
-// newExportCmd builds `auspex export`. Stub: the real calibration export
-// (FR-170/171, issue #11) needs the retention engine's *sqlite.DB wiring,
-// same gating as gc — internal/app/wiring swaps in the real handler.
+// newExportCmd builds `auspex export`. Stub: the real exports
+// (FR-170/171, issue #11) need the retention engine's *sqlite.DB wiring,
+// same gating as gc — internal/app/wiring swaps in the real handlers
+// (both leaves at once; the family is one seam, cli.Exporter).
 func newExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export",
@@ -329,6 +330,14 @@ func newExportCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("export calibration")
+		},
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:   "observations",
+		Short: "Export raw usage/context/quota series with turn boundaries as JSONL",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("export observations")
 		},
 	})
 	return cmd

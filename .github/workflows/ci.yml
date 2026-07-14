@@ -89,14 +89,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # windows-latest is non-blocking until issue #24 lands: the matrix ran
-    # for the first time once the lint job was fixed (PR #23), surfacing a
-    # backlog of Windows portability failures (progress evidence staging's
-    # rename-over-existing, repocheckpoint diff/patch round-trips, sqlite's
-    # chmod-based unwritable-dir test) that predate and outscope that PR.
-    # Failures stay visible in the checks UI; they just don't veto merges.
-    # Remove this marker as part of closing #24.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

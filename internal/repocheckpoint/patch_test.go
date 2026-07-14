@@ -54,7 +54,13 @@ func applyPatchToFreshCheckout(t *testing.T, rb *repoBuilder, patchBytes []byte)
 	// pre-image blobs (via --full-index) against a working tree that
 	// genuinely matches the patch's base, not a filesystem copy that
 	// happens to look similar.
-	cloneCmd := exec.Command("git", "clone", "-q", rb.dir, freshDir)
+	// -c core.autocrlf=false lands in the clone's own config BEFORE its
+	// initial checkout runs, so the fresh worktree materializes the same
+	// LF bytes the fixture repo holds — repo-level config does not follow
+	// a clone, and windows-latest's system git defaults autocrlf=true,
+	// which would CRLF-rewrite the checkout and every later `git apply`
+	// write, breaking the byte-exact round-trip assertions (issue #24).
+	cloneCmd := exec.Command("git", "clone", "-q", "-c", "core.autocrlf=false", rb.dir, freshDir)
 	if out, err := cloneCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git clone: %v: %s", err, out)
 	}

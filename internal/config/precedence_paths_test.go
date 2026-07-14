@@ -18,6 +18,7 @@ package config_test
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -82,7 +83,15 @@ func TestPrecedence_PathsEnvOverride_ChangesWhichConfigFileLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve (override): %v", err)
 	}
-	wantConfigDir := filepath.Join(overrideConfigRoot, "auspex")
+	// path.Join, not filepath.Join: Resolve("linux", ...) joins with "/"
+	// by design regardless of host OS (internal/paths resolves each OS
+	// family's paths host-independently — see winJoin's doc comment for
+	// the same rule in the other direction), so a host-separator-based
+	// expectation would fail on a Windows host feeding a "\"-shaped temp
+	// root through the linux resolver (issue #24). The mixed-separator
+	// result is still a valid Windows filesystem path, which is exactly
+	// what loadWithGlobalLayer below proves by reading through it.
+	wantConfigDir := path.Join(overrideConfigRoot, "auspex")
 	if dirsOverride.Config != wantConfigDir {
 		t.Fatalf("Resolve Config = %q, want %q", dirsOverride.Config, wantConfigDir)
 	}

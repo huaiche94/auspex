@@ -70,6 +70,13 @@ func newRepoBuilder(t *testing.T) *repoBuilder {
 	rb.git("config", "user.name", "Auspex Test")
 	rb.git("config", "user.email", "test@auspex.invalid")
 	rb.git("config", "commit.gpgsign", "false")
+	// Pin line-ending conversion OFF: windows-latest's git ships with a
+	// system-level core.autocrlf=true, which rewrites LF blobs to CRLF at
+	// checkout — breaking every byte-exact round-trip assertion these
+	// tests make about worktree file contents (issue #24). The fixtures
+	// here write LF bytes and assert LF bytes; make that explicit rather
+	// than inherited from the host's config.
+	rb.git("config", "core.autocrlf", "false")
 	return rb
 }
 

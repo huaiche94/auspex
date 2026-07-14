@@ -95,14 +95,14 @@ func (s *FileStager) Stage(ctx context.Context, nodeID domain.ProgressNodeID, re
 				Details:   map[string]string{"node_id": string(nodeID), "uri": ref.URI},
 			}
 		}
-		return StagedArtifact{}, fmt.Errorf("progress: open artifact %s: %w", path, err)
+		return StagedArtifact{}, stagingError(nodeID, ref, fmt.Sprintf("progress: open artifact %s: %v", path, err))
 	}
 	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	size, err := io.Copy(h, f)
 	if err != nil {
-		return StagedArtifact{}, fmt.Errorf("progress: read artifact %s: %w", path, err)
+		return StagedArtifact{}, stagingError(nodeID, ref, fmt.Sprintf("progress: read artifact %s: %v", path, err))
 	}
 	actualSHA := hex.EncodeToString(h.Sum(nil))
 
@@ -118,10 +118,10 @@ func (s *FileStager) Stage(ctx context.Context, nodeID domain.ProgressNodeID, re
 	dest := filepath.Join(s.EvidenceDir, "sha256", actualSHA[:2], actualSHA)
 	if _, statErr := os.Stat(dest); statErr != nil {
 		if !os.IsNotExist(statErr) {
-			return StagedArtifact{}, fmt.Errorf("progress: stat evidence copy %s: %w", dest, statErr)
+			return StagedArtifact{}, stagingError(nodeID, ref, fmt.Sprintf("progress: stat evidence copy %s: %v", dest, statErr))
 		}
 		if err := copyFileAtomic(path, dest); err != nil {
-			return StagedArtifact{}, fmt.Errorf("progress: stage evidence copy of %s: %w", path, err)
+			return StagedArtifact{}, stagingError(nodeID, ref, fmt.Sprintf("progress: stage evidence copy of %s: %v", path, err))
 		}
 	}
 	// If dest already exists, its name IS its content digest, so no
@@ -135,6 +135,21 @@ func (s *FileStager) Stage(ctx context.Context, nodeID domain.ProgressNodeID, re
 	out.SHA256 = actualSHA
 	out.Bytes = size
 	return StagedArtifact{Ref: out, Path: path}, nil
+}
+
+// stagingError wraps an unexpected I/O failure during staging in the
+// *domain.Error contract CompleteNode promises its callers (the race
+// tests assert every failure surfaces as *domain.Error, never a bare
+// wrapped os error — issue #24). Validation/integrity rejections above
+// build their own more specific codes; this is only for the "the
+// filesystem misbehaved" residue, hence internal.
+func stagingError(nodeID domain.ProgressNodeID, ref domain.ArtifactRef, msg string) *domain.Error {
+	return &domain.Error{
+		Code:      domain.ErrCodeInternal,
+		Message:   msg,
+		Retryable: false,
+		Details:   map[string]string{"node_id": string(nodeID), "uri": ref.URI},
+	}
 }
 
 // copyFileAtomic copies src to dest via a temp file in dest's directory,
@@ -178,6 +193,18 @@ func copyFileAtomic(src, dest string) (err error) {
 		return err
 	}
 	if err = os.Rename(tmpPath, dest); err != nil {
+		// dest is content-addressed — its name IS the SHA-256 of its
+		// bytes — so an already-existing destination means a concurrent
+		// or earlier staging of the same content already put the bytes
+		// durably in place. POSIX rename-over-existing replaces silently
+		// and never reaches this branch, but Windows refuses to rename
+		// over an existing file (ERROR_ACCESS_DENIED), so staging the
+		// same content twice must be recognized here as idempotent
+		// success, not an error (issue #24).
+		if _, statErr := os.Stat(dest); statErr == nil {
+			_ = os.Remove(tmpPath)
+			return nil
+		}
 		return err
 	}
 	return nil

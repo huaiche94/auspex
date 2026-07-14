@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -304,6 +305,13 @@ func TestOpen_CorruptFile_FailsOnFirstQuery(t *testing.T) {
 }
 
 func TestOpen_UnwritableDirectory_Errors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// os.Chmod on a Windows directory maps mode bits onto the
+		// read-only file attribute only, which does NOT prevent creating
+		// files inside it — the test's "unwritable directory" premise
+		// cannot be established without ACL manipulation (issue #24).
+		t.Skip("windows: chmod cannot make a directory unwritable")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: permission bits are not enforced")
 	}
@@ -315,8 +323,12 @@ func TestOpen_UnwritableDirectory_Errors(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 
 	path := filepath.Join(dir, "auspex.db")
-	_, err := sqlite.Open(context.Background(), path)
+	db, err := sqlite.Open(context.Background(), path)
 	if err == nil {
+		// Close before failing: leaving the unexpectedly-opened handle
+		// alive keeps the db file locked, which on Windows also breaks
+		// t.TempDir's RemoveAll cleanup and cascades a second failure.
+		_ = db.Close()
 		t.Fatal("expected an error opening a database under an unwritable directory")
 	}
 }

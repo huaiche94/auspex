@@ -237,7 +237,7 @@ func statusLineIngest(ctx context.Context, deps HookDeps, stdin []byte) (claudep
 // shared implementation, so the two cannot drift) and additionally
 // composes the one-line display text:
 //
-//	ax✈ <model> | est P50 <tokens>tok ~$<low>–<high> | <policy action>
+//	ax✈ <model> │ 🔮 est P50 <tokens>tok ~$<low>–<high> │ <policy badge>
 //
 // using the latest persisted evaluation for the session when one exists
 // (deps.Forecast.LatestForecastCard), else just "ax✈ <model>". Every

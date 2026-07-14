@@ -333,17 +333,31 @@ func TestStatusLineText(t *testing.T) {
 	checkpointCard.ContextProjectedP90 = ptrF64(97)
 	checkpointCard.ContextCheckpointThresholdExceeded = true
 
+	// Byte-exact ANSI pins (issue #29): the codes are written out
+	// explicitly here — NOT imported from the package under test — so a
+	// renderer regression cannot rewrite its own expectations.
+	const (
+		reset  = "\x1b[0m"
+		brand  = "\x1b[36max✈" + reset // cyan
+		sep    = "\x1b[2m │ " + reset  // dim separator
+		green  = "\x1b[32m"
+		yellow = "\x1b[33m"
+		red    = "\x1b[31m"
+	)
 	cases := []struct {
 		name  string
 		model string
 		card  *evaluation.ForecastCard
 		want  string
 	}{
-		{"no model no card", "", nil, "ax✈"},
-		{"model only", "Opus 4.1", nil, "ax✈ Opus 4.1"},
-		{"full", "Opus 4.1", &card, "ax✈ Opus 4.1 | est P50 8000tok ~$0.02–0.68 | ctx P90 ~91% (warn) | WARN"},
-		{"context without threshold decision", "Opus 4.1", &noThresholdCard, "ax✈ Opus 4.1 | est P50 8000tok ~$0.02–0.68 | ctx P90 ~91% | WARN"},
-		{"checkpoint marker outranks warn", "Opus 4.1", &checkpointCard, "ax✈ Opus 4.1 | est P50 8000tok ~$0.02–0.68 | ctx P90 ~97% (checkpoint) | WARN"},
+		{"no model no card", "", nil, brand},
+		{"model only", "Opus 4.1", nil, brand + " Opus 4.1"},
+		{"full", "Opus 4.1", &card,
+			brand + " Opus 4.1" + sep + "🔮 est P50 8000tok ~$0.02–0.68" + sep + yellow + "● ctx P90 ~91% (warn)" + reset + sep + yellow + "⚠ WARN" + reset},
+		{"context without threshold decision", "Opus 4.1", &noThresholdCard,
+			brand + " Opus 4.1" + sep + "🔮 est P50 8000tok ~$0.02–0.68" + sep + green + "● ctx P90 ~91%" + reset + sep + yellow + "⚠ WARN" + reset},
+		{"checkpoint marker outranks warn", "Opus 4.1", &checkpointCard,
+			brand + " Opus 4.1" + sep + "🔮 est P50 8000tok ~$0.02–0.68" + sep + red + "● ctx P90 ~97% (checkpoint)" + reset + sep + yellow + "⚠ WARN" + reset},
 	}
 	for _, tc := range cases {
 		if got := evaluation.StatusLineText(tc.model, tc.card); got != tc.want {
@@ -355,8 +369,19 @@ func TestStatusLineText(t *testing.T) {
 	// never "P50 0tok", and an unknown context projection contributes no
 	// "ctx ~0%" segment either (unknown is not zero).
 	coldCard := evaluation.ForecastCard{PolicyAction: app.PolicyRun}
-	if got, want := evaluation.StatusLineText("Sonnet 4", &coldCard), "ax✈ Sonnet 4 | RUN"; got != want {
+	if got, want := evaluation.StatusLineText("Sonnet 4", &coldCard), brand+" Sonnet 4"+sep+green+"▶ RUN"+reset; got != want {
 		t.Errorf("cold card: StatusLineText = %q, want %q", got, want)
+	}
+}
+
+// TestStatusLineText_ContextGaugeFill: the gauge glyph tracks the
+// projected percentage so the segment reads at a glance (issue #29).
+func TestStatusLineText_ContextGaugeFill(t *testing.T) {
+	for pct, glyph := range map[float64]string{5: "○", 28: "◔", 50: "◑", 75: "◕", 91: "●"} {
+		card := evaluation.ForecastCard{ContextProjectedP90: &pct, PolicyAction: app.PolicyRun}
+		if got := evaluation.StatusLineText("M", &card); !strings.Contains(got, glyph+" ctx") {
+			t.Errorf("pct %.0f: line %q missing gauge %q", pct, got, glyph)
+		}
 	}
 }
 

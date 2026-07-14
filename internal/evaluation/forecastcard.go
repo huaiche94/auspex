@@ -302,10 +302,27 @@ func (c ForecastCard) AdditionalContext() string {
 	return strings.Join(lines, "\n")
 }
 
+// ANSI escape codes used by StatusLineText — and by nothing else in this
+// package: the statusline is the only surface Claude Code renders in the
+// terminal (statusline.md documents ANSI color support), while the
+// forecast card goes into the model's additionalContext and MUST stay
+// plain text. We stick to the 16-color set on a single line because the
+// same docs warn that complex escape sequences can garble the status bar.
+const (
+	ansiReset   = "\x1b[0m"
+	ansiDim     = "\x1b[2m"
+	ansiRed     = "\x1b[31m"
+	ansiGreen   = "\x1b[32m"
+	ansiYellow  = "\x1b[33m"
+	ansiMagenta = "\x1b[35m"
+	ansiCyan    = "\x1b[36m"
+)
+
 // StatusLineText renders the one-line statusline display (issue #14
-// deliverable 4; resolves issue #12 friction #2's ingest-only gap):
+// deliverable 4; resolves issue #12 friction #2's ingest-only gap; icons
+// and semantic colors are issue #29):
 //
-//	ax✈ <model> | est P50 <tokens>tok ~$<low>–<high> | ctx P90 ~<pct>% | <policy action>
+//	ax✈ <model> │ 🔮 est P50 <tokens>tok ~$<low>–<high> │ <gauge> ctx P90 ~<pct>% │ <policy badge>
 //
 // model may be empty (renders as bare "ax✈") and card may be nil (no
 // persisted evaluation for the session yet — renders model only), so the
@@ -315,38 +332,79 @@ func (c ForecastCard) AdditionalContext() string {
 // evaluate`). The ctx segment (ADR-043 increment 2) appears only when a
 // context projection was persisted — an unknown projection contributes
 // nothing rather than a fabricated 0% — and carries the D-08 threshold
-// state ("(warn)"/"(checkpoint)") when the policy engine recorded one.
+// state ("(warn)"/"(checkpoint)") when the policy engine recorded one:
+// the textual suffixes stay alongside the yellow/red coloring so the
+// signal survives grep and colorblindness alike. No animation by design —
+// the command re-runs only per assistant message (300ms debounce, quiet
+// when idle), so time-based frames would stutter rather than animate.
 // Exported as a package function rather than a method so the nil-card
 // fallback is one code path, not caller-side duplication.
 func StatusLineText(model string, card *ForecastCard) string {
-	head := "ax✈"
+	head := ansiCyan + "ax✈" + ansiReset
 	if model != "" {
 		head += " " + model
 	}
 	parts := []string{head}
 	if card != nil {
 		if card.TokensP50 != nil {
-			seg := fmt.Sprintf("est P50 %dtok", *card.TokensP50)
+			seg := fmt.Sprintf("🔮 est P50 %dtok", *card.TokensP50)
 			if card.Cost != nil {
 				seg += fmt.Sprintf(" ~$%.2f–%.2f", card.Cost.LowUSD, card.Cost.HighUSD)
 			}
 			parts = append(parts, seg)
 		}
 		if card.ContextProjectedP90 != nil {
-			seg := fmt.Sprintf("ctx P90 ~%.0f%%", *card.ContextProjectedP90)
+			seg := fmt.Sprintf("%s ctx P90 ~%.0f%%", contextGauge(*card.ContextProjectedP90), *card.ContextProjectedP90)
 			switch {
 			case card.ContextCheckpointThresholdExceeded:
-				seg += " (checkpoint)"
+				seg = ansiRed + seg + " (checkpoint)" + ansiReset
 			case card.ContextWarnThresholdExceeded:
-				seg += " (warn)"
+				seg = ansiYellow + seg + " (warn)" + ansiReset
+			default:
+				seg = ansiGreen + seg + ansiReset
 			}
 			parts = append(parts, seg)
 		}
 		if card.PolicyAction != "" {
-			parts = append(parts, string(card.PolicyAction))
+			parts = append(parts, policyBadge(card.PolicyAction))
 		}
 	}
-	return strings.Join(parts, " | ")
+	return strings.Join(parts, ansiDim+" │ "+ansiReset)
+}
+
+// contextGauge maps a projected used-percent onto a filling circle so the
+// context segment reads at a glance without parsing the number.
+func contextGauge(pct float64) string {
+	switch {
+	case pct < 12.5:
+		return "○"
+	case pct < 37.5:
+		return "◔"
+	case pct < 62.5:
+		return "◑"
+	case pct < 87.5:
+		return "◕"
+	default:
+		return "●"
+	}
+}
+
+// policyBadge renders the policy action with a glyph and color so the most
+// consequential signal on the line is also the most visible one. An action
+// this switch doesn't know renders as its raw string — never dropped.
+func policyBadge(a app.PolicyAction) string {
+	switch a {
+	case app.PolicyRun:
+		return ansiGreen + "▶ " + string(a) + ansiReset
+	case app.PolicyWarn:
+		return ansiYellow + "⚠ " + string(a) + ansiReset
+	case app.PolicyCheckpointAndRun:
+		return ansiMagenta + "⚑ " + string(a) + ansiReset
+	case app.PolicyBlock:
+		return ansiRed + "✖ " + string(a) + ansiReset
+	default:
+		return string(a)
+	}
 }
 
 func (c ForecastCard) labelText() string {

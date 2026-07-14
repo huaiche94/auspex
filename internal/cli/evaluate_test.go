@@ -381,7 +381,14 @@ func TestStatusLine_EmitLinePrintsOneCompactLine(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if want := "ax✈ Opus 4.1 | est P50 8000tok ~$0.02–0.68 | WARN\n"; out.String() != want {
+	// Byte-exact ANSI pins (issue #29), written out rather than imported
+	// from the renderer so a regression cannot rewrite its expectations.
+	const (
+		reset = "\x1b[0m"
+		brand = "\x1b[36max✈" + reset
+		sep   = "\x1b[2m │ " + reset
+	)
+	if want := brand + " Opus 4.1" + sep + "🔮 est P50 8000tok ~$0.02–0.68" + sep + "\x1b[33m⚠ WARN" + reset + "\n"; out.String() != want {
 		t.Errorf("emit-line output = %q, want %q", out.String(), want)
 	}
 }
@@ -397,7 +404,7 @@ func TestStatusLine_EmitLine_MalformedInputStillPrintsFallback(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute should fail open, got: %v", err)
 	}
-	if out.String() != "ax✈\n" {
+	if out.String() != "\x1b[36max✈\x1b[0m\n" {
 		t.Errorf("output = %q, want the bare fallback line — the status bar must never go blank", out.String())
 	}
 }

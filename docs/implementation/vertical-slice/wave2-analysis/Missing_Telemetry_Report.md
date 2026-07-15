@@ -15,7 +15,7 @@
 - **Current status:** Unknown
 - **Provenance:** Unknown
 - **Why unavailable:** No live Claude Code (or Codex) session has ever run
-  against a `auspex` binary — the CLI (`runtime-b01`+) doesn't exist
+  against an `auspex` binary — the CLI (`runtime-b01`+) doesn't exist
   yet, so there is no integration point that could observe a real turn.
 - **Provider limitation:** Per ADD §8.7's own capability matrix, even once
   integrated, exact per-turn usage is "partial/status-derived" for Claude

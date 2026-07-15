@@ -284,4 +284,4 @@ presented as if it were per-node data.
   rather than silently assumed to be exact.
 - Complexity "error" is not quantified numerically (XS/S/M/L/XL is an
   ordinal label, not a cardinal scale) — §1 reports whether the label was
-  held, and Calibration_Report.md (Phase 3.2) discusses direction.
+  held, and `Calibration_Report.md` (Phase 3.2) discusses direction.

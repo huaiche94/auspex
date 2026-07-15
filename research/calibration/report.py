@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from load import Record, load  # noqa: E402
 from observations import derive_turn_actuals, parse_ts, summarize_turn_actuals  # noqa: E402
 from observations import load as load_observations  # noqa: E402
+from observations import TurnActuals  # noqa: E402
 
 # ADD §15.2's "count(similar) >= 8" gate, the same constant the Go side
 # uses (RuleTokenForecaster.MinSimilarSamples, minSimilarTurnSamples).
@@ -98,10 +99,73 @@ def token_coverage(records: list[Record], observations) -> dict:
     }
 
 
+def cost_coverage(records: list[Record], turns: list[TurnActuals]) -> dict:
+    """Join each turn's PREDICTED cost band (cost_low_usd..cost_high_usd —
+    the exact band the forecast card showed, priced from the token forecast
+    by internal/pricing) with its ACTUAL per-turn cost delta (observations.py's
+    best-effort attribution over the session-cumulative total_cost_usd
+    series), and report band containment.
+
+    This is the #72 hook-mode calibration opening: unlike a token
+    total_tokens actual (managed-run only — the statusline carries no
+    per-turn tokens), a per-turn COST delta is derivable from native hook
+    telemetry alone, so native-hook turns CAN join here. That is what
+    unblocks a calibrated output without `auspex run`.
+
+    Honest gates mirror token_coverage: only turns with BOTH a predicted
+    band and a derivable actual count (the join count is part of the
+    result); a degenerate band (low == high) still counts; zero joined
+    rows yields rate None, never a fabricated 0/100.
+
+    Band containment, not a point residual: the shipped cost forecast is a
+    RANGE (ADR-043), so the honest question is whether the actual landed
+    inside it. `below_band` (actual < low) and `above_band` (actual > high)
+    are counted separately because they mean opposite things — `above_band`
+    dominating is the systematic UNDER-forecast the token cold-start (#42)
+    and cache-blind pricing (#66) predict, and seeing it quantified here is
+    the first real calibration signal from hook data.
+    """
+    # Latest derivable actual per turn. derive_turn_actuals emits at most
+    # one row per (session, turn.started); a turn_id colliding across
+    # sessions is not expected, but last-wins keeps the join deterministic
+    # (mirrors token_coverage's last-wins rule).
+    actuals: dict = {}
+    for t in turns:
+        if t.turn_id is None or t.cost_delta_usd is None:
+            continue
+        actuals[t.turn_id] = t.cost_delta_usd
+
+    predicted = [
+        r for r in records if r.cost_low_usd is not None and r.cost_high_usd is not None
+    ]
+    joined = [(r, actuals[r.turn_id]) for r in predicted if r.turn_id in actuals]
+
+    within = below = above = 0
+    for r, actual in joined:
+        if actual < r.cost_low_usd:
+            below += 1
+        elif actual > r.cost_high_usd:
+            above += 1
+        else:
+            within += 1
+
+    n = len(joined)
+    return {
+        "predicted_turns": len(predicted),
+        "actual_turns": len(actuals),
+        "joined_turns": n,
+        "within_band": within,
+        "below_band": below,
+        "above_band": above,
+        "containment_rate": (within / n) if n else None,
+    }
+
+
 def build_report(
     records: list[Record],
     turn_actuals: dict | None = None,
     token_cov: dict | None = None,
+    cost_cov: dict | None = None,
 ) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
@@ -149,6 +213,14 @@ def build_report(
             "lacks pre-turn baselines or in-window usage samples (or every "
             "turn is unclosed) — per-turn cost actuals remain blocked"
         )
+    if cost_cov is not None and cost_cov["joined_turns"] == 0:
+        gaps.append(
+            "0 turns join a predicted cost band with a derivable per-turn "
+            "cost actual — even though hook telemetry CAN supply the actual "
+            "(unlike tokens): check that predictions carry token quantiles "
+            "(the cost band derives from them) and the observations export "
+            "brackets the same turn_ids"
+        )
 
     cohorts = [
         {
@@ -181,6 +253,7 @@ def build_report(
         # unknown is not zero.
         "per_turn_actuals": turn_actuals,
         "token_coverage": token_cov,
+        "cost_coverage": cost_cov,
         "readiness_gaps": gaps,
     }
 
@@ -265,6 +338,35 @@ def render_text(report: dict) -> str:
         else:
             lines.append("  (no joined turns — coverage rates not computable)")
 
+    cost_cov = report["cost_coverage"]
+    if cost_cov is not None:
+        lines.append("")
+        lines.append(
+            "cost-band coverage (predicted band vs per-turn cost delta, "
+            "joined on turn_id):"
+        )
+        lines.append(
+            f"  turns with a predicted cost band: {cost_cov['predicted_turns']}"
+        )
+        lines.append(
+            f"  turns with a derivable cost actual: {cost_cov['actual_turns']}"
+        )
+        lines.append(f"  joined turns (both sides): {cost_cov['joined_turns']}")
+        if cost_cov["joined_turns"]:
+            lines.append(
+                f"  actual within band: {cost_cov['within_band']}/"
+                f"{cost_cov['joined_turns']} "
+                f"({100.0 * cost_cov['containment_rate']:.0f}%)"
+            )
+            lines.append(
+                f"  actual below band (cost over-forecast): {cost_cov['below_band']}"
+            )
+            lines.append(
+                f"  actual above band (cost under-forecast): {cost_cov['above_band']}"
+            )
+        else:
+            lines.append("  (no joined turns — containment not computable)")
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -288,11 +390,14 @@ def main() -> int:
     records = list(load(args.export))
     turn_actuals = None
     token_cov = None
+    cost_cov = None
     if args.observations is not None:
         observations = list(load_observations(args.observations))
-        turn_actuals = summarize_turn_actuals(derive_turn_actuals(observations))
+        turns = derive_turn_actuals(observations)
+        turn_actuals = summarize_turn_actuals(turns)
         token_cov = token_coverage(records, observations)
-    report = build_report(records, turn_actuals, token_cov)
+        cost_cov = cost_coverage(records, turns)
+    report = build_report(records, turn_actuals, token_cov, cost_cov)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

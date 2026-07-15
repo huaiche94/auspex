@@ -44,6 +44,32 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Cost-forecast calibration rail (Phase 1)**
+  ([#72](https://github.com/huaiche94/auspex/issues/72)): the calibration
+  export now carries the predicted cost band per row (`cost_low_usd` /
+  `cost_high_usd` / `cost_model_family`), priced from the token quantiles
+  by the same `internal/pricing` table the forecast card renders — so the
+  calibration measures the exact cost the user was shown, with no second
+  price table to drift (`internal/retention/export.go`, additive fields,
+  no migration). `research/calibration/report.py` gains a **cost-band
+  coverage** section that joins that predicted band against the per-turn
+  cost delta `observations.py` derives from the session-cumulative
+  `total_cost_usd` series. This is the hook-mode opening #72 identifies:
+  unlike a `total_tokens` actual (managed-run only — the statusline
+  carries no per-turn tokens), a per-turn **cost** delta is derivable from
+  native hook telemetry alone, so native-hook turns finally join a
+  prediction to an actual (156/157 on the owner's first field dataset)
+  without `auspex run`. The report separates actuals landing below (cost
+  over-forecast) vs above (under-forecast) the band; the first real run
+  shows 91% landing above it — the systematic under-forecast the token
+  cold-start (#42) and cache-blind pricing (#66) predicted, now quantified
+  from real data. The per-turn cost ACTUAL stays a research-layer
+  attribution (`observations.py`), never computed by the
+  capture-before-model Go bridges. Additive export fields →
+  backward-compatible → no ADR (Constitution §3). Phase 2 (fitting the
+  cost residual per labeled cohort — the `claude/opus/xhigh` and
+  `claude/fable/xhigh` cohorts already meet the §15.2 gate) remains gated
+  on #11.
 - **Per-turn duration forecast (Phase 1)** (#62): the scope estimator now
   populates the reserved `ScopeEstimate.DurationP50/P90` fields with a
   cold-start wall-clock estimate derived from the classified scope

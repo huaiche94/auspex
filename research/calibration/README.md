@@ -38,7 +38,14 @@ Go binary. Inputs are the de-identified `auspex export` datasets
   alone, so native-hook turns join here even when tokens cannot. It
   reports band containment and, separately, actuals landing below (cost
   over-forecast) vs above (cost under-forecast) the band — the
-  directional signal that quantifies the #42/#66 under-forecast.
+  directional signal that quantifies the #42/#66 under-forecast. It also
+  stratifies that join by the #20 cohort triple (**per-cohort cost
+  residual**, #72 Phase 2): for each cohort meeting the §15.2 gate (≥ 8
+  *joined* turns) it fits the empirical factor by which the forecast's
+  high bound under-forecasts real cost (median and P90 of `actual/high`);
+  cohorts below the gate or with an unlabeled axis are reported, never
+  fitted. The Go forecast is untouched — these factors are inputs a future
+  phase (#66's cache-aware cost model) would consume.
 
 The predictor these reports are meant to eventually feed lives in
 `internal/predictor/`; the exporters live in `internal/retention/`

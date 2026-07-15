@@ -46,6 +46,17 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **成本預測校準——逐 cohort 殘差（Phase 2）**
+  （[#72](https://github.com/huaiche94/auspex/issues/72)）：
+  `research/calibration/report.py` 現在會把 Phase 1 的成本 join 依 #20 的
+  cohort 三元組分層，並對每個達到 ADD §15.2 門檻（≥ 8 個**已 join** 的 turn）
+  的 cohort，擬合出「forecast 的 high bound 相對於真實成本低估了幾倍」的經驗
+  倍率（`actual/high` 的中位數與 P90）；門檻以下或有未標記軸的 cohort 只回報、
+  絕不擬合（立基紀律）。在擁有者的實地資料上,兩個已標記 cohort 都過門檻:
+  `claude/fable/xhigh` 中位低估約 7 倍（P90 約 57 倍）、`claude/opus/xhigh`
+  約 8.5 倍（P90 約 39 倍）——尾端遠比中位嚴重,正是 #66 針對的 cache-read
+  盲點。Go forecast 不受影響;這些倍率是未來階段（#66 的 cache-aware 成本模型）
+  會取用的輸入。僅 research 層——不涉及契約,不需 migration。
 - **成本預測校準軌道（Phase 1）**
   （[#72](https://github.com/huaiche94/auspex/issues/72)）：校準匯出現在
   每列都帶上預測成本區間（`cost_low_usd` / `cost_high_usd` /

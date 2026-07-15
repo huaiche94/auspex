@@ -26,6 +26,18 @@ With --observations, the report additionally folds in:
     reported. Native hook turns cannot join (the statusline carries no
     per-turn tokens), so coverage speaks for managed-run (`auspex run`)
     turns only.
+  * COST-BAND COVERAGE (#72 Phase 1): the predicted cost band
+    (cost_low_usd..cost_high_usd, priced from the token forecast by
+    internal/pricing — the exact band the forecast card showed) joined
+    against the per-turn cost delta observations.py derives. Unlike
+    tokens, a per-turn cost delta IS derivable from native hook telemetry,
+    so hook turns join here — the calibration opening #72 identifies.
+  * PER-COHORT COST RESIDUAL (#72 Phase 2): the cost join stratified by
+    the #20 cohort triple; for each cohort meeting the §15.2 gate (>= 8
+    JOINED turns), the empirical factor by which the forecast's high bound
+    under-forecasts real cost (median and P90 of actual/high). Cohorts
+    below the gate are reported, never fitted — the Go forecast is
+    untouched; these factors are inputs a future phase (#66) would consume.
 """
 
 from __future__ import annotations
@@ -161,11 +173,107 @@ def cost_coverage(records: list[Record], turns: list[TurnActuals]) -> dict:
     }
 
 
+def _percentile(sorted_vals: list[float], q: float) -> float:
+    """Linear-interpolated percentile (q in [0, 1]) over a NON-EMPTY sorted
+    list — the same 'linear' method numpy/statistics.quantiles default to,
+    written out in stdlib so this module stays dependency-free
+    (research/README.md: standard library only)."""
+    if not sorted_vals:
+        raise ValueError("percentile of empty sequence")
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    pos = q * (len(sorted_vals) - 1)
+    lo = int(pos)
+    if lo + 1 >= len(sorted_vals):
+        return sorted_vals[-1]
+    return sorted_vals[lo] + (pos - lo) * (sorted_vals[lo + 1] - sorted_vals[lo])
+
+
+def cost_residual_by_cohort(records: list[Record], turns: list[TurnActuals]) -> dict:
+    """Phase 2 of #72: stratify the cost join by the #20 cohort triple
+    (provider, model_family, effort) and, for each cohort that meets the ADD
+    §15.2 gate, FIT the empirical cost residual — how far the shipped
+    forecast's high bound sits from the cohort's real per-turn cost.
+
+    Grounding discipline (research/README.md): a cohort is fitted only when
+    it has >= SAMPLE_GATE **joined** turns AND every identity axis is labeled;
+    every other cohort is reported with its count and `fitted=False`, never
+    given a fabricated coefficient. The gate is on JOINED turns (predicted
+    band + derivable cost actual), not on predictions — a cohort with 60
+    predictions but 3 cost actuals cannot be fitted on 3 points.
+
+    Residual definition (labeled, honest): the shipped forecast is a RANGE
+    (ADR-043); its high bound H = TokenP90 × output-price is the upper
+    estimate the user sees. Per joined turn the ratio ρ = actual / H says how
+    far the actual overshot that bound. The reported per-cohort factors are
+    quantiles of ρ:
+      * factor_high_p50 = median(ρ): multiply H by this to CENTER it on the
+        cohort's typical turn (~half still exceed);
+      * factor_high_p90 = P90(ρ): multiply H by this to make H a real ~P90
+        upper bound for the cohort.
+    A future forecast phase (Phase 3 / #66's cache-aware cost model) is what
+    would fold these into the pipeline; this module only fits and REPORTS
+    them — the Go forecast is untouched (capture-before-model)."""
+    actuals: dict = {}
+    for t in turns:
+        if t.turn_id is None or t.cost_delta_usd is None:
+            continue
+        actuals[t.turn_id] = t.cost_delta_usd
+
+    by_cohort: dict = {}
+    for r in records:
+        if r.cost_low_usd is None or r.cost_high_usd is None:
+            continue
+        if r.turn_id not in actuals:
+            continue
+        by_cohort.setdefault(r.cohort, []).append((r.cost_high_usd, actuals[r.turn_id]))
+
+    cohorts: list = []
+    for cohort, rows in sorted(by_cohort.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        n = len(rows)
+        provider, family, effort = cohort
+        labeled = "?" not in cohort
+        fitted = n >= SAMPLE_GATE and labeled
+        entry = {
+            "provider": provider,
+            "model_family": family,
+            "effort": effort,
+            "joined_turns": n,
+            "labeled": labeled,
+            "fitted": fitted,
+            "above_band": sum(1 for high, actual in rows if actual > high),
+            "median_actual_usd": None,
+            "p90_actual_usd": None,
+            "median_predicted_high_usd": None,
+            "factor_high_p50": None,
+            "factor_high_p90": None,
+        }
+        if fitted:
+            acts = sorted(actual for _, actual in rows)
+            highs = sorted(high for high, _ in rows)
+            ratios = sorted(actual / high for high, actual in rows if high > 0)
+            entry["median_actual_usd"] = _percentile(acts, 0.5)
+            entry["p90_actual_usd"] = _percentile(acts, 0.9)
+            entry["median_predicted_high_usd"] = _percentile(highs, 0.5)
+            if ratios:
+                entry["factor_high_p50"] = _percentile(ratios, 0.5)
+                entry["factor_high_p90"] = _percentile(ratios, 0.9)
+        cohorts.append(entry)
+
+    return {
+        "sample_gate": SAMPLE_GATE,
+        "joined_turns": sum(len(v) for v in by_cohort.values()),
+        "fitted_cohorts": sum(1 for c in cohorts if c["fitted"]),
+        "cohorts": cohorts,
+    }
+
+
 def build_report(
     records: list[Record],
     turn_actuals: dict | None = None,
     token_cov: dict | None = None,
     cost_cov: dict | None = None,
+    cost_residual: dict | None = None,
 ) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
@@ -221,6 +329,16 @@ def build_report(
             "(the cost band derives from them) and the observations export "
             "brackets the same turn_ids"
         )
+    if (
+        cost_residual is not None
+        and cost_residual["joined_turns"] > 0
+        and cost_residual["fitted_cohorts"] == 0
+    ):
+        gaps.append(
+            "cost actuals join, but no labeled cohort has "
+            f">= {SAMPLE_GATE} joined turns yet — per-cohort cost residual "
+            "(#72 Phase 2) not fitted; dogfood more labeled turns"
+        )
 
     cohorts = [
         {
@@ -254,6 +372,7 @@ def build_report(
         "per_turn_actuals": turn_actuals,
         "token_coverage": token_cov,
         "cost_coverage": cost_cov,
+        "cost_residual": cost_residual,
         "readiness_gaps": gaps,
     }
 
@@ -367,6 +486,34 @@ def render_text(report: dict) -> str:
         else:
             lines.append("  (no joined turns — containment not computable)")
 
+    cost_res = report["cost_residual"]
+    if cost_res is not None and cost_res["cohorts"]:
+        lines.append("")
+        lines.append(
+            f"per-cohort cost residual (#72 Phase 2 — fitted at >= "
+            f"{cost_res['sample_gate']} joined turns; others reported, never fitted):"
+        )
+        for c in cost_res["cohorts"]:
+            label = f"{c['provider']}/{c['model_family']}/{c['effort']}"
+            if c["fitted"]:
+                lines.append(
+                    f"  {label}: n={c['joined_turns']} — median actual "
+                    f"${c['median_actual_usd']:.2f} (P90 ${c['p90_actual_usd']:.2f}) "
+                    f"vs forecast high ${c['median_predicted_high_usd']:.2f}; "
+                    f"high-bound under-forecasts {c['factor_high_p50']:.1f}x median "
+                    f"({c['factor_high_p90']:.1f}x P90); "
+                    f"{c['above_band']}/{c['joined_turns']} above band"
+                )
+            elif not c["labeled"]:
+                lines.append(
+                    f"  {label}: n={c['joined_turns']} — unlabeled, not fitted"
+                )
+            else:
+                lines.append(
+                    f"  {label}: n={c['joined_turns']} — below gate "
+                    f"({cost_res['sample_gate']}), not fitted"
+                )
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -391,13 +538,15 @@ def main() -> int:
     turn_actuals = None
     token_cov = None
     cost_cov = None
+    cost_residual = None
     if args.observations is not None:
         observations = list(load_observations(args.observations))
         turns = derive_turn_actuals(observations)
         turn_actuals = summarize_turn_actuals(turns)
         token_cov = token_coverage(records, observations)
         cost_cov = cost_coverage(records, turns)
-    report = build_report(records, turn_actuals, token_cov, cost_cov)
+        cost_residual = cost_residual_by_cohort(records, turns)
+    report = build_report(records, turn_actuals, token_cov, cost_cov, cost_residual)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

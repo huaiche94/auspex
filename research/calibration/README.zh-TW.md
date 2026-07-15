@@ -37,6 +37,12 @@
   hook 遙測即可推導，所以即便 token 無法 join，原生 hook 回合仍能在此
   join。它會回報區間命中率，並分開統計實際值落在區間之下（成本高估）
   與之上（成本低估）的筆數——這正是量化 #42／#66 低估現象的方向性訊號。
+  它並會把該 join 依 #20 的 cohort 三元組分層（**逐 cohort 成本殘差**，
+  #72 Phase 2）：對每個達到 §15.2 門檻（≥ 8 個**已 join** 的 turn）的
+  cohort，擬合出「forecast 的 high bound 相對於真實成本低估了幾倍」的經驗
+  倍率（`actual/high` 的中位數與 P90）；門檻以下或有未標記軸的 cohort 只回
+  報、絕不擬合。Go forecast 不受影響——這些倍率是未來階段（#66 的 cache-aware
+  成本模型）會取用的輸入。
 
 這些報告最終要餵給的 predictor 位於 `internal/predictor/`；匯出器則位
 於 `internal/retention/`（`export.go`、`observations.go`）。

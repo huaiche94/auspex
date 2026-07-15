@@ -339,7 +339,7 @@ func TestDuplicateProviderEvent_EndToEnd_StoredOnceAndCompletionReplayed(t *test
 		t.Fatalf("ParseStop: %v", err)
 	}
 	observedAt := clock.Now()
-	ev := normalizer.NormalizeStop(parsed, observedAt)
+	ev := normalizer.NormalizeStop(parsed, observedAt, nil)
 	if ev.IdempotencyKey == "" {
 		t.Fatalf("expected NormalizeStop to set a non-empty IdempotencyKey")
 	}
@@ -361,7 +361,7 @@ func TestDuplicateProviderEvent_EndToEnd_StoredOnceAndCompletionReplayed(t *test
 	if err != nil {
 		t.Fatalf("ParseStop (redelivery): %v", err)
 	}
-	evAgain := normalizer.NormalizeStop(parsedAgain, observedAt)
+	evAgain := normalizer.NormalizeStop(parsedAgain, observedAt, nil)
 	if evAgain.IdempotencyKey != ev.IdempotencyKey {
 		t.Fatalf("expected redelivered event to reproduce the same IdempotencyKey (deterministic digest), got %q vs %q", evAgain.IdempotencyKey, ev.IdempotencyKey)
 	}
@@ -548,7 +548,7 @@ func TestOutOfOrderDelivery_EndToEnd_ChildCompletionBeforeParentStarted_Rejected
 	if err != nil {
 		t.Fatalf("ParseStop: %v", err)
 	}
-	childEvent := normalizer.NormalizeStop(parsed, clock.Now())
+	childEvent := normalizer.NormalizeStop(parsed, clock.Now(), nil)
 	if err := store.PersistAll(ctx, db, []v1.Event{childEvent}); err != nil {
 		t.Fatalf("PersistAll (child's triggering event): %v", err)
 	}
@@ -657,7 +657,7 @@ func TestOutOfOrderDelivery_EndToEnd_EventStoreAcceptsEitherArrivalOrder(t *test
 	if err != nil {
 		t.Fatalf("ParseStop: %v", err)
 	}
-	completedEvent := normalizer.NormalizeStop(stopParsed, clock.Now())
+	completedEvent := normalizer.NormalizeStop(stopParsed, clock.Now(), nil)
 
 	promptParsed, err := claudehooks.ParseUserPromptSubmit(qa04Fixture(t, "userpromptsubmit", "normal.json"))
 	if err != nil {

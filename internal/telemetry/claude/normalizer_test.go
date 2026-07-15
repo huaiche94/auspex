@@ -315,8 +315,68 @@ func TestNormalizeStop(t *testing.T) {
 		t.Fatalf("ParseStop: %v", err)
 	}
 
-	ev := n.NormalizeStop(parsed, clock.Now())
+	ev := n.NormalizeStop(parsed, clock.Now(), nil)
 	requireEnvelope(t, ev, v1.EventProviderTurnCompleted, parsed.SessionID)
+
+	// nil usage (no transcript, or extraction failed open) must keep the
+	// payload byte-identical to the pre-#72 shape: no token keys at all —
+	// unknown is not zero.
+	for _, key := range []string{"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "total_tokens", "api_call_count", "model_id"} {
+		if _, present := ev.Payload[key]; present {
+			t.Errorf("nil usage: payload key %q present, want absent", key)
+		}
+	}
+}
+
+func TestNormalizeStop_WithTranscriptUsage(t *testing.T) {
+	n, clock := newTestNormalizer()
+
+	parsed, err := claudehooks.ParseStop(fixture(t, "stop", "normal.json"))
+	if err != nil {
+		t.Fatalf("ParseStop: %v", err)
+	}
+
+	in, out, cr, cc := int64(300), int64(30), int64(3000), int64(70)
+	usage := &TurnUsage{
+		InputTokens:              &in,
+		OutputTokens:             &out,
+		CacheReadInputTokens:     &cr,
+		CacheCreationInputTokens: &cc,
+		APICallCount:             2,
+		ModelID:                  "claude-fable-5",
+	}
+	ev := n.NormalizeStop(parsed, clock.Now(), usage)
+	requireEnvelope(t, ev, v1.EventProviderTurnCompleted, parsed.SessionID)
+
+	want := map[string]any{
+		"input_tokens":                int64(300),
+		"output_tokens":               int64(30),
+		"cache_read_input_tokens":     int64(3000),
+		"cache_creation_input_tokens": int64(70),
+		// total_tokens keeps managedUsageEvent's documented input+output
+		// definition (cache traffic carried separately).
+		"total_tokens":   int64(330),
+		"api_call_count": int64(2),
+		"model_id":       "claude-fable-5",
+	}
+	for key, wantV := range want {
+		if got := ev.Payload[key]; got != wantV {
+			t.Errorf("payload[%q] = %v (%T), want %v", key, got, got, wantV)
+		}
+	}
+
+	// Partial usage: an unknown counter stamps nothing, and total_tokens
+	// requires both halves.
+	partial := &TurnUsage{OutputTokens: &out, APICallCount: 1}
+	ev = n.NormalizeStop(parsed, clock.Now(), partial)
+	if got := ev.Payload["output_tokens"]; got != int64(30) {
+		t.Errorf("partial: output_tokens = %v, want 30", got)
+	}
+	for _, key := range []string{"input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "total_tokens", "model_id"} {
+		if _, present := ev.Payload[key]; present {
+			t.Errorf("partial: payload key %q present, want absent (unknown is not zero)", key)
+		}
+	}
 }
 
 func TestNormalizeStopFailure(t *testing.T) {

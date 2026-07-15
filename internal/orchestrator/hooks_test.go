@@ -2,8 +2,10 @@ package orchestrator_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -379,6 +381,90 @@ func TestHookHandlers_Stop_MalformedInputFailsOpen(t *testing.T) {
 	}
 	if result.EventsNormalized != 0 {
 		t.Errorf("EventsNormalized = %d, want 0", result.EventsNormalized)
+	}
+}
+
+// --- #72 item 4: transcript-usage capture on the Stop path ---------------
+
+// writeStopWithTranscript builds a Stop-hook stdin payload whose
+// transcript_path points at a synthetic session transcript written into a
+// temp dir (numbers only). The transcript shape mirrors real Claude Code
+// 2.1.x sessions: a typed user prompt line, then one API call streamed as
+// two assistant lines sharing a requestId (identical usage — the dedupe
+// target), plus a second call.
+func writeStopWithTranscript(t *testing.T) []byte {
+	t.Helper()
+	transcript := strings.Join([]string{
+		`{"type":"user","message":{"role":"user","content":"p"}}`,
+		`{"type":"assistant","requestId":"req-1","message":{"role":"assistant","model":"claude-fable-5","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":30}}}`,
+		`{"type":"assistant","requestId":"req-1","message":{"role":"assistant","model":"claude-fable-5","usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":1000,"cache_creation_input_tokens":30}}}`,
+		`{"type":"assistant","requestId":"req-2","message":{"role":"assistant","model":"claude-fable-5","usage":{"input_tokens":200,"output_tokens":20,"cache_read_input_tokens":2000,"cache_creation_input_tokens":40}}}`,
+	}, "\n") + "\n"
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatalf("writing synthetic transcript: %v", err)
+	}
+	stdin, err := json.Marshal(map[string]any{
+		"session_id":      "sess-72",
+		"transcript_path": path,
+		"hook_event_name": "Stop",
+	})
+	if err != nil {
+		t.Fatalf("building stop stdin: %v", err)
+	}
+	return stdin
+}
+
+func TestHookHandlers_Stop_CapturesTranscriptUsage(t *testing.T) {
+	deps := baseHookDeps()
+	persister := &recordingPersister{}
+	deps.Persister = persister
+	deps.TxRunner = noopTxRunner{}
+
+	if _, err := orchestrator.HandleStop(context.Background(), deps, writeStopWithTranscript(t)); err != nil {
+		t.Fatalf("HandleStop: %v", err)
+	}
+	if len(persister.calls) != 1 || len(persister.calls[0]) != 1 {
+		t.Fatalf("persist calls = %+v, want one batch of one event", persister.calls)
+	}
+	payload := persister.calls[0][0].Payload
+	want := map[string]any{
+		"input_tokens":                int64(300),
+		"output_tokens":               int64(30),
+		"cache_read_input_tokens":     int64(3000),
+		"cache_creation_input_tokens": int64(70),
+		"total_tokens":                int64(330),
+		"api_call_count":              int64(2),
+		"model_id":                    "claude-fable-5",
+	}
+	for key, wantV := range want {
+		if got := payload[key]; got != wantV {
+			t.Errorf("payload[%q] = %v (%T), want %v", key, got, got, wantV)
+		}
+	}
+}
+
+func TestHookHandlers_Stop_UnreadableTranscriptFailsOpen(t *testing.T) {
+	// A transcript_path that does not exist (the shipped stop/normal.json
+	// fixture's /Users/dev/... path) must degrade to exactly the pre-#72
+	// event: hook succeeds, no token payload keys (unknown is not zero).
+	deps := baseHookDeps()
+	persister := &recordingPersister{}
+	deps.Persister = persister
+	deps.TxRunner = noopTxRunner{}
+
+	result, err := orchestrator.HandleStop(context.Background(), deps, readFixture(t, "stop", "normal.json"))
+	if err != nil {
+		t.Fatalf("HandleStop: %v", err)
+	}
+	if result.EventsNormalized != 1 || !result.Persisted {
+		t.Fatalf("result = %+v, want 1 normalized + persisted", result)
+	}
+	payload := persister.calls[0][0].Payload
+	for _, key := range []string{"input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "total_tokens", "api_call_count", "model_id"} {
+		if _, present := payload[key]; present {
+			t.Errorf("payload key %q present, want absent when the transcript is unreadable", key)
+		}
 	}
 }
 

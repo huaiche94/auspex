@@ -46,6 +46,27 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **Stop transcript 擷取每回合 token 用量（ADR-051）**
+  （[#72](https://github.com/huaiche94/auspex/issues/72)）：Stop 時 hook
+  解析 Claude Code transcript（`transcript_path`）中剛完成回合的切片，
+  以僅數字欄位豐富 `provider.turn.completed` —— `input_tokens`、
+  `output_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`、
+  `total_tokens`、`api_call_count`、`model_id`（requestId 去重、僅主鏈、
+  有界讀取、嚴格 fail-open：任何失敗都退化為與 ADR-051 之前逐位元組相同
+  的事件）。校準匯出以 `actual_*` 欄位承接，`report.py token_coverage()`
+  直接使用 —— hook 模式的 token join 自此起精確，解除
+  [#66](https://github.com/huaiche94/auspex/issues/66)/[#65](https://github.com/huaiche94/auspex/issues/65)
+  的 capture 前置與
+  [#11](https://github.com/huaiche94/auspex/issues/11)/[#42](https://github.com/huaiche94/auspex/issues/42)
+  的 token 面。無凍結契約變更、無 migration。詳見
+  `docs/adr/0051-turn-usage-from-stop-transcript.md`。
+
+- **`duration_coverage()` 補完 #62 校準軌道（報表側）**
+  （[#62](https://github.com/huaiche94/auspex/issues/62)）：
+  `research/calibration/` 現在會載入匯出的 `duration_p50_ns` /
+  `duration_p90_ns` / `actual_duration_ms` 欄位，回報預測區間對每回合
+  實際時長的涵蓋率，與成本區段對稱。
+
 - **成本預測校準——逐 cohort 殘差（Phase 2）**
   （[#72](https://github.com/huaiche94/auspex/issues/72)）：
   `research/calibration/report.py` 現在會把 Phase 1 的成本 join 依 #20 的

@@ -513,8 +513,19 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 	// installed mid-session — still gets registered rather than staying
 	// invisible to Resolve until its next prompt.
 	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
+	// Issue #72 item 4: best-effort per-turn token usage from the payload's
+	// transcript_path (claudetelemetry.ReadTurnUsage — numbers + model id
+	// only, never text). Fail-open by construction: a missing/unreadable/
+	// unrecognized transcript yields ok=false and the event is exactly the
+	// pre-#72 event; extraction can never fail the Stop hook.
+	var usage *claudetelemetry.TurnUsage
+	if parsed.TranscriptPath != nil && *parsed.TranscriptPath != "" {
+		if u, ok := claudetelemetry.ReadTurnUsage(*parsed.TranscriptPath); ok {
+			usage = &u
+		}
+	}
 	observedAt := deps.Clock.Now()
-	event := deps.normalizer().NormalizeStop(parsed, observedAt)
+	event := deps.normalizer().NormalizeStop(parsed, observedAt, usage)
 	events := []v1.Event{event}
 	deps.stampOpenTurn(ctx, parsed.SessionID, events)
 	persisted := deps.persist(ctx, events)

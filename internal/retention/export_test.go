@@ -275,3 +275,95 @@ func TestExportCalibration_NoPathsPromptsOrRemotesInOutput(t *testing.T) {
 		}
 	}
 }
+
+// --- #72 per-turn token actuals -------------------------------------------
+
+func TestExportCalibration_TokenActuals_JoinedFromTurnEvents(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	// Native hook turn (#72): the Stop hook's turn.completed carries the
+	// transcript-captured token accounting.
+	seedLabeledPrediction(t, db, "pred-hook", "turn-hook", newTime, "claude", "claude-fable-5", "fable", "high")
+	seedEvent(t, db, "ev-hook-done", "provider.turn.completed", newTime.Add(time.Minute), "sessH", "turn-hook",
+		`{"input_tokens":300,"output_tokens":30,"cache_read_input_tokens":3000,"cache_creation_input_tokens":70,"total_tokens":330,"api_call_count":2,"model_id":"claude-fable-5"}`)
+
+	// Managed-run turn (issue #11): tokens ride the turn-stamped usage
+	// event, not the terminal event — the same join must find them.
+	seedLabeledPrediction(t, db, "pred-managed", "turn-managed", newTime, "claude", "claude-fable-5", "fable", "high")
+	seedEvent(t, db, "ev-managed-done", "provider.turn.completed", newTime.Add(time.Minute), "sessM", "turn-managed", `{"exit_code":0}`)
+	seedEvent(t, db, "ev-managed-usage", "provider.usage.observed", newTime.Add(time.Minute), "sessM", "turn-managed",
+		`{"input_tokens":10,"output_tokens":5,"total_tokens":15}`)
+
+	// Pre-#72 hook turn: terminal event with no token payload — every
+	// Actual*Tokens field must stay absent (unknown is not zero).
+	seedLabeledPrediction(t, db, "pred-old", "turn-old", newTime, "claude", "claude-fable-5", "fable", "high")
+	seedEvent(t, db, "ev-old-done", "provider.turn.completed", newTime.Add(time.Minute), "sessO", "turn-old", `{"stop_hook_active":false}`)
+
+	var buf bytes.Buffer
+	if _, err := e.ExportCalibration(ctx, &buf); err != nil {
+		t.Fatalf("ExportCalibration: %v", err)
+	}
+	records := decodeExportLines(t, buf.Bytes())
+	byID := map[string]ExportRecord{}
+	for _, rec := range records {
+		byID[rec.PredictionID] = rec
+	}
+
+	hook := byID["pred-hook"]
+	if hook.ActualInputTokens == nil || *hook.ActualInputTokens != 300 ||
+		hook.ActualOutputTokens == nil || *hook.ActualOutputTokens != 30 ||
+		hook.ActualTotalTokens == nil || *hook.ActualTotalTokens != 330 {
+		t.Errorf("hook turn token actuals: %+v", hook)
+	}
+	if hook.ActualCacheReadInputTokens == nil || *hook.ActualCacheReadInputTokens != 3000 ||
+		hook.ActualCacheCreationInputTokens == nil || *hook.ActualCacheCreationInputTokens != 70 {
+		t.Errorf("hook turn cache classes (#66 prerequisite): %+v", hook)
+	}
+	if hook.ActualAPICalls == nil || *hook.ActualAPICalls != 2 {
+		t.Errorf("hook turn api calls: %+v", hook.ActualAPICalls)
+	}
+
+	managed := byID["pred-managed"]
+	if managed.ActualTotalTokens == nil || *managed.ActualTotalTokens != 15 {
+		t.Errorf("managed turn token actuals: %+v", managed)
+	}
+	if managed.ActualCacheReadInputTokens != nil || managed.ActualAPICalls != nil {
+		t.Errorf("managed turn: absent counters must stay nil: %+v", managed)
+	}
+
+	old := byID["pred-old"]
+	if old.ActualInputTokens != nil || old.ActualOutputTokens != nil || old.ActualTotalTokens != nil ||
+		old.ActualCacheReadInputTokens != nil || old.ActualCacheCreationInputTokens != nil || old.ActualAPICalls != nil {
+		t.Errorf("pre-#72 turn must carry no token actuals: %+v", old)
+	}
+}
+
+func TestExportCalibration_TokenActuals_LatestEventWins(t *testing.T) {
+	// A re-entrant Stop (stop_hook_active) re-captures the same turn after
+	// more work happened; the export takes the NEWEST accounting —
+	// mirroring report.py's last-wins rule (and the opposite of the
+	// outcome join's earliest-wins, deliberately: see lookupTurnTokenActuals).
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	seedLabeledPrediction(t, db, "pred-1", "turn-1", newTime, "claude", "claude-fable-5", "fable", "high")
+	seedEvent(t, db, "ev-stop-1", "provider.turn.completed", newTime.Add(time.Minute), "sessX", "turn-1",
+		`{"input_tokens":100,"output_tokens":10,"total_tokens":110,"api_call_count":1}`)
+	seedEvent(t, db, "ev-stop-2", "provider.turn.completed", newTime.Add(2*time.Minute), "sessX", "turn-1",
+		`{"input_tokens":250,"output_tokens":25,"total_tokens":275,"api_call_count":3}`)
+
+	var buf bytes.Buffer
+	if _, err := e.ExportCalibration(ctx, &buf); err != nil {
+		t.Fatalf("ExportCalibration: %v", err)
+	}
+	records := decodeExportLines(t, buf.Bytes())
+	if len(records) != 1 {
+		t.Fatalf("got %d records, want 1", len(records))
+	}
+	rec := records[0]
+	if rec.ActualTotalTokens == nil || *rec.ActualTotalTokens != 275 ||
+		rec.ActualAPICalls == nil || *rec.ActualAPICalls != 3 {
+		t.Errorf("latest accounting must win: %+v", rec)
+	}
+}

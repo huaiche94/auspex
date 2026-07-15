@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/huaiche94/auspex/internal/pricing"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
@@ -114,6 +115,28 @@ type ExportRecord struct {
 	DurationP50      *int64 `json:"duration_p50_ns,omitempty"`
 	DurationP90      *int64 `json:"duration_p90_ns,omitempty"`
 	ActualDurationMs *int64 `json:"actual_duration_ms,omitempty"`
+
+	// #72 item 4: the turn's ACTUAL token accounting, joined at export
+	// time from the turn's own events — the Stop hook's turn.completed
+	// payload (transcript capture, native hook mode) or the managed run's
+	// turn-stamped usage event; either source makes the token_p50/p80/p90
+	// vs actual join computable, which was 0-for-182 on hook turns before
+	// this capture. The four raw classes are carried verbatim (the #66
+	// cache-aware costing prerequisite); ActualTotalTokens keeps
+	// managedUsageEvent's input+output definition; ActualAPICalls is the
+	// number of API calls the sum covers (transcript capture only —
+	// managed usage events do not report it). All nil when no
+	// turn-attributable token event exists (pre-#72 history — the honest
+	// gap, never zeros). Live rows only for now: calibration_samples has
+	// no token-actual columns (an additive export join needs no migration
+	// — PR #73's precedent), so archived rows honestly lack these until a
+	// future migration archives them.
+	ActualInputTokens              *int64 `json:"actual_input_tokens,omitempty"`
+	ActualOutputTokens             *int64 `json:"actual_output_tokens,omitempty"`
+	ActualCacheReadInputTokens     *int64 `json:"actual_cache_read_input_tokens,omitempty"`
+	ActualCacheCreationInputTokens *int64 `json:"actual_cache_creation_input_tokens,omitempty"`
+	ActualTotalTokens              *int64 `json:"actual_total_tokens,omitempty"`
+	ActualAPICalls                 *int64 `json:"actual_api_calls,omitempty"`
 }
 
 // ExportSummary is what ExportCalibration reports about a completed
@@ -155,10 +178,15 @@ func ExportCalibration(ctx context.Context, db *sqlite.DB, w io.Writer) (ExportS
 	if err != nil {
 		return summary, fmt.Errorf("retention: export: join live outcomes: %w", err)
 	}
+	tokenActuals, err := lookupTurnTokenActuals(ctx, db, liveTurnIDs(samples))
+	if err != nil {
+		return summary, fmt.Errorf("retention: export: join token actuals: %w", err)
+	}
 	for i, s := range samples {
 		rec := recordFromSample(s, "live")
 		enrichFromLiveRow(&rec, liveRows[i])
 		attachCostEstimate(&rec, priceTable)
+		attachTokenActuals(&rec, tokenActuals)
 		if err := writeExportRecord(enc, rec, &summary); err != nil {
 			return summary, err
 		}
@@ -330,4 +358,109 @@ func float64Ptr(v any) *float64 {
 		return &f
 	}
 	return nil
+}
+
+// --- #72 per-turn token actuals -------------------------------------------
+
+// tokenActualEventTypes are the event types that can carry a
+// turn-attributable token accounting: the Stop hook's turn.completed
+// payload (native hook mode, transcript capture — #72 item 4) and the
+// managed run's turn-stamped usage event (issue #11). The statusline usage
+// snapshot never joins here: it carries no turn_id and no per-turn tokens.
+var tokenActualEventTypes = []string{
+	"provider.turn.completed",
+	"provider.usage.observed",
+}
+
+// turnTokenActual is one turn's token accounting as read from its latest
+// token-bearing event. Pointer fields mirror the payload's own honesty:
+// a counter the capture never carried stays nil.
+type turnTokenActual struct {
+	occurredAt time.Time
+	eventID    string
+
+	input, output, cacheRead, cacheCreation, total, apiCalls *int64
+}
+
+// liveTurnIDs collects the distinct non-empty turn IDs of the live sample
+// set, in first-seen order — the join keys for lookupTurnTokenActuals.
+func liveTurnIDs(samples []calibrationSample) []any {
+	seen := make(map[string]bool, len(samples))
+	out := make([]any, 0, len(samples))
+	for _, s := range samples {
+		if s.turnID != "" && !seen[s.turnID] {
+			seen[s.turnID] = true
+			out = append(out, s.turnID)
+		}
+	}
+	return out
+}
+
+// lookupTurnTokenActuals finds, per turn, the latest event carrying at
+// least one per-turn token counter. Latest-wins (occurred_at, then
+// event_id for determinism) rather than lookupTurnOutcomes' earliest-wins:
+// a re-entrant Stop (stop_hook_active) re-captures the SAME turn after
+// more work happened, so the newest accounting is the complete one —
+// mirroring report.py's own last-wins rule for duplicate usage rows. An
+// event whose payload carries no token key contributes nothing (a plain
+// hook turn.completed from before #72, or one whose transcript read failed
+// open) — unknown is not zero.
+func lookupTurnTokenActuals(ctx context.Context, db *sqlite.DB, turnIDs []any) (map[string]turnTokenActual, error) {
+	out := make(map[string]turnTokenActual)
+	for _, chunk := range chunkKeys(turnIDs) {
+		query := `SELECT turn_id, event_id, occurred_at, payload_json FROM events
+			WHERE turn_id IN (` + placeholders(len(chunk)) + `)
+			  AND event_type IN (?, ?)`
+		args := append(append([]any{}, chunk...), anySlice(tokenActualEventTypes)...)
+		rows, err := queryRowMaps(ctx, db, query, args...)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			var payload map[string]any
+			if s, ok := row["payload_json"].(string); ok {
+				_ = json.Unmarshal([]byte(s), &payload)
+			}
+			a := turnTokenActual{
+				eventID:       stringOrEmpty(row["event_id"]),
+				input:         payloadInt(payload, "input_tokens"),
+				output:        payloadInt(payload, "output_tokens"),
+				cacheRead:     payloadInt(payload, "cache_read_input_tokens"),
+				cacheCreation: payloadInt(payload, "cache_creation_input_tokens"),
+				total:         payloadInt(payload, "total_tokens"),
+				apiCalls:      payloadInt(payload, "api_call_count"),
+			}
+			if a.input == nil && a.output == nil && a.cacheRead == nil && a.cacheCreation == nil && a.total == nil {
+				continue // no token accounting on this event
+			}
+			t, err := time.Parse(time.RFC3339Nano, stringOrEmpty(row["occurred_at"]))
+			if err != nil {
+				continue // an undatable event cannot be "the latest accounting"
+			}
+			a.occurredAt = t
+			turnID := stringOrEmpty(row["turn_id"])
+			existing, ok := out[turnID]
+			if !ok || a.occurredAt.After(existing.occurredAt) ||
+				(a.occurredAt.Equal(existing.occurredAt) && a.eventID > existing.eventID) {
+				out[turnID] = a
+			}
+		}
+	}
+	return out, nil
+}
+
+// attachTokenActuals fills the record's Actual*Tokens fields from the
+// turn's joined accounting, when one exists. Absent join → every field
+// stays nil (the honest pre-#72 gap).
+func attachTokenActuals(rec *ExportRecord, actuals map[string]turnTokenActual) {
+	a, ok := actuals[rec.TurnID]
+	if !ok {
+		return
+	}
+	rec.ActualInputTokens = a.input
+	rec.ActualOutputTokens = a.output
+	rec.ActualCacheReadInputTokens = a.cacheRead
+	rec.ActualCacheCreationInputTokens = a.cacheCreation
+	rec.ActualTotalTokens = a.total
+	rec.ActualAPICalls = a.apiCalls
 }

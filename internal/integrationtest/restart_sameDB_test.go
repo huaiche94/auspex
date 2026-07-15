@@ -355,7 +355,7 @@ func TestRestartSameDB_MultiRoleStateSurvivesProcessRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseStop: %v", err)
 	}
-	stopEvent := normalizer.NormalizeStop(parsedStop, clock.Now())
+	stopEvent := normalizer.NormalizeStop(parsedStop, clock.Now(), nil)
 	if err := eventStore.PersistAll(ctx, db1, []v1.Event{stopEvent}); err != nil {
 		t.Fatalf("PersistAll: %v", err)
 	}

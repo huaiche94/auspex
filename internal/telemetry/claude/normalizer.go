@@ -274,8 +274,11 @@ func (n *Normalizer) NormalizeUserPromptSubmit(ev claudehooks.UserPromptSubmitEv
 }
 
 // NormalizeStop projects a parsed StopEvent into a provider.turn.completed
-// Event.
-func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Time) v1.Event {
+// Event. usage, when non-nil, is the turn's exact token accounting read
+// from the session transcript (issue #72 item 4 — transcriptusage.go); nil
+// means no usage was extractable and the payload stays byte-identical to
+// the pre-#72 shape (fail-open enrichment, never a new failure mode).
+func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Time, usage *TurnUsage) v1.Event {
 	out := n.envelope(v1.EventProviderTurnCompleted, observedAt, ev.SessionID)
 	out.Source = string(domain.SourceHook)
 	out.IdempotencyKey = digestKey("stop", string(ev.SessionID), observedAt.UTC().Format(time.RFC3339Nano))
@@ -289,6 +292,37 @@ func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Tim
 	// stratification (#11) can join it against the turn's prediction row.
 	if ev.EffortLevel != nil {
 		payload["effort"] = *ev.EffortLevel
+	}
+	// #72 item 4: the native-hook per-turn token ACTUAL, under exactly the
+	// managed usage event's key vocabulary (managedUsageEvent) so usage
+	// readers — retention's export join, the observations whitelist — need
+	// no per-source key mapping. Numbers + a model id only (Constitution
+	// §7 rule 2); every absent counter stamps nothing (unknown is not
+	// zero), and total_tokens keeps managedUsageEvent's documented
+	// input+output definition — cache traffic is carried separately so the
+	// sum choice stays revisitable (#66 reads the cache classes directly).
+	if usage != nil {
+		if usage.InputTokens != nil {
+			payload["input_tokens"] = *usage.InputTokens
+		}
+		if usage.OutputTokens != nil {
+			payload["output_tokens"] = *usage.OutputTokens
+		}
+		if usage.CacheReadInputTokens != nil {
+			payload["cache_read_input_tokens"] = *usage.CacheReadInputTokens
+		}
+		if usage.CacheCreationInputTokens != nil {
+			payload["cache_creation_input_tokens"] = *usage.CacheCreationInputTokens
+		}
+		if total, ok := usage.TotalTokens(); ok {
+			payload["total_tokens"] = total
+		}
+		if usage.APICallCount > 0 {
+			payload["api_call_count"] = usage.APICallCount
+		}
+		if usage.ModelID != "" {
+			payload["model_id"] = usage.ModelID
+		}
 	}
 	out.Payload = payload
 	return out

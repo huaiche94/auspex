@@ -38,6 +38,17 @@ class Record:
     cost_low_usd: Optional[float]
     cost_high_usd: Optional[float]
     cost_model_family: Optional[str]
+    # #62 duration pair, riding like the cost fields. duration_p50_ns /
+    # duration_p90_ns are the PREDICTED wall-clock forecast in NANOSECONDS
+    # (the scope estimator's own unit); actual_duration_ms is the ACTUAL
+    # per-turn duration in MILLISECONDS (the turn's provider.usage.observed
+    # total_duration_ms). Distinct units, each matching its Go source
+    # verbatim — report.py's duration_coverage() reconciles them. None =
+    # honestly absent (an uncalibrated forecast that left duration unknown,
+    # or a turn with no attributable usage event) — never read as zero.
+    duration_p50_ns: Optional[int]
+    duration_p90_ns: Optional[int]
+    actual_duration_ms: Optional[int]
     overall_risk_score: float
     confidence: str
     calibrated: bool
@@ -49,6 +60,20 @@ class Record:
     actual_outcome: Optional[str]
     actual_failure_class: Optional[str]
     actual_outcome_at: Optional[str]
+    # Per-turn token ACTUALS (#72 item 4), joined by the Go exporter from
+    # the turn's own events: the Stop hook's transcript-captured accounting
+    # (native hook turns) or the managed run's turn-stamped usage event.
+    # actual_total_tokens keeps the Go side's input+output definition; the
+    # four raw classes ride alongside (the #66 cache-aware costing
+    # prerequisite); actual_api_calls is how many API calls the sum covers
+    # (transcript capture only). None = no turn-attributable token event
+    # (pre-#72 history) — honestly absent, never zero.
+    actual_input_tokens: Optional[int]
+    actual_output_tokens: Optional[int]
+    actual_cache_read_input_tokens: Optional[int]
+    actual_cache_creation_input_tokens: Optional[int]
+    actual_total_tokens: Optional[int]
+    actual_api_calls: Optional[int]
     reason_codes: tuple[str, ...]
 
     @property
@@ -97,6 +122,9 @@ def load(path: Path) -> Iterator[Record]:
                 cost_low_usd=raw.get("cost_low_usd"),
                 cost_high_usd=raw.get("cost_high_usd"),
                 cost_model_family=raw.get("cost_model_family"),
+                duration_p50_ns=raw.get("duration_p50_ns"),
+                duration_p90_ns=raw.get("duration_p90_ns"),
+                actual_duration_ms=raw.get("actual_duration_ms"),
                 overall_risk_score=raw["overall_risk_score"],
                 confidence=raw["confidence"],
                 calibrated=raw["calibrated"],
@@ -108,5 +136,11 @@ def load(path: Path) -> Iterator[Record]:
                 actual_outcome=raw.get("actual_outcome"),
                 actual_failure_class=raw.get("actual_failure_class"),
                 actual_outcome_at=raw.get("actual_outcome_at"),
+                actual_input_tokens=raw.get("actual_input_tokens"),
+                actual_output_tokens=raw.get("actual_output_tokens"),
+                actual_cache_read_input_tokens=raw.get("actual_cache_read_input_tokens"),
+                actual_cache_creation_input_tokens=raw.get("actual_cache_creation_input_tokens"),
+                actual_total_tokens=raw.get("actual_total_tokens"),
+                actual_api_calls=raw.get("actual_api_calls"),
                 reason_codes=tuple(raw.get("reason_codes") or ()),
             )

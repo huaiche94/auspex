@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
 	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
 	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
 	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
@@ -229,51 +230,44 @@ func (n *Normalizer) NormalizeUserPromptSubmit(ev claudehooks.UserPromptSubmitEv
 	out.Source = string(domain.SourceHook)
 	out.IdempotencyKey = digestKey("userpromptsubmit", string(ev.SessionID), ev.PromptSHA256)
 
-	payload := map[string]any{
-		"prompt_sha256":        ev.PromptSHA256,
-		"prompt_byte_length":   ev.PromptByteLength,
-		"prompt_approx_tokens": ev.PromptApproxTokens,
-	}
+	payload := map[string]any{}
 	if ev.CWD != nil {
-		payload["cwd"] = *ev.CWD
+		payload["cwd"] = *ev.CWD // a path, not prompt content — the one
+		// non-feature, non-digest string this event may carry.
 	}
 	// Issue #42: persist the full derived prompt-feature set so the
 	// classifier's verb/domain signals survive to evaluation read-back
 	// (internal/evaluation/datasource_sql.go's Classification) instead of
 	// collapsing to TaskClassUnknown. Privacy reasoning (Constitution §7
-	// rule 2, "only derived features and hashes"): every value below is a
-	// bool or an int computed from the prompt by
-	// features.ExtractPromptFeatures — no raw text, no substrings, no
-	// n-grams; the only string-typed payload fields on this event remain
-	// prompt_sha256 (fixed-alphabet digest) and cwd (a path, not prompt
-	// content). Keys are stable snake_case mirrors of the
-	// features.PromptFeatures field names. Gated on the extraction marker
-	// (ExtractPromptFeatures sets SHA256Hex for every input, even the
-	// empty prompt) so a zero-value Features — an event built without
-	// extraction, e.g. by an older caller — persists no feature keys at
-	// all rather than false booleans masquerading as measurements
-	// (unknown is not zero).
+	// rule 2, "only derived features and hashes"): every value the codec
+	// emits is a bool, an int, or the fixed-alphabet SHA-256 digest computed
+	// from the prompt by features.ExtractPromptFeatures — no raw text, no
+	// substrings, no n-grams (features.PromptFeatures' own type contract
+	// forbids them). The payload keys — including the prompt_sha256/
+	// prompt_byte_length/prompt_approx_tokens trio, now folded into the
+	// codec — live in ONE place, features.EncodePromptFeatures, which the
+	// reader's features.DecodePromptFeatures mirrors; a dropped or mistyped
+	// key is a compile-time break or a round-trip-test failure, not the
+	// silent decode-to-false regression #50 warns of.
+	//
+	// Gated on the extraction marker (ExtractPromptFeatures sets SHA256Hex
+	// for every input, even the empty prompt): a zero-value Features — an
+	// event built without extraction, e.g. by an older caller — persists NO
+	// feature keys and NO version tag, rather than false booleans
+	// masquerading as measurements (unknown is not zero). #50 item 4: this
+	// features-persisted-iff-extracted invariant is pinned by
+	// normalizer_test.go so a future caller that populates booleans without
+	// SHA256Hex cannot silently regress a session to TaskClassUnknown. On
+	// the legacy no-extraction path only the size trio the event carries
+	// directly is written, byte-for-byte as before #50.
 	if f := ev.Features; f.SHA256Hex != "" {
-		payload["prompt_rune_count"] = f.RuneCount
-		payload["prompt_line_count"] = f.LineCount
-		payload["explicit_path_count"] = f.ExplicitPathCount
-		payload["list_item_count"] = f.ListItemCount
-		payload["acceptance_criteria_count"] = f.AcceptanceCriteriaCount
-		payload["has_fix_verb"] = f.HasFixVerb
-		payload["has_implement_verb"] = f.HasImplementVerb
-		payload["has_refactor_verb"] = f.HasRefactorVerb
-		payload["has_investigate_verb"] = f.HasInvestigateVerb
-		payload["has_migrate_verb"] = f.HasMigrateVerb
-		payload["mentions_tests"] = f.MentionsTests
-		payload["mentions_schema_or_api"] = f.MentionsSchemaOrAPI
-		payload["mentions_security"] = f.MentionsSecurity
-		payload["mentions_performance"] = f.MentionsPerformance
-		payload["mentions_documentation"] = f.MentionsDocumentation
-		payload["long_document_indicator"] = f.LongDocumentIndicator
-		payload["question_indicator"] = f.QuestionIndicator
-		payload["open_ended_indicator"] = f.OpenEndedIndicator
-		payload["cross_layer_indicator"] = f.CrossLayerIndicator
-		payload["repository_wide_indicator"] = f.RepositoryWideIndicator
+		for k, v := range features.EncodePromptFeatures(f) {
+			payload[k] = v
+		}
+	} else {
+		payload["prompt_sha256"] = ev.PromptSHA256
+		payload["prompt_byte_length"] = ev.PromptByteLength
+		payload["prompt_approx_tokens"] = ev.PromptApproxTokens
 	}
 	out.Payload = payload
 	return out

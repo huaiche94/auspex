@@ -177,6 +177,16 @@ func ExportObservations(ctx context.Context, db *sqlite.DB, w io.Writer) (Observ
 // prompt_byte_length / prompt_approx_tokens / cwd / stop_hook_active /
 // error_message_len / raw_* and anything a future producer invents are
 // unexportable by construction.
+//
+// #50 item 3: prompt_approx_tokens stays OFF this whitelist deliberately.
+// Beyond its privacy status, its persisted scale is not stable across time —
+// the bytes/4 estimate became the ADD §14.7 estimator (and §14.7 returns 0
+// for whitespace-only prompts where bytes/4 did not), a ruler change with no
+// per-row marker here. The extraction era is instead recorded ON THE SOURCE
+// EVENT as prompt_feature_version (features.PromptFeatureVersion); should a
+// future export ever whitelist a prompt-derived numeric, it must carry that
+// era tag alongside it so operators/calibration never blend eras silently
+// (see research/README.md "Prompt-feature extraction eras").
 func observationRecordFromRow(row map[string]any) ObservationRecord {
 	rec := ObservationRecord{
 		SchemaVersion: ObservationsSchemaVersion,

@@ -224,9 +224,31 @@ func TestLeakageScanner_EvaluateCLI_NoRawPromptInDBExport(t *testing.T) {
 	if payload["has_refactor_verb"] != true {
 		t.Errorf("has_refactor_verb = %v, want true — the canary prompt says 'refactor', so the derived feature must have been measured and persisted", payload["has_refactor_verb"])
 	}
+	// #50 item 2: the extraction-era tag is stamped on a genuinely-extracted
+	// event, with the exact features-owned constant value.
+	if v, ok := features.PromptFeatureVersionFromPayload(payload); !ok || v != features.PromptFeatureVersion {
+		t.Errorf("prompt_feature_version = %q present=%v, want %q — extracted events must carry the era tag", v, ok, features.PromptFeatureVersion)
+	}
 	for k, v := range payload {
-		if s, ok := v.(string); ok && k != "prompt_sha256" && k != "cwd" {
-			t.Errorf("persisted payload field %q is a string (%q) — only prompt_sha256 and cwd may be strings on turn.started (Constitution §7 rule 2)", k, s)
+		s, ok := v.(string)
+		if !ok {
+			continue
+		}
+		switch k {
+		case "prompt_sha256", "cwd":
+			// The fixed-alphabet SHA-256 digest and the CWD path (a path, not
+			// prompt content) are the only free-form strings allowed here.
+		case features.PromptFeatureVersionKey:
+			// #50: the extraction-era tag is a fixed compile-time constant,
+			// provably independent of any prompt's content — exactly as safe
+			// as prompt_sha256. Pinning it to the constant keeps this a
+			// STRENGTHENING of the string allow-list, not a widening: a
+			// version field that ever held prompt-derived text would fail.
+			if s != features.PromptFeatureVersion {
+				t.Errorf("prompt_feature_version = %q, want the fixed constant %q — a version string must never carry prompt-derived data", s, features.PromptFeatureVersion)
+			}
+		default:
+			t.Errorf("persisted payload field %q is a string (%q) — only prompt_sha256, cwd, and the fixed prompt_feature_version constant may be strings on turn.started (Constitution §7 rule 2)", k, s)
 		}
 	}
 

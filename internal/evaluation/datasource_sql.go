@@ -309,36 +309,16 @@ func (s *SQLDataSource) latestPromptFeatures(ctx context.Context, sessionID doma
 		return features.PromptFeatures{}, false, fmt.Errorf("decode provider.turn.started payload: %w", err)
 	}
 
-	pf := features.PromptFeatures{
-		SHA256Hex:       payloadString(payload, "prompt_sha256"),
-		ByteLength:      payloadInt(payload, "prompt_byte_length"),
-		ApproxTokens:    payloadInt(payload, "prompt_approx_tokens"),
-		TokenConfidence: domain.ConfidenceLow, // mirrors ExtractPromptFeatures: always an estimate
-
-		RuneCount: payloadInt(payload, "prompt_rune_count"),
-		LineCount: payloadInt(payload, "prompt_line_count"),
-
-		ExplicitPathCount:       payloadInt(payload, "explicit_path_count"),
-		ListItemCount:           payloadInt(payload, "list_item_count"),
-		AcceptanceCriteriaCount: payloadInt(payload, "acceptance_criteria_count"),
-
-		HasFixVerb:         payloadBool(payload, "has_fix_verb"),
-		HasImplementVerb:   payloadBool(payload, "has_implement_verb"),
-		HasRefactorVerb:    payloadBool(payload, "has_refactor_verb"),
-		HasInvestigateVerb: payloadBool(payload, "has_investigate_verb"),
-		HasMigrateVerb:     payloadBool(payload, "has_migrate_verb"),
-
-		MentionsTests:           payloadBool(payload, "mentions_tests"),
-		MentionsSchemaOrAPI:     payloadBool(payload, "mentions_schema_or_api"),
-		MentionsSecurity:        payloadBool(payload, "mentions_security"),
-		MentionsPerformance:     payloadBool(payload, "mentions_performance"),
-		MentionsDocumentation:   payloadBool(payload, "mentions_documentation"),
-		LongDocumentIndicator:   payloadBool(payload, "long_document_indicator"),
-		QuestionIndicator:       payloadBool(payload, "question_indicator"),
-		OpenEndedIndicator:      payloadBool(payload, "open_ended_indicator"),
-		CrossLayerIndicator:     payloadBool(payload, "cross_layer_indicator"),
-		RepositoryWideIndicator: payloadBool(payload, "repository_wide_indicator"),
-	}
+	// #50 item 1: decode through the features-owned codec — the SAME
+	// key set the writer (telemetry/claude's NormalizeUserPromptSubmit)
+	// encodes with. Neither side hand-types the ~20 snake_case keys anymore,
+	// so a dropped/typo'd key can no longer silently decode to false/0 and
+	// collapse classification to TaskClassUnknown (the drift #50 warns of).
+	// DecodePromptFeatures is deliberately tolerant of absent keys (they
+	// decode to zero values, the honest state for an unmeasured signal) and
+	// of flat pre-#50 payloads, so events persisted before this change still
+	// read back exactly as before — no historical event regresses.
+	pf := features.DecodePromptFeatures(payload)
 	return pf, true, nil
 }
 
@@ -1124,31 +1104,13 @@ func payloadString(payload map[string]any, key string) string {
 	return s
 }
 
-// payloadBool decodes a boolean payload field. An absent key or a
-// non-boolean value returns false — for the issue-#42 derived feature
-// fields that is the honest zero value for signal that was never captured
-// (events persisted before those fields existed), matching the
-// pre-#42 behavior exactly.
-func payloadBool(payload map[string]any, key string) bool {
-	v, ok := payload[key]
-	if !ok {
-		return false
-	}
-	b, _ := v.(bool)
-	return b
-}
-
-func payloadInt(payload map[string]any, key string) int {
-	v, ok := payload[key]
-	if !ok {
-		return 0
-	}
-	f, ok := toFloat64(v)
-	if !ok {
-		return 0
-	}
-	return int(f)
-}
+// The prompt-feature payload keys (booleans and counts) are no longer
+// decoded here field-by-field: #50 item 1 moved that to the features-owned
+// codec (features.DecodePromptFeatures), which latestPromptFeatures calls.
+// That codec carries its own absent-key-is-zero tolerance (the honest zero
+// for a signal an old event never captured), so this file's former
+// payloadBool/payloadInt helpers were removed rather than left as dead,
+// drift-prone twins of it.
 
 func payloadFloatPtr(payload map[string]any, key string) *float64 {
 	v, ok := payload[key]

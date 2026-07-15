@@ -89,6 +89,36 @@ provider result line's own token accounting
 (`input_tokens`/`output_tokens`/`cache_*_input_tokens`/`total_tokens`),
 so those actuals are read off directly and joined on `turn_id`.
 
+## Prompt-feature extraction eras (`prompt_feature_version`, #50)
+
+When Phase 2 calibration (#11/#20) begins consuming the derived
+prompt-feature signals on `provider.turn.started` (verb/domain booleans,
+counts, `prompt_approx_tokens`), it MUST respect the extraction-era tag
+`prompt_feature_version` (constant `features.PromptFeatureVersion`, stamped
+by `internal/features`'s codec). The signals were NOT produced by one stable
+ruler over time:
+
+- **Events lacking the key predate #50's stamping** and mix extraction eras
+  — pre-#42 (size-only), #42's initial vocabulary, #47's widened vocabulary
+  — with no way to tell which. A refactor prompt persisted under the older
+  vocabulary carries `has_refactor_verb=false` for text that reads `true`
+  today. Do **not** blend measured features across the tagged/untagged
+  boundary silently; treat an untagged event as honestly unknown-era, never
+  as the current era.
+- **`prompt_approx_tokens` changed rulers, not just prompts.** The bytes/4
+  estimate became the ADD §14.7 tokenizer-free estimator (same commit that
+  added the features), so a raw-value trend shows a step change at the
+  deploy boundary that reflects the ruler, not the prompts (largest
+  divergence on CJK, punctuation-heavy, and whitespace-heavy inputs).
+  Additionally, §14.7 counts no whitespace, so it returns **0** for a
+  whitespace-only prompt where bytes/4 returned a tiny non-zero value —
+  collapsing the old empty(0)-vs-tiny(1) distinction. The estimator itself
+  is deliberately NOT re-changed (that would add a THIRD untagged era); the
+  version tag is what makes the discontinuity detectable. Note this field is
+  currently whitelisted OUT of the observations export by construction (see
+  `internal/retention/observations.go`), so no research consumer reads it
+  yet — this note is the binding contract for when one does.
+
 ## Layout
 
 - `calibration/load.py` — JSONL loader + schema validation

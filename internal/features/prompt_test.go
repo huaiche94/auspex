@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/huaiche94/auspex/internal/domain"
 )
@@ -161,5 +162,161 @@ func TestPromptFeaturesStructureSignals(t *testing.T) {
 	}
 	if !pf.HasImplementVerb {
 		t.Fatal("HasImplementVerb = false, want true")
+	}
+}
+
+// referenceExtractPromptFeatures is the PRE-#51 extraction logic preserved
+// verbatim as a behavioral oracle: the full-rune-slice RuneCount, the
+// strings.Split line pass, the strings.Fields path pass, the wordSet map of
+// EVERY distinct word, and the strings.Fields(lowered) first-word check. It
+// shares the production word-list slices (fixVerbWords etc.) so the ONLY
+// thing under test is the scan MECHANISM, not the vocabulary content.
+// TestExtractPromptFeatures_MatchesReference asserts the fused
+// ExtractPromptFeatures produces byte-identical output to this for a corpus
+// of edge cases (BINDING: #51 must be behavior-preserving).
+func referenceExtractPromptFeatures(raw string) PromptFeatures {
+	sum := sha256.Sum256([]byte(raw))
+	pf := PromptFeatures{
+		ByteLength:      len(raw),
+		RuneCount:       len([]rune(raw)),
+		ApproxTokens:    approxTokens(raw),
+		TokenConfidence: domain.ConfidenceLow,
+		SHA256Hex:       hex.EncodeToString(sum[:]),
+	}
+	lines := strings.Split(raw, "\n")
+	pf.LineCount = len(lines)
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if isChecklistLine(t) {
+			pf.AcceptanceCriteriaCount++
+			pf.ListItemCount++
+		} else if isListLine(t) {
+			pf.ListItemCount++
+		}
+	}
+	lowered := strings.ToLower(raw)
+	ws := make(map[string]struct{})
+	for _, w := range strings.FieldsFunc(lowered, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		ws[w] = struct{}{}
+	}
+	has := func(list []string) bool {
+		for _, w := range list {
+			if _, ok := ws[w]; ok {
+				return true
+			}
+		}
+		return false
+	}
+	phrase := func(ps ...string) bool {
+		for _, p := range ps {
+			if strings.Contains(lowered, p) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tok := range strings.Fields(raw) {
+		if looksLikePath(tok) {
+			pf.ExplicitPathCount++
+		}
+	}
+	fields := strings.Fields(lowered)
+	firstWord := func(cands ...string) bool {
+		if len(fields) == 0 {
+			return false
+		}
+		first := strings.Trim(fields[0], ",.!?:;")
+		for _, c := range cands {
+			if first == c {
+				return true
+			}
+		}
+		return false
+	}
+	pf.HasFixVerb = has(fixVerbWords)
+	pf.HasImplementVerb = has(implementVerbWords)
+	pf.HasRefactorVerb = has(refactorVerbWords)
+	pf.HasInvestigateVerb = has(investigateVerbWords)
+	pf.HasMigrateVerb = has(migrateVerbWords)
+	pf.MentionsTests = has(testsWords) || phrase("unit test", "integration test")
+	pf.MentionsSchemaOrAPI = has(schemaAPIWords)
+	pf.MentionsSecurity = has(securityWords)
+	pf.MentionsPerformance = has(performanceWords)
+	pf.MentionsDocumentation = has(documentationWords)
+	pf.LongDocumentIndicator = has(longDocPrimaryWords) ||
+		(has(longDocSectionWords) && pf.MentionsDocumentation) ||
+		phrase("design document", "architecture document", "design doc")
+	pf.QuestionIndicator = strings.Contains(raw, "?") || firstWord("what", "why", "how", "where", "when", "which", "who", "does", "is", "are", "can", "should")
+	pf.OpenEndedIndicator = has(openEndedWords) || phrase("clean up", "make it better")
+	pf.CrossLayerIndicator = phrase("cross-layer", "end-to-end", "e2e", "full-stack", "frontend and backend") || has(crossLayerWords)
+	pf.RepositoryWideIndicator = has(repoWideWords) || phrase("repository-wide", "repo-wide", "entire repo", "whole repo", "all files", "every file")
+	return pf
+}
+
+// TestExtractPromptFeatures_MatchesReference is the #51 behavior-preservation
+// proof: the fused single-pass extractor must yield byte-identical
+// PromptFeatures to the pre-#51 multi-pass logic for every input, especially
+// the edge cases where a hand-rolled scan can drift from the standard-library
+// one — CRLF and trailing/blank lines (Split semantics), consecutive and
+// leading whitespace (Fields semantics), a vocab token at the very end with
+// no trailing separator, CJK/multibyte runes, first-word punctuation, and
+// invalid UTF-8.
+func TestExtractPromptFeatures_MatchesReference(t *testing.T) {
+	corpus := []string{
+		"",
+		"   \n\t  ",
+		"fix",
+		"api",
+		"the api", // vocab token flush at end, no trailing separator
+		"fix the bug in internal/auth/session.go", // path + fix verb
+		"refactor\n",         // trailing newline (Split yields "")
+		"a\n\n\nb",           // consecutive blank lines
+		"fix    the   bug",   // consecutive spaces (Fields collapse)
+		"   what is this?",   // leading whitespace + first-word question
+		"why, is this slow?", // first word with trailing punctuation
+		"Refactor internal/policy across layers.\n- [ ] add tests\n- update docs\n1. migrate schema",
+		"Implement feature X\n- [ ] acceptance one\n- [x] acceptance two\n- plain bullet\n1. numbered item\n2) other numbered",
+		"修復 the bug 密碼 optimize performance",           // CJK interleaved with vocab
+		"why?! debug... the-api and the schema",        // punctuation-heavy separators
+		"internal/a.go internal/b.go pkg/c.ts main.py", // path-heavy
+		"See the design document and the architecture document for the whole repo audit",
+		"CLEAN UP and MAKE IT BETTER across frontend and backend end-to-end", // uppercase + phrases
+		"please review and understand the codebase everywhere",
+		"a\r\nfix the bug\r\n- [ ] windows line\r\n", // CRLF (windows-portable)
+		"valid \xff\xfe invalid utf8 bytes fix",      // invalid UTF-8
+		benchLogPrompt[:50000],                       // a slice of the multi-MB log prompt
+	}
+	for i, raw := range corpus {
+		got := ExtractPromptFeatures(raw)
+		want := referenceExtractPromptFeatures(raw)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("case %d: fused output differs from reference\n got: %+v\nwant: %+v\ninput: %q", i, got, want, raw)
+		}
+	}
+}
+
+// benchLogPrompt is a multi-MB pasted-log-style prompt — the worst case #51
+// targets: a user pasting a large log or diff, which
+// NewUserPromptSubmitEvent runs ExtractPromptFeatures over SYNCHRONOUSLY on
+// the UserPromptSubmit hook path before every prompt. It is built once so
+// BenchmarkExtractPromptFeatures measures extraction, not string assembly.
+var benchLogPrompt = strings.Repeat(
+	"2026-07-14T12:00:00.123Z INFO  internal/evaluation/service.go:214 "+
+		"forecast token_p50=1234 refactor the schema and fix the bug in "+
+		"internal/auth/session.go please add tests and migrate the api\n",
+	20000, // ~140 bytes/line * 20000 ≈ 2.8 MB
+)
+
+// BenchmarkExtractPromptFeatures pins the #51 hot-path cost on a multi-MB
+// prompt. Report -benchmem: the fused implementation must show far fewer
+// allocations and bytes/op than the pre-#51 version, which materialized a
+// full rune slice, a map of EVERY distinct word, and full field/line slices.
+func BenchmarkExtractPromptFeatures(b *testing.B) {
+	b.SetBytes(int64(len(benchLogPrompt)))
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = ExtractPromptFeatures(benchLogPrompt)
 	}
 }

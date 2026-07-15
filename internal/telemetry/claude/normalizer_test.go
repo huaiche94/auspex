@@ -1,13 +1,16 @@
 package claude
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
 	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
 	claudeprovider "github.com/huaiche94/auspex/internal/providers/claude"
 	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
@@ -229,6 +232,78 @@ func TestNormalizeUserPromptSubmit_ZeroValueFeaturesPersistNoFeatureKeys(t *test
 		if _, present := ev.Payload[key]; present {
 			t.Errorf("payload key %q present for a zero-value Features struct — false booleans must not masquerade as measurements", key)
 		}
+	}
+}
+
+// TestNormalizeUserPromptSubmit_CodecWriterReaderAgree proves the #50-item-1
+// keystone at the real writer boundary: the payload NormalizeUserPromptSubmit
+// persists, taken through JSON exactly as storage does, decodes via the
+// reader's codec (features.DecodePromptFeatures) back to the identical
+// PromptFeatures the writer started from — so writer and reader can never
+// drift on the key set (a dropped/typo'd key would fail this DeepEqual). The
+// extraction-era tag rides along on the same payload.
+func TestNormalizeUserPromptSubmit_CodecWriterReaderAgree(t *testing.T) {
+	n, clock := newTestNormalizer()
+
+	ev := claudehooks.NewUserPromptSubmitEvent("sess-agree",
+		"Refactor internal/policy across layers and fix the bug.\n- [ ] add tests\n- [x] migrate the api schema\n1. audit the security docs")
+	out := n.NormalizeUserPromptSubmit(ev, clock.Now())
+
+	blob, err := json.Marshal(out.Payload)
+	if err != nil {
+		t.Fatalf("marshal persisted payload: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(blob, &wire); err != nil {
+		t.Fatalf("unmarshal persisted payload: %v", err)
+	}
+
+	if got := features.DecodePromptFeatures(wire); !reflect.DeepEqual(got, ev.Features) {
+		t.Errorf("writer/reader disagree via the codec:\n got: %+v\nwant: %+v", got, ev.Features)
+	}
+	if v, ok := features.PromptFeatureVersionFromPayload(wire); !ok || v != features.PromptFeatureVersion {
+		t.Errorf("persisted payload missing/incorrect extraction-era tag: got %q present=%v, want %q", v, ok, features.PromptFeatureVersion)
+	}
+}
+
+// TestNormalizeUserPromptSubmit_FeaturesPersistedIffExtracted pins the #50
+// item 4 gate in BOTH directions — features are persisted IFF they were
+// extracted — so a future caller that populates feature booleans without the
+// SHA256Hex extraction marker can never silently regress a session to
+// TaskClassUnknown undetected.
+func TestNormalizeUserPromptSubmit_FeaturesPersistedIffExtracted(t *testing.T) {
+	n, clock := newTestNormalizer()
+
+	// Extracted (SHA256Hex set by ExtractPromptFeatures): the full derived
+	// set AND the version tag are persisted.
+	extracted := claudehooks.NewUserPromptSubmitEvent("sess-ext", "refactor the api and add tests")
+	got := n.NormalizeUserPromptSubmit(extracted, clock.Now()).Payload
+	for _, key := range []string{"has_refactor_verb", "mentions_tests", "prompt_rune_count", "prompt_line_count", features.PromptFeatureVersionKey} {
+		if _, present := got[key]; !present {
+			t.Errorf("extracted event: payload missing %q — features must persist when extracted", key)
+		}
+	}
+
+	// The fragility #50 item 4 warns of: feature booleans populated but
+	// SHA256Hex (the extraction marker) left empty. NO feature keys and NO
+	// version tag may persist; only the size trio the event carries directly.
+	noMarker := claudehooks.UserPromptSubmitEvent{
+		SessionID:        "sess-nomarker",
+		PromptSHA256:     "abc123",
+		PromptByteLength: 10,
+		Features: features.PromptFeatures{
+			HasRefactorVerb: true, // populated WITHOUT SHA256Hex — must be ignored
+			MentionsTests:   true,
+		},
+	}
+	q := n.NormalizeUserPromptSubmit(noMarker, clock.Now()).Payload
+	for _, key := range []string{"has_refactor_verb", "mentions_tests", "prompt_rune_count", features.PromptFeatureVersionKey} {
+		if _, present := q[key]; present {
+			t.Errorf("no-marker event: payload key %q present — unmarked features must not persist as measurements", key)
+		}
+	}
+	if q["prompt_sha256"] != "abc123" || q["prompt_byte_length"] != 10 {
+		t.Errorf("no-marker event dropped the size trio it carries directly: %+v", q)
 	}
 }
 

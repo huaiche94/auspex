@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/huaiche94/auspex/internal/features"
 	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
 	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
@@ -56,8 +57,18 @@ func TestPrivacy_UserPromptSubmit_DerivedFeatureFieldsAreBoolsAndCountsOnly(t *t
 		case bool, int:
 			// booleans and counts: the only shapes derived features may take.
 		case string:
-			if !allowedStringKeys[k] {
-				t.Errorf("payload field %q is a string (%q) — only prompt_sha256 and cwd may be strings on this event (Constitution §7 rule 2)", k, v)
+			// #50: the extraction-era tag prompt_feature_version is a fixed
+			// compile-time constant (features.PromptFeatureVersion), provably
+			// independent of prompt content — as safe as prompt_sha256. Pin it
+			// to the exact constant so this remains a STRENGTHENING of the
+			// allow-list, not a loosening: a version field ever carrying
+			// prompt-derived text fails here.
+			if k == features.PromptFeatureVersionKey {
+				if v != features.PromptFeatureVersion {
+					t.Errorf("prompt_feature_version = %q, want the fixed constant %q", v, features.PromptFeatureVersion)
+				}
+			} else if !allowedStringKeys[k] {
+				t.Errorf("payload field %q is a string (%q) — only prompt_sha256, cwd, and the fixed prompt_feature_version constant may be strings on this event (Constitution §7 rule 2)", k, v)
 			}
 		default:
 			t.Errorf("payload field %q has unexpected type %T — derived prompt features must be bools or ints", k, v)

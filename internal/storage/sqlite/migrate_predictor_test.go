@@ -121,6 +121,8 @@ func TestMigration0040_TablesHaveExpectedColumns(t *testing.T) {
 			"overall_risk_score", "confidence", "calibrated", "reason_codes_json", "created_at",
 			// 0045 (ADR-043 increment 2): the persisted context projection.
 			"projected_context_used_p90",
+			// 0047 (#62 Phase 1): per-turn wall-clock duration forecast.
+			"duration_p50", "duration_p90",
 		}},
 		{"runway_forecasts", []string{
 			"id", "session_id", "turn_id", "task_id", "limit_id", "horizon_seconds",

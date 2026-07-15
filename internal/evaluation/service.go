@@ -244,10 +244,14 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 			// unknown is not zero.
 			ProjectedContextUsedP90: result.quotaFC.ProjectedContextUsedP90,
 			// #20 Phase 0 identity stamp (migration 0046).
-			Provider:        &provider,
-			ModelID:         modelID,
-			ModelFamily:     modelFamily,
-			Effort:          effort,
+			Provider:    &provider,
+			ModelID:     modelID,
+			ModelFamily: modelFamily,
+			Effort:      effort,
+			// #62 Phase 1 wall-clock duration forecast (migration 0047); nil
+			// stays NULL — unknown is not zero.
+			DurationP50:     result.scope.DurationP50,
+			DurationP90:     result.scope.DurationP90,
 			Confidence:      result.risk.OverallRisk.Confidence,
 			Calibrated:      result.risk.OverallRisk.Calibrated,
 			ReasonCodesJSON: predictionReasons,

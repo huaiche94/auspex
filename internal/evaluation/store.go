@@ -66,20 +66,25 @@ func insertFeatureVector(ctx context.Context, db *sqlite.DB, r featureVectorRow)
 // 0045's additive projected_context_used_p90 column (ADR-043 increment 2:
 // the persisted context projection the forecast card reads back).
 type predictionRow struct {
-	ID                   domain.EvaluationID
-	TurnID               domain.TurnID
-	PredictorID          string
-	PredictorVersion     string
-	FeatureSetVersion    string
-	TokenP50             *int64
-	TokenP80             *int64
-	TokenP90             *int64
-	FilesReadP50         *int64
-	FilesReadP90         *int64
-	FilesChangedP50      *int64
-	FilesChangedP90      *int64
-	LinesChangedP50      *int64
-	LinesChangedP90      *int64
+	ID                domain.EvaluationID
+	TurnID            domain.TurnID
+	PredictorID       string
+	PredictorVersion  string
+	FeatureSetVersion string
+	TokenP50          *int64
+	TokenP80          *int64
+	TokenP90          *int64
+	FilesReadP50      *int64
+	FilesReadP90      *int64
+	FilesChangedP50   *int64
+	FilesChangedP90   *int64
+	LinesChangedP50   *int64
+	LinesChangedP90   *int64
+	// DurationP50/P90 are the Phase-1 wall-clock duration forecast in
+	// nanoseconds (#62, migration 0047), nil when the scope estimator left
+	// duration unknown or the row predates #62 — unknown is not zero.
+	DurationP50          *int64
+	DurationP90          *int64
 	QuotaRiskScore       float64
 	ContextRiskScore     float64
 	CompletionRiskScore  float64
@@ -117,8 +122,9 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 			blast_radius_risk_score, overall_risk_score,
 			projected_context_used_p90,
 			provider, model_id, model_family, effort,
+			duration_p50, duration_p90,
 			confidence, calibrated, reason_codes_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(r.ID), string(r.TurnID), r.PredictorID, r.PredictorVersion, r.FeatureSetVersion,
 		nullableInt64(r.TokenP50), nullableInt64(r.TokenP80), nullableInt64(r.TokenP90),
 		nullableInt64(r.FilesReadP50), nullableInt64(r.FilesReadP90),
@@ -128,6 +134,7 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 		r.BlastRadiusRiskScore, r.OverallRiskScore,
 		nullableFloat64(r.ProjectedContextUsedP90),
 		nullableString(r.Provider), nullableString(r.ModelID), nullableString(r.ModelFamily), nullableString(r.Effort),
+		nullableInt64(r.DurationP50), nullableInt64(r.DurationP90),
 		string(r.Confidence), boolToInt(r.Calibrated), r.ReasonCodesJSON, r.CreatedAt,
 	)
 	if err != nil {
@@ -148,6 +155,7 @@ func getPrediction(ctx context.Context, db *sqlite.DB, id domain.EvaluationID) (
 		       blast_radius_risk_score, overall_risk_score,
 		       projected_context_used_p90,
 		       provider, model_id, model_family, effort,
+		       duration_p50, duration_p90,
 		       confidence, calibrated, reason_codes_json, created_at
 		FROM predictions WHERE id = ?`, string(id))
 	r, err := scanPrediction(row)
@@ -172,6 +180,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		linesChangedP50, linesChangedP90                sql.NullInt64
 		projectedContextUsedP90                         sql.NullFloat64
 		provider, modelID, modelFamily, effort          sql.NullString
+		durationP50, durationP90                        sql.NullInt64
 	)
 	if err := row.Scan(
 		&id, &turnID, &predID, &predVersion, &featureVersion,
@@ -183,6 +192,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		&r.BlastRadiusRiskScore, &r.OverallRiskScore,
 		&projectedContextUsedP90,
 		&provider, &modelID, &modelFamily, &effort,
+		&durationP50, &durationP90,
 		&confidence, &calibrated, &reasonCodesJSON, &createdAt,
 	); err != nil {
 		return predictionRow{}, err
@@ -206,6 +216,8 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 	r.ModelID = nullStringPtr(modelID)
 	r.ModelFamily = nullStringPtr(modelFamily)
 	r.Effort = nullStringPtr(effort)
+	r.DurationP50 = nullInt64Ptr(durationP50)
+	r.DurationP90 = nullInt64Ptr(durationP90)
 	r.Confidence = domain.Confidence(confidence)
 	r.Calibrated = calibrated != 0
 	r.ReasonCodesJSON = reasonCodesJSON

@@ -179,3 +179,75 @@ func TestRun_CalibrationSamples_ActualKnownIsHonest(t *testing.T) {
 		}
 	}
 }
+
+// TestRun_CalibrationSamples_DurationPair proves the #62 Phase-1 duration
+// calibration rail (migration 0062): the PREDICTED duration survives
+// archival copied verbatim from the prediction row, and the ACTUAL
+// per-turn duration joins from a turn-attributable provider.usage.observed
+// event's total_duration_ms — while a turn with no such usage event keeps
+// actual_duration_ms honestly NULL (the documented join gap) yet still
+// carries its predicted forecast.
+func TestRun_CalibrationSamples_DurationPair(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	// pred-dur-paired: a managed-run shaped turn — the usage event carries
+	// the SAME turn_id as the prediction (managedrun.go's stampManagedScope),
+	// so the actual per-turn duration is joinable.
+	seedPrediction(t, db, "pred-dur-paired", "turn-dur-p", oldTime)
+	exec(t, db, `UPDATE predictions SET duration_p50 = ?, duration_p90 = ? WHERE id = 'pred-dur-paired'`,
+		int64(45_000_000_000), int64(120_000_000_000)) // 45s / 120s in ns
+	seedEvent(t, db, "ev-dp-start", "provider.turn.started", oldTime, "sessD", "turn-dur-p", `{"prompt_sha256":"z"}`)
+	seedEvent(t, db, "ev-dp-usage", "provider.usage.observed", oldTime.Add(time.Minute), "sessD", "turn-dur-p",
+		`{"total_cost_usd":0.4,"total_duration_ms":87000,"total_api_duration_ms":41000}`)
+
+	// pred-dur-nogap-actual: has a PREDICTED duration but its turn has no
+	// turn-attributable usage event — the honest gap. Predicted survives;
+	// actual_duration_ms stays NULL (never a fabricated zero).
+	seedPrediction(t, db, "pred-dur-noactual", "turn-dur-n", oldTime)
+	exec(t, db, `UPDATE predictions SET duration_p50 = ?, duration_p90 = ? WHERE id = 'pred-dur-noactual'`,
+		int64(15_000_000_000), int64(30_000_000_000)) // 15s / 30s in ns
+	seedEvent(t, db, "ev-dn-start", "provider.turn.started", oldTime, "sessD", "turn-dur-n", `{"prompt_sha256":"w"}`)
+	// A session-cumulative usage snapshot with NO turn_id must NOT join to
+	// this (or any) prediction — it is turn-unattributable by construction.
+	seedEvent(t, db, "ev-dn-orphan-usage", "provider.usage.observed", oldTime.Add(time.Minute), "sessD", "",
+		`{"total_duration_ms":999999}`)
+
+	if _, err := e.Run(ctx, RunRequest{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	type durSample struct {
+		p50, p90, actualMs sql.NullInt64
+	}
+	read := func(predictionID string) durSample {
+		t.Helper()
+		var s durSample
+		err := db.Conn().QueryRowContext(ctx, `
+			SELECT duration_p50, duration_p90, actual_duration_ms
+			FROM calibration_samples WHERE prediction_id = ?`, predictionID).
+			Scan(&s.p50, &s.p90, &s.actualMs)
+		if err != nil {
+			t.Fatalf("read duration sample %s: %v", predictionID, err)
+		}
+		return s
+	}
+
+	paired := read("pred-dur-paired")
+	if !paired.p50.Valid || paired.p50.Int64 != 45_000_000_000 ||
+		!paired.p90.Valid || paired.p90.Int64 != 120_000_000_000 {
+		t.Errorf("paired predicted duration not carried verbatim: %+v", paired)
+	}
+	if !paired.actualMs.Valid || paired.actualMs.Int64 != 87000 {
+		t.Errorf("paired actual_duration_ms = %+v, want 87000 (from turn-joined usage event)", paired.actualMs)
+	}
+
+	noActual := read("pred-dur-noactual")
+	if !noActual.p50.Valid || noActual.p50.Int64 != 15_000_000_000 ||
+		!noActual.p90.Valid || noActual.p90.Int64 != 30_000_000_000 {
+		t.Errorf("no-actual predicted duration not carried verbatim: %+v", noActual)
+	}
+	if noActual.actualMs.Valid {
+		t.Errorf("no-actual actual_duration_ms = %v, want NULL (honest join gap, not a session-cumulative snapshot)", noActual.actualMs.Int64)
+	}
+}

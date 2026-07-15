@@ -49,10 +49,16 @@ follow [SemVer](https://semver.org/) once releases begin.
   cold-start wall-clock estimate derived from the classified scope
   (`internal/predictor/scope/duration.go`), so it responds to the prompt
   rather than being a frozen constant. Persisted per prediction
-  (migration 0047, `predictions.duration_p50/p90`, nanoseconds) so
-  predicted-vs-actual pairs can accumulate for calibration (#11), and
-  surfaced as a `time:` line on the forecast card / UserPromptSubmit
-  `additionalContext` and a `duration` block in `auspex evaluate --json`.
+  (migration 0047, `predictions.duration_p50/p90`, nanoseconds), carried
+  into `calibration_samples` alongside a new `actual_duration_ms` column
+  joined from the turn's `provider.usage.observed` `total_duration_ms`
+  (migration 0062) so predicted-vs-actual duration pairs accumulate for
+  calibration (#11) and survive archival — turn-attributable today on the
+  managed-run (`auspex run`) path, NULL (honest gap) for session-cumulative
+  statusline usage until turn-stamped coverage grows (#1). Surfaced as a
+  `time:` line on the forecast card / UserPromptSubmit `additionalContext`,
+  a `duration` block in `auspex evaluate --json`, and the calibration
+  export (`duration_p50_ns` / `actual_duration_ms`).
   Labeled uncalibrated (Constitution §7) and deliberately **not** shown on
   the statusline until it is calibrated (#11) or otherwise made
   prompt-responsive there (#42) — the D-15/#42 lesson that a static

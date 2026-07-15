@@ -187,6 +187,18 @@ type calibrationSample struct {
 	actualFailureClass *string
 	actualOutcomeAt    *string
 
+	// Duration forecast pair (#62 Phase 1, migration 0062). durationP50/P90
+	// are the PREDICTED wall-clock forecast in NANOSECONDS, copied verbatim
+	// from the prediction row's 0047 columns so the predicted side survives
+	// archival exactly like token_p50/p80/p90 (nil = the estimator left
+	// duration unknown, unknown is not zero). actualDurationMs is the ACTUAL
+	// per-turn duration in MILLISECONDS joined from the turn's
+	// provider.usage.observed event (nil when no turn-attributable usage
+	// event exists — the honest gap documented in 0062).
+	durationP50      *int64
+	durationP90      *int64
+	actualDurationMs *int64
+
 	// Identity labels copied verbatim from the prediction row's 0046
 	// columns (#11, migration 0061): the stratification keys calibration
 	// needs must survive archival, or every retention pass re-opens the
@@ -233,6 +245,10 @@ func buildCalibrationSamples(ctx context.Context, db *sqlite.DB, predictionRows 
 	if err != nil {
 		return nil, err
 	}
+	actualDurations, err := lookupTurnActualDurations(ctx, db, turnIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	samples := make([]calibrationSample, 0, len(predictionRows))
 	for _, row := range predictionRows {
@@ -246,6 +262,10 @@ func buildCalibrationSamples(ctx context.Context, db *sqlite.DB, predictionRows 
 			tokenP80:         int64Ptr(row["token_p80"]),
 			tokenP90:         int64Ptr(row["token_p90"]),
 			confidence:       stringOrEmpty(row["confidence"]),
+			// Predicted duration (#62): verbatim from the prediction row's
+			// 0047 columns; nil stays nil (unknown is not zero).
+			durationP50: int64Ptr(row["duration_p50"]),
+			durationP90: int64Ptr(row["duration_p90"]),
 		}
 		if v, ok := row["overall_risk_score"].(float64); ok {
 			s.overallRiskScore = v
@@ -271,6 +291,13 @@ func buildCalibrationSamples(ctx context.Context, db *sqlite.DB, predictionRows 
 			if sid, ok := sessions[s.turnID]; ok {
 				s.sessionID = &sid
 			}
+		}
+		if ms, ok := actualDurations[s.turnID]; ok {
+			// Actual duration side: the turn had a turn-attributable usage
+			// event. A turn without one keeps actualDurationMs nil — the
+			// honest gap (0062), never a fabricated zero.
+			v := ms
+			s.actualDurationMs = &v
 		}
 		samples = append(samples, s)
 	}
@@ -353,6 +380,50 @@ func lookupTurnSessions(ctx context.Context, db *sqlite.DB, turnIDs []any) (map[
 	return out, nil
 }
 
+// lookupTurnActualDurations finds, per turn, the ACTUAL per-turn duration
+// in milliseconds from the turn's provider.usage.observed events — the
+// actual side of the #62 duration calibration pair. It reads the provider's
+// own reported "total_duration_ms" (the "cleaner target than turn-to-turn
+// wall time" #62 names) rather than differencing wall-clock timestamps.
+//
+// Only usage events carrying the turn_id join: today the managed-run path
+// (`auspex run`) stamps turn_id on its usage event (managedrun.go's
+// stampManagedScope), while the statusline usage snapshot is
+// session-cumulative and turn-unattributable — so interactive turns simply
+// yield no entry here and the caller leaves actual_duration_ms NULL (the
+// honest gap documented in 0062, mirroring lookupTurnOutcomes' actual_known
+// posture). When several usage events share a turn_id the MAX
+// total_duration_ms is taken — deterministic, and consistent with
+// buildUsageRollups' cumulative-gauge treatment of the very same field.
+func lookupTurnActualDurations(ctx context.Context, db *sqlite.DB, turnIDs []any) (map[string]int64, error) {
+	out := make(map[string]int64)
+	for _, chunk := range chunkKeys(turnIDs) {
+		query := `SELECT turn_id, payload_json FROM events
+			WHERE turn_id IN (` + placeholders(len(chunk)) + `)
+			  AND event_type = 'provider.usage.observed'`
+		rows, err := queryRowMaps(ctx, db, query, chunk...)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			var payload map[string]any
+			if s, ok := row["payload_json"].(string); ok {
+				_ = json.Unmarshal([]byte(s), &payload)
+			}
+			ms, ok := payload["total_duration_ms"].(float64)
+			if !ok {
+				continue // no duration field on this event: contributes nothing (unknown is not zero)
+			}
+			turnID := stringOrEmpty(row["turn_id"])
+			v := int64(ms)
+			if cur, seen := out[turnID]; !seen || v > cur {
+				out[turnID] = v
+			}
+		}
+	}
+	return out, nil
+}
+
 // insertCalibrationSamples writes samples inside the caller's delete
 // transaction. ON CONFLICT DO NOTHING: a prediction is only ever rolled
 // up once (it is deleted in the same transaction), so a conflict can only
@@ -373,8 +444,9 @@ func insertCalibrationSamples(ctx context.Context, db *sqlite.DB, samples []cali
 				overall_risk_score, confidence, calibrated,
 				actual_known, actual_outcome, actual_failure_class, actual_outcome_at,
 				provider, model_id, model_family, effort,
+				duration_p50, duration_p90, actual_duration_ms,
 				retention_run_id, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(prediction_id) DO NOTHING
 		`,
 			s.predictionID, s.turnID, nullableStr(s.sessionID),
@@ -383,6 +455,7 @@ func insertCalibrationSamples(ctx context.Context, db *sqlite.DB, samples []cali
 			s.overallRiskScore, s.confidence, s.calibrated,
 			actualKnown, nullableStr(s.actualOutcome), nullableStr(s.actualFailureClass), nullableStr(s.actualOutcomeAt),
 			nullableStr(s.provider), nullableStr(s.modelID), nullableStr(s.modelFamily), nullableStr(s.effort),
+			nullableI64(s.durationP50), nullableI64(s.durationP90), nullableI64(s.actualDurationMs),
 			runID, createdAt,
 		)
 		if err != nil {

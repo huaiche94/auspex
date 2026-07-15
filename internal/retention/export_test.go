@@ -109,6 +109,46 @@ func TestExportCalibration_LiveRow_JoinLabelsAndDetail(t *testing.T) {
 	}
 }
 
+// TestExportCalibration_DurationPair_LiveRoundTrip pins the #62 duration
+// pair through the JSONL export: the predicted forecast (nanoseconds) and
+// the actual per-turn duration (milliseconds from the turn-joined usage
+// event) both reach the wire record under their distinct-unit JSON keys,
+// and a decode round-trips them intact.
+func TestExportCalibration_DurationPair_LiveRoundTrip(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	seedLabeledPrediction(t, db, "pred-dur", "turn-dur", newTime, "claude", "claude-fable-5", "fable", "high")
+	exec(t, db, `UPDATE predictions SET duration_p50 = ?, duration_p90 = ? WHERE id = 'pred-dur'`,
+		int64(45_000_000_000), int64(120_000_000_000)) // 45s / 120s in ns
+	seedEvent(t, db, "ev-dur-start", "provider.turn.started", newTime, "sessX", "turn-dur", `{"prompt_sha256":"x"}`)
+	seedEvent(t, db, "ev-dur-usage", "provider.usage.observed", newTime.Add(time.Minute), "sessX", "turn-dur",
+		`{"total_duration_ms":87000,"total_api_duration_ms":41000}`)
+
+	var buf bytes.Buffer
+	if _, err := e.ExportCalibration(ctx, &buf); err != nil {
+		t.Fatalf("ExportCalibration: %v", err)
+	}
+	records := decodeExportLines(t, buf.Bytes())
+	if len(records) != 1 {
+		t.Fatalf("got %d records, want 1", len(records))
+	}
+	rec := records[0]
+	if rec.DurationP50 == nil || *rec.DurationP50 != 45_000_000_000 ||
+		rec.DurationP90 == nil || *rec.DurationP90 != 120_000_000_000 {
+		t.Errorf("predicted duration (ns) not exported: p50=%v p90=%v", rec.DurationP50, rec.DurationP90)
+	}
+	if rec.ActualDurationMs == nil || *rec.ActualDurationMs != 87000 {
+		t.Errorf("actual_duration_ms not exported: %v, want 87000", rec.ActualDurationMs)
+	}
+	// The wire keys must carry their units so a consumer never confuses the
+	// nanosecond prediction with the millisecond actual.
+	if !bytes.Contains(buf.Bytes(), []byte(`"duration_p50_ns":45000000000`)) ||
+		!bytes.Contains(buf.Bytes(), []byte(`"actual_duration_ms":87000`)) {
+		t.Errorf("expected unit-tagged duration keys in JSON:\n%s", buf.String())
+	}
+}
+
 func TestExportCalibration_ArchivedRow_IdentitySurvivesRetention(t *testing.T) {
 	e, db, _ := newTestEngine(t)
 	ctx := context.Background()

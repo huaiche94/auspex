@@ -43,10 +43,17 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
   由分類後的 scope 推導出的 cold-start wall-clock 估計
   （`internal/predictor/scope/duration.go`），因此它會隨 prompt 變動，
   而非固定常數。每筆 prediction 持久化（migration 0047，
-  `predictions.duration_p50/p90`，單位 nanosecond），讓「預測 vs 實際」
-  配對得以累積以供校準（#11）；並在 forecast card／UserPromptSubmit 的
-  `additionalContext` 上以 `time:` 一行呈現，`auspex evaluate --json`
-  則多一個 `duration` 區塊。標示為未校準（Constitution §7），且刻意
+  `predictions.duration_p50/p90`，單位 nanosecond），並連同新增的
+  `actual_duration_ms` 欄位（migration 0062，從該 turn 的
+  `provider.usage.observed` 事件 `total_duration_ms` join 而來）一併寫入
+  `calibration_samples`，讓「預測 vs 實際」時長配對得以累積以供校準（#11）
+  並在封存後仍保留——目前於 managed-run（`auspex run`）路徑上可對應到
+  turn，session 累計式的 statusline usage 則暫記為 NULL（誠實的缺口），
+  待 turn 標記覆蓋擴大後自動補上（#1）。並在 forecast card／
+  UserPromptSubmit 的 `additionalContext` 上以 `time:` 一行呈現，
+  `auspex evaluate --json` 則多一個 `duration` 區塊，calibration export
+  亦輸出（`duration_p50_ns`／`actual_duration_ms`）。標示為未校準
+  （Constitution §7），且刻意
   **不**顯示於 statusline，直到它被校準（#11）或以其他方式變得會隨
   prompt 反應（#42）為止——這是 D-15／#42 的教訓：固定的 cold-start
   數字在 statusline 上沒有訊號價值。Phase 2（以 Claude Code 已回報的

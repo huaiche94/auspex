@@ -1,0 +1,46 @@
+-- 0062_calibration_samples_duration.sql (#62 Phase 1 — duration calibration rail)
+--
+-- The duration forecast's predicted-vs-actual pair, mirroring how
+-- token_p50/p80/p90 + actual_outcome already form a pair on this table.
+-- Migration 0047 added predictions.duration_p50/p90 (the Phase-1 cold-start
+-- wall-clock estimate) and the card / `auspex evaluate` surfaces render it,
+-- but the retention rollup archived each expired prediction WITHOUT its
+-- duration and had no actual-duration column at all — so every `auspex gc`
+-- pass permanently dropped exactly the pairs #11 calibration needs to
+-- replace the cold-start guess with measured quantiles. That is the same
+-- unlabeled-history hole 0061 closed for identity labels (D-10/D-12,
+-- capture-before-model): the compact archived sample must carry every
+-- column calibration will read, because the raw predictions/events rows it
+-- was distilled from are deleted in the same transaction.
+--
+--   duration_p50 / duration_p90 — the PREDICTED wall-clock forecast in
+--     NANOSECONDS, copied verbatim from predictions.duration_p50/p90 (0047)
+--     so the predicted side survives archival exactly like token_p50/p80/p90.
+--     NULL when the scope estimator left duration unknown (unknown is not
+--     zero — forecast.go) or for a pre-#62 prediction row.
+--   actual_duration_ms — the ACTUAL per-turn duration in MILLISECONDS, taken
+--     from the turn's provider.usage.observed event payload
+--     "total_duration_ms" (the provider's own reported per-turn duration —
+--     the "cleaner target than turn-to-turn wall time" #62 names, captured by
+--     internal/telemetry/claude). Unit is milliseconds to match the raw
+--     payload field verbatim; the predicted columns stay nanoseconds to match
+--     their domain field — the research/calibration pipeline reconciles the
+--     units, never this migration (no fabricated conversion at capture time).
+--
+-- Join honesty (a documented gap, NOT a fabricated value): actual_duration_ms
+-- is populatable only for a turn whose usage event carries that turn_id.
+-- Today the MANAGED-run path (`auspex run`) stamps turn_id on both its
+-- terminal AND usage events (internal/telemetry/claude/managedrun.go's
+-- stampManagedScope), so those turns pair; the statusline usage snapshot is
+-- session-cumulative and turn-unattributable, so interactive turns stamp NULL
+-- here and the pair upgrades automatically as turn-stamped usage coverage
+-- grows (#1) — exactly the honest-cold-start posture actual_known already
+-- takes for outcome events (0060). NULL means "no turn-attributable actual
+-- duration", never a measured zero.
+--
+-- Additive nullable columns → backward-compatible → no ADR (Constitution §3
+-- gates only backward-incompatible schema change). Gap-numbered inside the
+-- retention/gc range (0060-0069); applies by set-difference (#22/PR #23).
+ALTER TABLE calibration_samples ADD COLUMN duration_p50 INTEGER;
+ALTER TABLE calibration_samples ADD COLUMN duration_p90 INTEGER;
+ALTER TABLE calibration_samples ADD COLUMN actual_duration_ms INTEGER;

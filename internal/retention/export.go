@@ -83,6 +83,19 @@ type ExportRecord struct {
 	ActualOutcome      *string `json:"actual_outcome,omitempty"`
 	ActualFailureClass *string `json:"actual_failure_class,omitempty"`
 	ActualOutcomeAt    *string `json:"actual_outcome_at,omitempty"`
+
+	// #62 Phase-1 duration pair. DurationP50/P90 are the PREDICTED
+	// wall-clock forecast in NANOSECONDS (scope estimator, migrations
+	// 0047/0062); ActualDurationMs is the ACTUAL per-turn duration in
+	// MILLISECONDS (the turn's provider.usage.observed total_duration_ms).
+	// Distinct units, matching each source verbatim — the calibration
+	// pipeline reconciles them. Nil = honestly absent: an uncalibrated
+	// cold-start forecast that left duration unknown, or (for the actual)
+	// a turn with no attributable usage event (0062's join gap). Never
+	// read as zero (unknown is not zero).
+	DurationP50      *int64 `json:"duration_p50_ns,omitempty"`
+	DurationP90      *int64 `json:"duration_p90_ns,omitempty"`
+	ActualDurationMs *int64 `json:"actual_duration_ms,omitempty"`
 }
 
 // ExportSummary is what ExportCalibration reports about a completed
@@ -183,6 +196,9 @@ func recordFromSample(s calibrationSample, source string) ExportRecord {
 		ActualOutcome:      s.actualOutcome,
 		ActualFailureClass: s.actualFailureClass,
 		ActualOutcomeAt:    s.actualOutcomeAt,
+		DurationP50:        s.durationP50,
+		DurationP90:        s.durationP90,
+		ActualDurationMs:   s.actualDurationMs,
 	}
 }
 
@@ -237,6 +253,9 @@ func recordFromArchivedRow(row map[string]any) ExportRecord {
 		ActualOutcome:      nullableColumnStr(row["actual_outcome"]),
 		ActualFailureClass: nullableColumnStr(row["actual_failure_class"]),
 		ActualOutcomeAt:    nullableColumnStr(row["actual_outcome_at"]),
+		DurationP50:        int64Ptr(row["duration_p50"]),
+		DurationP90:        int64Ptr(row["duration_p90"]),
+		ActualDurationMs:   int64Ptr(row["actual_duration_ms"]),
 	}
 	if v, ok := row["overall_risk_score"].(float64); ok {
 		rec.OverallRiskScore = v

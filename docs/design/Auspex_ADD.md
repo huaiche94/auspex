@@ -5889,6 +5889,20 @@ ADR-048 之前的 dry-run 行為，依 ADR-044 修訂紀律，已補 CONTRACT_FR
 的 wire 格式，不受本決定影響。REC-03 就此解決；不涉及任何凍結契約變更。詳見
 `docs/adr/0050-hook-subcommand-kebab-case.md`。
 
+## ADR-051 — Stop hook 由 transcript 擷取每回合 token 用量（僅數字）
+
+**Decision：** Stop 時由 `transcript_path` 解析剛完成回合的切片，以僅數字欄位
+豐富 `provider.turn.completed`：四類 token（input/output/cache-read/
+cache-creation）、`total_tokens`（= input + output，對齊凍結的
+`managedUsageEvent` 詞彙）、`api_call_count`（requestId 去重）、`model_id`；
+校準匯出以 `actual_*` 欄位承接，hook 模式的 token join 自此起精確（解除
+#66/#65 capture 前置與 #11/#42 token 面）。不變量：僅數字、絕無文字內容入庫
+（§7 隱私預設不變）；fail-open 且非承重 —— transcript 屬未文件化 provider 產物
+（§7 規則 4 之張力），豐富化為嚴格可選，任何失敗退化為原事件；僅主鏈
+（sidechain 排除）；managed run 仍為權威來源。無凍結契約變更、無 migration；
+已接受缺口：archived 列缺 token 實際值（retention 範圍未來可補）。詳見
+`docs/adr/0051-turn-usage-from-stop-transcript.md`。
+
 ---
 
 # 34. Codex Execution Contract

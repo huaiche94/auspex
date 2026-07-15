@@ -55,6 +55,29 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Per-turn token usage captured from the Stop transcript (ADR-051)**
+  ([#72](https://github.com/huaiche94/auspex/issues/72)): at Stop, the hook
+  parses the completed turn's slice of the Claude Code transcript
+  (`transcript_path`) and enriches `provider.turn.completed` with numbers
+  only — `input_tokens`, `output_tokens`, `cache_read_input_tokens`,
+  `cache_creation_input_tokens`, `total_tokens`, `api_call_count`,
+  `model_id` (requestId-deduplicated, main chain only, bounded read,
+  strictly fail-open: any failure yields the pre-ADR-051 byte-identical
+  event). The calibration export joins these as `actual_*` fields and
+  `report.py token_coverage()` consumes them directly — hook-mode token
+  joins are exact going forward, unblocking the capture prerequisites of
+  [#66](https://github.com/huaiche94/auspex/issues/66)/[#65](https://github.com/huaiche94/auspex/issues/65)
+  and the token side of
+  [#11](https://github.com/huaiche94/auspex/issues/11)/[#42](https://github.com/huaiche94/auspex/issues/42).
+  No frozen-contract change, no migration. See
+  `docs/adr/0051-turn-usage-from-stop-transcript.md`.
+
+- **`duration_coverage()` finishes the #62 calibration rail (report side)**
+  ([#62](https://github.com/huaiche94/auspex/issues/62)):
+  `research/calibration/` now loads the export's `duration_p50_ns` /
+  `duration_p90_ns` / `actual_duration_ms` fields and reports predicted-band
+  vs actual per-turn duration coverage, symmetric to the cost section.
+
 - **Cost-forecast calibration rail (Phase 1)**
   ([#72](https://github.com/huaiche94/auspex/issues/72)): the calibration
   export now carries the predicted cost band per row (`cost_low_usd` /

@@ -55,6 +55,20 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Cost-forecast calibration — per-cohort residual (Phase 2)**
+  ([#72](https://github.com/huaiche94/auspex/issues/72)):
+  `research/calibration/report.py` now stratifies the Phase-1 cost join by
+  the #20 cohort triple and, for each cohort meeting the ADD §15.2 gate
+  (≥ 8 *joined* turns), fits the empirical factor by which the forecast's
+  high bound under-forecasts real cost (median and P90 of `actual/high`);
+  cohorts below the gate or with an unlabeled axis are reported, never
+  fitted (grounding discipline). On the owner's field data both labeled
+  cohorts clear the gate: `claude/fable/xhigh` under-forecasts ~7× at the
+  median (≈57× P90), `claude/opus/xhigh` ~8.5× (≈39× P90) — the tail is far
+  worse than the median, exactly the cache-read blindness #66 targets. The
+  Go forecast is untouched; these factors are the input a future phase
+  (#66's cache-aware cost model) would consume. Research-layer only — no
+  contract, no migration.
 - **Cost-forecast calibration rail (Phase 1)**
   ([#72](https://github.com/huaiche94/auspex/issues/72)): the calibration
   export now carries the predicted cost band per row (`cost_low_usd` /

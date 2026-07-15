@@ -173,8 +173,6 @@ func TestEstimateScopeUnknownFieldsStayNil(t *testing.T) {
 		{"VerificationP90", got.VerificationP90},
 		{"RetryLoopsP50", got.RetryLoopsP50},
 		{"RetryLoopsP90", got.RetryLoopsP90},
-		{"DurationP50", got.DurationP50},
-		{"DurationP90", got.DurationP90},
 	}
 	for _, c := range nilChecks {
 		if c.val != nil {
@@ -195,10 +193,24 @@ func TestEstimateScopeUnknownFieldsStayNil(t *testing.T) {
 		{"LinesChangedP50", got.LinesChangedP50},
 		{"LinesChangedP80", got.LinesChangedP80},
 		{"LinesChangedP90", got.LinesChangedP90},
+		{"DurationP50", got.DurationP50},
+		{"DurationP90", got.DurationP90},
 	}
 	for _, c := range populatedChecks {
 		if c.val == nil {
 			t.Errorf("%s: expected populated (non-nil), got nil", c.name)
+		}
+	}
+
+	// #62 Phase-1: duration is a positive, monotonic P50<=P90 estimate in
+	// nanoseconds, and includes the per-turn overhead floor even for a
+	// zero-scope class.
+	if got.DurationP50 != nil && got.DurationP90 != nil {
+		if *got.DurationP50 < int64(durationPerTurnOverhead) {
+			t.Errorf("DurationP50 %d below per-turn overhead floor %d", *got.DurationP50, int64(durationPerTurnOverhead))
+		}
+		if *got.DurationP90 < *got.DurationP50 {
+			t.Errorf("DurationP90 %d < DurationP50 %d (must be monotonic)", *got.DurationP90, *got.DurationP50)
 		}
 	}
 }

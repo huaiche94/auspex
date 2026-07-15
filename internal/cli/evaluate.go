@@ -21,6 +21,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -137,21 +138,22 @@ func readPromptFile(cmd *cobra.Command, promptFile string) (string, error) {
 // `"probability": null` explicitly — the absence of a probability is
 // load-bearing information, not an omittable default.
 type evaluateOutput struct {
-	SchemaVersion string                 `json:"schema_version"`
-	EvaluationID  string                 `json:"evaluation_id"`
-	TurnID        string                 `json:"turn_id"`
-	PolicyAction  string                 `json:"policy_action"`
-	Label         string                 `json:"label"`
-	Calibrated    bool                   `json:"calibrated"`
-	Probability   *float64               `json:"probability"`
-	Confidence    string                 `json:"confidence"`
-	ReasonCodes   []string               `json:"reason_codes"`
-	Scope         *evaluateScopeOutput   `json:"scope,omitempty"`
-	Tokens        *evaluateTokensOutput  `json:"tokens,omitempty"`
-	Cost          *evaluateCostOutput    `json:"cost,omitempty"`
-	Context       *evaluateContextOutput `json:"context,omitempty"`
-	Risk          *evaluateRiskOutput    `json:"risk,omitempty"`
-	CardAvailable bool                   `json:"card_available"`
+	SchemaVersion string                  `json:"schema_version"`
+	EvaluationID  string                  `json:"evaluation_id"`
+	TurnID        string                  `json:"turn_id"`
+	PolicyAction  string                  `json:"policy_action"`
+	Label         string                  `json:"label"`
+	Calibrated    bool                    `json:"calibrated"`
+	Probability   *float64                `json:"probability"`
+	Confidence    string                  `json:"confidence"`
+	ReasonCodes   []string                `json:"reason_codes"`
+	Scope         *evaluateScopeOutput    `json:"scope,omitempty"`
+	Tokens        *evaluateTokensOutput   `json:"tokens,omitempty"`
+	Duration      *evaluateDurationOutput `json:"duration,omitempty"`
+	Cost          *evaluateCostOutput     `json:"cost,omitempty"`
+	Context       *evaluateContextOutput  `json:"context,omitempty"`
+	Risk          *evaluateRiskOutput     `json:"risk,omitempty"`
+	CardAvailable bool                    `json:"card_available"`
 }
 
 type evaluateScopeOutput struct {
@@ -167,6 +169,19 @@ type evaluateTokensOutput struct {
 	P50 *int64 `json:"p50"`
 	P80 *int64 `json:"p80"`
 	P90 *int64 `json:"p90"`
+}
+
+// evaluateDurationOutput is the #62 Phase-1 wall-clock forecast. Exposed in
+// seconds to match the repo's other duration fields (runway_forecasts'
+// *_seconds columns). Both bounds have NO omitempty for the same reason
+// probability doesn't: an unknown estimate serializes as an explicit null,
+// never 0 or an absent key (ADD principle 1). It is a cold-start,
+// uncalibrated estimate — labeled as such, and NOT surfaced on the
+// statusline until it responds to the prompt (#42) or is calibrated (#11).
+type evaluateDurationOutput struct {
+	P50Seconds *int64 `json:"p50_seconds"`
+	P90Seconds *int64 `json:"p90_seconds"`
+	Calibrated bool   `json:"calibrated"`
 }
 
 type evaluateCostOutput struct {
@@ -233,6 +248,11 @@ func buildEvaluateOutput(result orchestrator.EvaluatePromptResult) evaluateOutpu
 		LinesChangedP90: card.LinesChangedP90,
 	}
 	out.Tokens = &evaluateTokensOutput{P50: card.TokensP50, P80: card.TokensP80, P90: card.TokensP90}
+	out.Duration = &evaluateDurationOutput{
+		P50Seconds: nanosToSeconds(card.DurationP50),
+		P90Seconds: nanosToSeconds(card.DurationP90),
+		Calibrated: card.Calibrated,
+	}
 	out.Context = &evaluateContextOutput{
 		ProjectedP90UsedPercent:     card.ContextProjectedP90,
 		WarnThresholdExceeded:       card.ContextWarnThresholdExceeded,
@@ -249,6 +269,17 @@ func buildEvaluateOutput(result orchestrator.EvaluatePromptResult) evaluateOutpu
 	}
 	out.Risk = &evaluateRiskOutput{OverallScore: card.OverallRiskScore}
 	return out
+}
+
+// nanosToSeconds converts a nanosecond duration pointer to whole seconds,
+// preserving nil (unknown is not zero — the #62 duration forecast is null
+// when the estimator produced no value).
+func nanosToSeconds(ns *int64) *int64 {
+	if ns == nil {
+		return nil
+	}
+	s := *ns / int64(time.Second)
+	return &s
 }
 
 func reasonCodeStrings(codes []domain.ReasonCode) []string {

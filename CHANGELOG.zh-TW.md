@@ -38,6 +38,19 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **每個 turn 的預估時間（duration forecast，Phase 1）**（#62）：scope
+  估計器現在會填入原本預留的 `ScopeEstimate.DurationP50/P90` 欄位——一個
+  由分類後的 scope 推導出的 cold-start wall-clock 估計
+  （`internal/predictor/scope/duration.go`），因此它會隨 prompt 變動，
+  而非固定常數。每筆 prediction 持久化（migration 0047，
+  `predictions.duration_p50/p90`，單位 nanosecond），讓「預測 vs 實際」
+  配對得以累積以供校準（#11）；並在 forecast card／UserPromptSubmit 的
+  `additionalContext` 上以 `time:` 一行呈現，`auspex evaluate --json`
+  則多一個 `duration` 區塊。標示為未校準（Constitution §7），且刻意
+  **不**顯示於 statusline，直到它被校準（#11）或以其他方式變得會隨
+  prompt 反應（#42）為止——這是 D-15／#42 的教訓：固定的 cold-start
+  數字在 statusline 上沒有訊號價值。Phase 2（以 Claude Code 已回報的
+  `total_duration_ms` 遙測進行校準）仍 gate 在 #11。
 - **終端 hook 事件的 turn 關聯（turn correlation）**（PR
   [#54](https://github.com/huaiche94/auspex/pull/54)）：Stop／StopFailure
   事件現在會回頭關聯到該 turn 的評估紀錄，讓「預測 vs 實際」的結果配對

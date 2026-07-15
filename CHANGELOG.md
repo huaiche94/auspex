@@ -44,6 +44,21 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Per-turn duration forecast (Phase 1)** (#62): the scope estimator now
+  populates the reserved `ScopeEstimate.DurationP50/P90` fields with a
+  cold-start wall-clock estimate derived from the classified scope
+  (`internal/predictor/scope/duration.go`), so it responds to the prompt
+  rather than being a frozen constant. Persisted per prediction
+  (migration 0047, `predictions.duration_p50/p90`, nanoseconds) so
+  predicted-vs-actual pairs can accumulate for calibration (#11), and
+  surfaced as a `time:` line on the forecast card / UserPromptSubmit
+  `additionalContext` and a `duration` block in `auspex evaluate --json`.
+  Labeled uncalibrated (Constitution §7) and deliberately **not** shown on
+  the statusline until it is calibrated (#11) or otherwise made
+  prompt-responsive there (#42) — the D-15/#42 lesson that a static
+  cold-start number carries no statusline signal. Phase 2 (calibration
+  against the `total_duration_ms` telemetry Claude Code already reports)
+  remains gated on #11.
 - **Turn correlation for terminal hook events** (PR
   [#54](https://github.com/huaiche94/auspex/pull/54)): Stop/StopFailure
   events now join back to the turn's evaluation, so

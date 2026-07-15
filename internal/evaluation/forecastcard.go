@@ -75,6 +75,16 @@ type ForecastCard struct {
 	TokensP80 *int64
 	TokensP90 *int64
 
+	// DurationP50/P90 are the #62 Phase-1 wall-clock duration forecast in
+	// nanoseconds (predictions.duration_p50/p90, migration 0047). nil means
+	// the scope estimator left duration unknown — rendered as an explicit
+	// unknown, never 0. Cold-start and uncalibrated like every other number
+	// here; deliberately surfaced on this card and in `evaluate`, NOT on the
+	// statusline until it responds to the prompt (#42) or is calibrated
+	// (#11) — see the #62 statusline gate.
+	DurationP50 *int64
+	DurationP90 *int64
+
 	// Cost is the ADR-043 increment-1 estimate: token quantiles × price
 	// table → a range, never a point. nil when no token forecast exists
 	// (no forecast means no cost estimate, never a fabricated $0).
@@ -191,6 +201,8 @@ func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (For
 		TokensP50:           row.TokenP50,
 		TokensP80:           row.TokenP80,
 		TokensP90:           row.TokenP90,
+		DurationP50:         row.DurationP50,
+		DurationP90:         row.DurationP90,
 		ContextProjectedP90: row.ProjectedContextUsedP90,
 		OverallRiskScore:    row.OverallRiskScore,
 		ReasonCodes:         reasons,
@@ -290,16 +302,17 @@ const maxContextReasonCodes = 3
 // UserPromptSubmit hook injects as Claude Code additionalContext
 // (hookSpecificOutput.additionalContext) — the surface where the coding
 // agent literally sees the forecast before acting (issue #14 deliverable
-// 3). Always at most 7 lines (issue #14's "~6 lines max" budget, plus
-// ADR-043 increment 2's context line — the context window is the one
-// resource whose exhaustion mid-turn is catastrophic, so its projection
-// earns a line of its own); missing data renders as an explicit
-// "unknown (cold start)", never as zero (ADD principle 1).
+// 3). At most 8 lines (issue #14's "~6 lines max" budget, plus ADR-043
+// increment 2's context line — the context window is the one resource
+// whose exhaustion mid-turn is catastrophic — and the #62 Phase-1 duration
+// line); missing data renders as an explicit "unknown (cold start)", never
+// as zero (ADD principle 1).
 func (c ForecastCard) AdditionalContext() string {
 	lines := []string{
 		fmt.Sprintf("Auspex forecast (%s; evaluation %s):", c.labelText(), c.EvaluationID),
 		"  scope: " + c.scopeText(),
 		"  tokens: " + c.tokensText(),
+		"  time: " + c.durationText(),
 		"  cost: " + c.costText(),
 		"  context: " + c.contextText(),
 		fmt.Sprintf("  risk: %.2f/1.00 overall%s", c.OverallRiskScore, c.topReasonsText()),
@@ -498,6 +511,45 @@ func (c ForecastCard) tokensText() string {
 		segs = append(segs, fmt.Sprintf("P90 %d", *c.TokensP90))
 	}
 	return strings.Join(segs, " / ")
+}
+
+// durationText renders the #62 Phase-1 wall-clock estimate as a rounded
+// P50–P90 range. Values are rounded to a coarse unit (see humanizeDuration)
+// because these are cold-start estimates and minute-level precision would
+// falsely imply calibration.
+func (c ForecastCard) durationText() string {
+	if c.DurationP50 == nil && c.DurationP90 == nil {
+		return "unknown (cold start)"
+	}
+	if c.DurationP50 != nil && c.DurationP90 != nil {
+		return fmt.Sprintf("~%s–%s (P50–P90, uncalibrated)",
+			humanizeDuration(*c.DurationP50), humanizeDuration(*c.DurationP90))
+	}
+	// Only one bound known: report it rather than fabricating the other.
+	if c.DurationP50 != nil {
+		return fmt.Sprintf("~%s P50 (uncalibrated)", humanizeDuration(*c.DurationP50))
+	}
+	return fmt.Sprintf("~%s P90 (uncalibrated)", humanizeDuration(*c.DurationP90))
+}
+
+// humanizeDuration formats a nanosecond count into a coarse, human string
+// (rounded to 5s under 90s, to whole minutes under an hour, else h+m) so a
+// cold-start estimate never reads with false precision like "37s".
+func humanizeDuration(ns int64) string {
+	d := time.Duration(ns)
+	switch {
+	case d < 90*time.Second:
+		r := d.Round(5 * time.Second)
+		if r < 5*time.Second {
+			r = 5 * time.Second
+		}
+		return fmt.Sprintf("%ds", int(r/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
+	default:
+		d = d.Round(time.Minute)
+		return fmt.Sprintf("%dh%dm", int(d/time.Hour), int((d%time.Hour)/time.Minute))
+	}
 }
 
 func (c ForecastCard) costText() string {

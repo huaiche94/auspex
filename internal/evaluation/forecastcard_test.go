@@ -225,8 +225,8 @@ func TestAdditionalContext_FullCard(t *testing.T) {
 	got := card.AdditionalContext()
 
 	lines := strings.Split(got, "\n")
-	if len(lines) != 7 {
-		t.Errorf("AdditionalContext has %d lines, want exactly 7 (issue #14's ~6-line budget + the ADR-043 increment-2 context line):\n%s", len(lines), got)
+	if len(lines) != 8 {
+		t.Errorf("AdditionalContext has %d lines, want exactly 8 (issue #14's ~6-line budget + the ADR-043 increment-2 context line + the #62 duration line):\n%s", len(lines), got)
 	}
 	for _, want := range []string{
 		"uncalibrated estimate",
@@ -235,6 +235,7 @@ func TestAdditionalContext_FullCard(t *testing.T) {
 		"~3–12 files changed",
 		"~40–400 lines",
 		"P50 8000 / P80 20000 / P90 45000",
+		"time: ~45s–4m (P50–P90, uncalibrated)", // #62 Phase-1 duration line
 		"~$0.02–$0.68 USD",
 		"estimate",
 		"context: P90 ~91% of window (projected) — WARN threshold exceeded", // ADR-043 increment 2 / D-08
@@ -282,8 +283,8 @@ func TestAdditionalContext_ColdStartDegradation(t *testing.T) {
 	}
 	got := card.AdditionalContext()
 
-	if lines := strings.Split(got, "\n"); len(lines) != 7 {
-		t.Errorf("cold-start AdditionalContext has %d lines, want 7:\n%s", len(lines), got)
+	if lines := strings.Split(got, "\n"); len(lines) != 8 {
+		t.Errorf("cold-start AdditionalContext has %d lines, want 8:\n%s", len(lines), got)
 	}
 	for _, want := range []string{
 		"scope: unknown (cold start)",
@@ -451,6 +452,7 @@ func fullTestCard() evaluation.ForecastCard {
 		FilesChangedP50: i64(3), FilesChangedP90: i64(12),
 		LinesChangedP50: i64(40), LinesChangedP90: i64(400),
 		TokensP50: i64(8000), TokensP80: i64(20000), TokensP90: i64(45000),
+		DurationP50: i64(int64(45 * time.Second)), DurationP90: i64(int64(4 * time.Minute)),
 		Cost: &pricing.CostRange{
 			LowUSD: 0.024, HighUSD: 0.675,
 			ModelFamily: pricing.DefaultFamily, Source: pricing.SourceDefaultTable,

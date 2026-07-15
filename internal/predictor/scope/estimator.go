@@ -68,12 +68,13 @@ var _ app.ScopeEstimator = (*RuleScopeEstimator)(nil)
 // EstimateScope implements app.ScopeEstimator. Per the predictor-05 scope
 // (docs/implementation/vertical-slice/EXECUTION_DAG.md), it populates only
 // FilesReadP50/P80/P90, FilesChangedP50/P80/P90, LinesChangedP50/P80/P90,
-// the boolean requirement flags, Confidence/Calibrated/ReasonCodes.
-// ToolCallsP50/P90, VerificationP50/P90, RetryLoopsP50/P90, and
-// DurationP50/P90 are left nil: this implementation has no tool-call or
-// verification-run telemetry wired up yet, and forecast.go's doc comment
-// explicitly allows a Wave 2 ScopeEstimator to populate a subset of
-// fields.
+// the boolean requirement flags, Confidence/Calibrated/ReasonCodes, and —
+// since #62 — DurationP50/P90 (a Phase-1 cold-start wall-clock estimate
+// derived from the scope quantiles; see duration.go).
+// ToolCallsP50/P90, VerificationP50/P90, and RetryLoopsP50/P90 remain nil:
+// this implementation has no tool-call or verification-run telemetry wired
+// up yet, and forecast.go's doc comment explicitly allows a ScopeEstimator
+// to populate a subset of fields.
 func (e *RuleScopeEstimator) EstimateScope(ctx context.Context, req app.EstimateScopeRequest) (domain.ScopeEstimate, error) {
 	class, promptFeat, err := e.Source.Classification(ctx, req.SessionID, req.TaskID)
 	if err != nil {
@@ -169,6 +170,12 @@ func (e *RuleScopeEstimator) EstimateScope(ctx context.Context, req app.Estimate
 	filesChangedP50, filesChangedP80, filesChangedP90 = sortTriple(filesChangedP50, filesChangedP80, filesChangedP90)
 	linesChangedP50, linesChangedP80, linesChangedP90 = sortTriple(linesChangedP50, linesChangedP80, linesChangedP90)
 
+	// Phase-1 wall-clock duration estimate (#62), derived from the finalized
+	// scope quantiles so it moves with the classified/blended scope. Cold-
+	// start, uncalibrated — see duration.go for the model and the #42/#11
+	// calibration gate.
+	durationP50, durationP90 := estimateDurationNanos(filesChangedP50, filesChangedP90, linesChangedP50, linesChangedP90)
+
 	securitySensitive := class.Class == features.TaskClassSecuritySensitive || promptFeat.MentionsSecurity
 	migrationLikely := class.Class == features.TaskClassMigration || promptFeat.HasMigrateVerb
 	crossProject := class.Class == features.TaskClassFeatureCrossLayer ||
@@ -212,17 +219,19 @@ func (e *RuleScopeEstimator) EstimateScope(ctx context.Context, req app.Estimate
 		LinesChangedP80: ptr(round(linesChangedP80)),
 		LinesChangedP90: ptr(round(linesChangedP90)),
 
-		// Deliberately left nil: no tool-call/verification/retry-loop/
-		// duration telemetry source is wired up this wave (predictor-05
-		// scope, per EXECUTION_DAG.md).
+		// Deliberately left nil: no tool-call/verification/retry-loop
+		// telemetry source is wired up yet (predictor-05 scope, per
+		// EXECUTION_DAG.md).
 		ToolCallsP50:    nil,
 		ToolCallsP90:    nil,
 		VerificationP50: nil,
 		VerificationP90: nil,
 		RetryLoopsP50:   nil,
 		RetryLoopsP90:   nil,
-		DurationP50:     nil,
-		DurationP90:     nil,
+
+		// Phase-1 cold-start wall-clock estimate (#62), derived from scope.
+		DurationP50: ptr(durationP50),
+		DurationP90: ptr(durationP90),
 
 		RequiresUnitTests:   requiresUnitTests,
 		RequiresIntegration: requiresIntegration,

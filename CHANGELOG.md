@@ -33,6 +33,17 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Documentation
 
+- **Hook subcommand casing ratified as kebab-case** (ADR-050,
+  [#61](https://github.com/huaiche94/auspex/issues/61)): resolves REC-03 —
+  the ADD's Appendix E.1/E.3 hook-install templates and §24.3 examples wrote
+  `auspex hook claude UserPromptSubmit` (PascalCase) while the shipped CLI,
+  `agents/runtime.md`, and the DAG validation command use kebab-case
+  (`user-prompt-submit`). ADR-050 ratifies kebab-case (idiomatic Cobra, least
+  churn) and updates the ADD's argv to match; the provider's own
+  `hook_event_name` payload field and the settings.json hook-matcher keys stay
+  PascalCase (a different namespace). No code change — the CLI already shipped
+  kebab-case; `internal/cli/doc.go`'s REC-03 note now points at the resolving
+  ADR. No frozen contract touched.
 - **Documentation reorganization + Traditional Chinese translations**
   (ADR-049, D-17): the three design documents moved from the repository
   root to `docs/design/` (living documents updated to cite the new

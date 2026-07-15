@@ -29,6 +29,14 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Documentation（文件）
 
+- **Hook 子指令大小寫正式定為 kebab-case**（ADR-050，
+  [#61](https://github.com/huaiche94/auspex/issues/61)）：解決 REC-03——ADD 附錄
+  E.1/E.3 的 hook 安裝範本與 §24.3 範例原本寫成 `auspex hook claude UserPromptSubmit`
+  （PascalCase），而已出貨的 CLI、`agents/runtime.md` 與 DAG 驗證指令用的是 kebab-case
+  （`user-prompt-submit`）。ADR-050 正式採 kebab-case（符合 Cobra 慣例、變動最小），並把
+  ADD 的 argv 一併更新對齊；provider 自身的 `hook_event_name` payload 欄位與 settings.json
+  hook-matcher key 維持 PascalCase（不同命名空間）。無程式碼變更——CLI 早已以 kebab-case
+  出貨，`internal/cli/doc.go` 的 REC-03 註記現在指向此解決用 ADR。不涉及任何凍結契約。
 - **文件重新整理＋繁體中文翻譯**
   （ADR-049，D-17）：三份設計文件從 repository 根目錄搬到 `docs/design/`
   （仍在維護中的文件已更新引用路徑；歷史紀錄則刻意保持不變）、`README.md`

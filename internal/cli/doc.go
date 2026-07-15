@@ -14,17 +14,16 @@
 // pretending to do real work. Wiring real business logic behind these
 // constructors is out of scope for this node (runtime-b02 and later).
 //
-// Naming-convention note (kebab-case hook subcommands): Auspex_ADD.md
-// Appendix E.3 spells Claude Code hook subcommands in PascalCase (e.g.
-// "UserPromptSubmit"), matching Claude's own hook-event-name casing. Three
-// other frozen documents — agents/runtime.md's own P0 command list, this
-// node's DAG validation command, and the vertical-slice execution plan's demo
-// script — independently use kebab-case ("user-prompt-submit"). This
-// discrepancy is tracked but not yet resolved by an ADR; see
-// docs/implementation/vertical-slice/wave2-analysis/ADR_Recommendations.md REC-03.
-// This package follows kebab-case, matching agents/runtime.md verbatim (the
-// document that is authoritative for this role's command surface per
-// CONSTITUTION.md §2 priority order) and the DAG's own `auspex --help`
-// validation expectation. This is a documented judgment call, not a silent
-// third answer — see docs/implementation/vertical-slice/runtime.md.
+// Naming-convention note (kebab-case hook subcommands): this package spells
+// the hook subcommands in kebab-case — "user-prompt-submit", "stop",
+// "stop-failure", "statusline". ADR-050 (issue #61) ratified kebab-case as the
+// convention for every `auspex hook <provider> <subcommand>` argv, resolving
+// REC-03: Auspex_ADD.md Appendix E.1/E.3 (which had spelled these subcommands
+// PascalCase to mirror Claude Code's own hook_event_name field) was updated to
+// kebab-case to match the shipped CLI, agents/runtime.md, and the DAG's
+// `claude-provider-06` validation command. Claude Code's hook_event_name
+// payload field and the settings.json hook-matcher keys stay PascalCase — a
+// different namespace, unaffected. See docs/adr/0050-hook-subcommand-kebab-case.md
+// (and the historical REC-03 in
+// docs/implementation/vertical-slice/wave2-analysis/ADR_Recommendations.md).
 package cli

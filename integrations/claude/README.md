@@ -32,7 +32,7 @@ from that era because it is still unresolved.)
   §22.4/§22.5 and Appendix E.3's shape (`{"hooks": {"<HookEventName>":
   [{"hooks": [{"type": "command", "command": "..."}]}]}}`).
 
-## CLI subcommand naming: a documented discrepancy
+## CLI subcommand naming: kebab-case (resolved by ADR-050)
 
 Two governing documents name the same subcommands with different casing:
 
@@ -55,16 +55,14 @@ because:
    style) — and it is what the shipped CLI actually implements
    (`auspex hook claude --help` lists the kebab-case forms).
 
-This is a **judgment call, not a resolution** of the Constitution §2
-document-priority ordering, which would favor the ADD (priority 2) over
-`agents/runtime.md` (priority 4) if the two are read as being in real
-conflict. Flagged here, and in this role's progress artifact, for
-`contract-integrator` to reconcile — e.g. by updating
-`docs/design/Auspex_ADD.md` Appendix E.3 to match the kebab-case CLI convention, or
-by updating `agents/runtime.md`/the DAG to match the ADD's PascalCase. This
-role does not have authority to edit either document (`docs/design/Auspex_ADD.md`
-and `agents/runtime.md` are both outside `claude-provider`'s exclusive
-paths) and has not silently picked one without recording the conflict.
+**Resolved by [ADR-050](../../docs/adr/0050-hook-subcommand-kebab-case.md)**
+(issue #61): the `auspex hook <provider> <subcommand>` argv is kebab-case,
+and `docs/design/Auspex_ADD.md` Appendix E.1/E.3 + §24.3 were updated to
+match the shipped CLI. The Constitution §2 priority order (which favored the
+ADD on paper) was reconciled through the ADR mechanism (Constitution §3)
+toward the lower-churn, idiomatic answer, rather than by a silent pick.
+Claude Code's own `hook_event_name` payload field and the settings.json
+hook-matcher keys stay PascalCase — a different namespace, unaffected.
 
 Claude Code's own wire-level `hook_event_name` field (inside the JSON
 payload piped to stdin) is unaffected by this either way — it stays

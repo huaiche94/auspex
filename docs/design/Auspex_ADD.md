@@ -4138,8 +4138,8 @@ auspex daemon logs
 ### Internal hooks
 
 ```bash
-auspex hook codex UserPromptSubmit
-auspex hook claude TaskCompleted
+auspex hook codex user-prompt-submit
+auspex hook claude task-completed
 auspex hook claude statusline
 ```
 
@@ -5845,6 +5845,17 @@ row count 與 digest，**驗證通過才刪除** raw rows（fail-closed，絕不
 vertical-slice 角色擁有）。詳見
 `docs/adr/0046-tiered-telemetry-retention.md`。
 
+## ADR-050 — Hook 子指令 argv 採 kebab-case（正式化已出貨 CLI，取代附錄 E.3 的 PascalCase）
+
+**Decision：** `auspex hook <provider> <subcommand>` 的 CLI argv 採 kebab-case
+（與 provider 無關）：`user-prompt-submit`、`stop`、`stop-failure`、`statusline`，
+未來子指令由 provider 事件名經小寫加連字號推導。此舉正式化已出貨的 CLI（符合 Cobra
+慣例、變動最小、對齊 `agents/runtime.md` 與 DAG 驗證指令），並將 ADD 附錄 E.1/E.3 與
+§24.3 的 argv 一併更新為 kebab-case。這些範本中 settings.json 的 hook-matcher key
+（`"UserPromptSubmit"` 等）與 `hook_event_name` payload 仍維持 PascalCase——那是 provider
+的 wire 格式，不受本決定影響。REC-03 就此解決；不涉及任何凍結契約變更。詳見
+`docs/adr/0050-hook-subcommand-kebab-case.md`。
+
 ---
 
 # 34. Codex Execution Contract
@@ -6187,7 +6198,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex SessionStart"
+            "command": "auspex hook codex session-start"
           }
         ]
       }
@@ -6197,7 +6208,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex UserPromptSubmit"
+            "command": "auspex hook codex user-prompt-submit"
           }
         ]
       }
@@ -6207,7 +6218,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex PreCompact"
+            "command": "auspex hook codex pre-compact"
           }
         ]
       }
@@ -6217,7 +6228,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex PostCompact"
+            "command": "auspex hook codex post-compact"
           }
         ]
       }
@@ -6227,7 +6238,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex PostToolUse"
+            "command": "auspex hook codex post-tool-use"
           }
         ]
       }
@@ -6237,7 +6248,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex PostToolUseFailure"
+            "command": "auspex hook codex post-tool-use-failure"
           }
         ]
       }
@@ -6247,7 +6258,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook codex Stop"
+            "command": "auspex hook codex stop"
           }
         ]
       }
@@ -6278,7 +6289,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude SessionStart"
+            "command": "auspex hook claude session-start"
           }
         ]
       }
@@ -6288,7 +6299,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude UserPromptSubmit",
+            "command": "auspex hook claude user-prompt-submit",
             "timeout": 5
           }
         ]
@@ -6299,7 +6310,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude TaskCreated"
+            "command": "auspex hook claude task-created"
           }
         ]
       }
@@ -6309,7 +6320,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude TaskCompleted"
+            "command": "auspex hook claude task-completed"
           }
         ]
       }
@@ -6319,7 +6330,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude PreCompact"
+            "command": "auspex hook claude pre-compact"
           }
         ]
       }
@@ -6329,7 +6340,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude PostToolUse"
+            "command": "auspex hook claude post-tool-use"
           }
         ]
       }
@@ -6339,7 +6350,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude PostToolUseFailure"
+            "command": "auspex hook claude post-tool-use-failure"
           }
         ]
       }
@@ -6349,7 +6360,7 @@ Wake job：
         "hooks": [
           {
             "type": "command",
-            "command": "auspex hook claude Stop"
+            "command": "auspex hook claude stop"
           }
         ]
       }

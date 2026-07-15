@@ -26,6 +26,7 @@ ADRs whose full text is here.
 | [`0047`](0047-token-cohort-fallback-ladder.md) | Similar-turn cohort fallback ladder for the token forecaster (issue #20 Phase 1 of the [backlog note](../backlog/provider-model-effort-features.md)). |
 | [`0048`](0048-repository-checkpoint-restore.md) | Real repository checkpoint restore (issue #6), ending the vertical slice's capture-only deferral. |
 | [`0049`](0049-docs-reorg-bilingual.md) | Documentation reorganization: design docs under `docs/design/`, per-folder READMEs, Traditional Chinese translations. |
+| [`0050`](0050-hook-subcommand-kebab-case.md) | Hook subcommand argv is kebab-case (ratifies the shipped CLI over ADD Appendix E.3's PascalCase); the provider's `hook_event_name` and settings.json matcher keys stay PascalCase (issue #61, REC-03). |
 
 Neighbors: ADRs amend [`../design/Auspex_ADD.md`](../design/Auspex_ADD.md)
 (what an ADR must state is defined in Constitution §3.4); owner-level

@@ -162,6 +162,7 @@ The paper's most actionable gift: signals that catch a dangerous turn
   ([#67](https://github.com/huaiche94/auspex/issues/67); §3.C): needs
   turn-level tool-op telemetry (per-file view/edit counts) that is not
   captured yet; then a `RiskCombiner` input + reason code + policy mapping.
+  **Detailed capture-step design in §7.**
 - [ ] **Phase 4 — phase inference + unsolvable-stop gate**
   ([#68](https://github.com/huaiche94/auspex/issues/68); §3.C): infer
   trajectory phase; conditional forecast; fold repeat-rate + no-progress
@@ -190,3 +191,117 @@ identities in the source's Appendix B (arXiv:2604.22750) using Auspex
 variable names; formulas are not copyrightable and no text or table is
 reproduced. All quantitative claims in §2 are paraphrased from the same
 source and attributed to it, not represented as Auspex measurements.
+
+## 7. Phase 3 — capture-step design (#67)
+
+Owner decision, 2026-07-15: the repeated-file-operation risk factor's
+capture step lands **native-first** (a Claude Code `PostToolUse` hook),
+consumed **retrospectively** first. This section is the design; no code
+lands with it (milestone-gated, ADD §31).
+
+### 7.1 The gap this closes
+
+There is **no source today** that observes per-file tool operations:
+
+- Native hooks register only `UserPromptSubmit` / `Stop` / `StopFailure` /
+  statusline (`integrations/claude/hooks.json`) — **no PostToolUse**, so
+  native sessions (the daily dogfood path) never see tool operations.
+- The managed run's stream *carries* `tool_use` blocks
+  (`claude -p --output-format stream-json --verbose`,
+  `internal/managed/run.go`), but `internal/managed/stream.go` only counts
+  `AssistantLines` and never decodes them — and it covers `auspex run` only.
+
+So this is a **new capture source**, not a wiring change — the same
+managed-has-it / native-lacks-it asymmetry token actuals hit (ADR-047).
+
+### 7.2 Source: native PostToolUse (primary)
+
+Add a hook entrypoint `auspex hook claude <post-tool-use>` and register it
+in `hooks.json`. Claude Code fires PostToolUse per tool call with
+`tool_name` and `tool_input`. The file-touching tools are the signal:
+
+- **view** — `Read`
+- **modify** — `Edit`, `Write`, `MultiEdit`, `NotebookEdit`
+
+The managed-stream track — decoding the same `tool_use` blocks in
+`stream.go` — stays an optional warm-up: it proves the mechanic on data
+that already flows, but yields sparse real coverage (`auspex run` only).
+Not scheduled here.
+
+Subcommand casing follows whatever #61 (REC-03) decides for hook
+subcommands — this new entrypoint must not pre-empt that ADR.
+
+### 7.3 What is captured (privacy-first: aggregates, never paths)
+
+Raw file paths are identifying and are **never persisted** (the export
+discipline: nothing may join back to prompts, paths, or identities). So
+the hook reduces paths to a per-turn aggregate *inside the process* and
+persists only counts:
+
+- `distinct_files_touched` — number of distinct paths this turn
+- `total_file_ops` — total view+modify ops
+- `repeated_ops` — ops on any file touched more than once
+- `repeat_rate` = `repeated_ops / total_file_ops` (nil when `total_file_ops = 0`)
+- `max_ops_on_one_file` — the worst single-file churn
+
+A path is interned to an opaque per-turn ordinal for counting and then
+discarded; no path string leaves the process. (Absence stays honest:
+every field is unknown-not-zero, like the observations export's pointers.)
+
+### 7.4 Data path
+
+```text
+PostToolUse hook (tool_name, tool_input.file_path)
+  -> per-turn aggregate (interned ordinals, counts only)        [7.3]
+  -> stamp aggregate on the turn's terminal event payload
+     (provider.turn.completed — the carrier managed token actuals use)
+  -> events store (existing JSON payload map)
+  -> add the five fields to the observations export whitelist
+     (internal/retention/observations.go) so #11/research can see them
+  -> upstream: derive a retrospective execution-risk indicator from the
+     repeat_rate of recent completed turns (a session feature, like
+     RecentSimilarTurn) -> a new ScopeEstimate ReasonCode + scalar
+  -> RiskCombiner reads it (ports.go CombineRiskRequest is stateless;
+     the signal is computed upstream, never queried by the combiner)
+```
+
+Aggregation avoids one persisted event per tool call — a high-frequency
+event type would fight ADR-046 retention. The per-turn aggregate is one
+extra payload block on an event that already exists.
+
+### 7.5 Consumption: retrospective first
+
+Auspex gates **pre-turn**; repeat rate is an **intra-turn** observation, so
+it cannot inform the same turn's gate. First consumption is
+**retrospective**: recent turns' repeat_rate raises the *next* turn's
+execution-risk (fits the existing pre-turn gate). The **live intra-turn
+interrupt** — detecting a spinning turn mid-run and pausing/checkpointing —
+is the more powerful use and belongs to **#68** (unsolvable-stop gate),
+not here.
+
+### 7.6 Contract touches (→ ADR when implemented)
+
+- new hook subcommand (coordinate with #61)
+- new `provider.turn.completed` payload fields
+- new observations-export whitelist fields (`auspex.observations-export.v1`)
+- new `ScopeEstimate` ReasonCode
+
+Each is a frozen-contract surface, so implementation lands with its own ADR
+(Constitution §3).
+
+### 7.7 Slices
+
+- [ ] **3a — capture**: PostToolUse hook + per-turn aggregate + stamp on
+  `provider.turn.completed` + observations whitelist. Pure capture; no risk
+  wiring.
+- [ ] **3b — retrospective risk**: session feature over recent repeat_rate →
+  `ScopeEstimate` ReasonCode → execution-risk in `RiskCombiner` → policy.
+- [ ] **3c — threshold**: calibrate the repeat_rate threshold from real data
+  (data-gated, like #11 — no number until then).
+
+### 7.8 Deferred / non-goals
+
+- No threshold value now (capture-before-model; 3c waits for data).
+- No live intra-turn interrupt (that is #68).
+- Managed-stream track is an optional warm-up, not scheduled here.
+- No path strings persisted, ever (§7.3).

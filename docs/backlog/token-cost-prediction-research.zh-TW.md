@@ -141,7 +141,7 @@ turn 的訊號。
 - [ ] **Phase 3 — 重複檔案操作 risk factor**
   （[#67](https://github.com/huaiche94/auspex/issues/67)；§3.C）：需要目前
   尚未擷取的 turn 級工具操作遙測（各檔案 view/edit 次數）；再接
-  `RiskCombiner` 輸入 + reason code + policy 對應。
+  `RiskCombiner` 輸入 + reason code + policy 對應。**詳細 capture-step 設計見 §7。**
 - [ ] **Phase 4 — phase 推斷 + 不可解即停 gate**
   （[#68](https://github.com/huaiche94/auspex/issues/68)；§3.C）：推斷軌跡
   phase；條件式預測；把重複率 + 無進展納入 pause/checkpoint 決策。
@@ -164,3 +164,109 @@ Phase 2–4 都需先有擷取步驟才能建模——與 predictor 其餘部分
 §3.B 的成本拆解是我們以 Auspex 變數命名，對來源 Appendix B（arXiv:2604.22750）
 定價恆等式的重新表述；公式不受著作權保護，且未重製任何文字或表格。§2 的所有
 量化陳述皆轉述自同一來源並註明出處，並非以 Auspex 的量測結果呈現。
+
+## 7. Phase 3 — capture-step 設計（#67）
+
+擁有者決定，2026-07-15：重複檔案操作 risk factor 的 capture step 採
+**native 優先**（Claude Code `PostToolUse` hook），先做**回溯式**消費。本節
+是設計；不隨此變更寫任何 code（里程碑閘控，ADD §31）。
+
+### 7.1 這一步要補的缺口
+
+**今天沒有任何來源**能觀測到每檔案的工具操作：
+
+- Native hooks 只註冊 `UserPromptSubmit` / `Stop` / `StopFailure` /
+  statusline（`integrations/claude/hooks.json`）——**沒有 PostToolUse**，所以
+  native session（每日 dogfood 的路徑）從來看不到工具操作。
+- Managed run 的 stream *有*帶 `tool_use` block
+  （`claude -p --output-format stream-json --verbose`，
+  `internal/managed/run.go`），但 `internal/managed/stream.go` 只數
+  `AssistantLines`、從不解碼它們——而且只覆蓋 `auspex run`。
+
+所以這是**新增一個擷取來源**，不是接線——與 token actuals 當初碰到的
+managed 有／native 沒有的不對稱一模一樣（ADR-047）。
+
+### 7.2 來源：native PostToolUse（主力）
+
+新增一個 hook entrypoint `auspex hook claude <post-tool-use>`，並在
+`hooks.json` 註冊。Claude Code 會對每次工具呼叫觸發 PostToolUse，帶
+`tool_name` 與 `tool_input`。碰檔案的工具就是訊號：
+
+- **view** — `Read`
+- **modify** — `Edit`、`Write`、`MultiEdit`、`NotebookEdit`
+
+managed-stream 那條——在 `stream.go` 解碼同一批 `tool_use` block——維持為
+選用熱身：它能在現成流動的資料上驗證機制，但真實覆蓋稀疏（只有
+`auspex run`）。此處不排程。
+
+子指令大小寫沿用 #61（REC-03）對 hook 子指令的決定——這個新 entrypoint
+不得搶先那份 ADR。
+
+### 7.3 擷取什麼（隱私優先：只存聚合，絕不存路徑）
+
+原始檔案路徑具識別性，**絕不持久化**（匯出紀律：任何東西都不得回連到
+prompt、路徑或身分）。所以 hook 在*行程內*把路徑化約成每 turn 的聚合，
+只持久化計數：
+
+- `distinct_files_touched` — 本 turn 觸碰的相異路徑數
+- `total_file_ops` — view+modify 操作總數
+- `repeated_ops` — 對「被觸碰超過一次的檔案」的操作數
+- `repeat_rate` = `repeated_ops / total_file_ops`（`total_file_ops = 0` 時為 nil）
+- `max_ops_on_one_file` — 單一檔案的最嚴重 churn
+
+路徑會被 intern 成每 turn 的不透明序號以供計數，然後丟棄；不會有任何路徑
+字串離開行程。（缺席保持誠實：每個欄位皆「unknown 而非 zero」，同
+observations 匯出的指標指標作法。）
+
+### 7.4 資料路徑
+
+```text
+PostToolUse hook (tool_name, tool_input.file_path)
+  -> 每 turn 聚合（intern 序號，只留計數）                       [7.3]
+  -> 把聚合掛在該 turn 的 terminal event payload
+     (provider.turn.completed —— managed token actuals 用的同一個載體)
+  -> events 儲存（既有 JSON payload map）
+  -> 把這五個欄位加進 observations 匯出白名單
+     (internal/retention/observations.go)，讓 #11／研究看得到
+  -> 上游：由近幾個完成 turn 的 repeat_rate 衍生回溯式 execution-risk
+     指標（session 特徵，同 RecentSimilarTurn）-> 新的 ScopeEstimate
+     ReasonCode + 純量
+  -> RiskCombiner 讀它 (ports.go CombineRiskRequest 是 stateless；
+     訊號在上游算好，combiner 從不自己查詢)
+```
+
+聚合避免了每次工具呼叫都持久化一個事件——高頻事件型別會與 ADR-046
+保留策略衝突。每 turn 聚合只是在一個已存在的事件上多掛一塊 payload。
+
+### 7.5 消費：先回溯式
+
+Auspex 在**執行前（pre-turn）**把關；repeat rate 是**turn 執行中**才能觀測到
+的事實，因此無法用於同一個 turn 的把關。第一種消費是**回溯式**：近幾個
+turn 的 repeat_rate 抬高**下一個** turn 的 execution-risk（貼合現有 pre-turn
+gate）。**即時 turn 內中斷**——在執行中偵測打轉並 pause/checkpoint——是更強
+的用法，屬於 **#68**（不可解即停 gate），不在此處。
+
+### 7.6 觸及的凍結契約（實作時 → ADR）
+
+- 新的 hook 子指令（與 #61 協調）
+- `provider.turn.completed` 的新 payload 欄位
+- observations 匯出白名單的新欄位（`auspex.observations-export.v1`）
+- 新的 `ScopeEstimate` ReasonCode
+
+每一項都是凍結契約面，因此實作各自帶 ADR 落地（Constitution §3）。
+
+### 7.7 切片
+
+- [ ] **3a — 擷取**：PostToolUse hook + 每 turn 聚合 + 掛上
+  `provider.turn.completed` + observations 白名單。純擷取；不接 risk。
+- [ ] **3b — 回溯式 risk**：對近期 repeat_rate 的 session 特徵 →
+  `ScopeEstimate` ReasonCode → `RiskCombiner` 的 execution-risk → policy。
+- [ ] **3c — 門檻**：由真實資料校準 repeat_rate 門檻（data-gated，同 #11——
+  在那之前沒有數字）。
+
+### 7.8 延後／非目標
+
+- 現在不定門檻值（capture-before-model；3c 等資料）。
+- 不做即時 turn 內中斷（那是 #68）。
+- managed-stream 那條是選用熱身，此處不排程。
+- 永遠不持久化路徑字串（§7.3）。

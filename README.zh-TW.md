@@ -99,7 +99,7 @@ companion 延伸模組的 MVP。本 repository 自身的 Claude Code session 每
 
 **誠實的但書：**每一個預測目前仍然是由 cold-start（冷啟動）規則產生，而非經過校準（calibrated）的模型。分數不是機率，並且在每一個呈現介面上都明確標示為如此（Constitution §7 第 7 條）。token 預測目前尤其幾乎不隨 prompt 內容而變動
 （[#42](https://github.com/huaiche94/auspex/issues/42)）；根據累積的真實遙測資料進行校準是 M13 里程碑
-（[#11](https://github.com/huaiche94/auspex/issues/11)）。
+（[#11](https://github.com/huaiche94/auspex/issues/11)）。外部研究是支撐而非推翻這個立場：一份對八個 frontier agent 在 SWE-bench 上的研究（Bai 等，[arXiv:2604.22750](https://arxiv.org/abs/2604.22750)，2026）發現，同一任務的不同執行 token 用量可差到 30×，而且模型對自身成本的預測只有弱相關（correlation ≤ 0.39、且系統性偏低）——因此粗略、未校準的區間是誠實的上限，而非暫時的權宜。所以 Auspex 的價值在於它所把關的**決策**——checkpoint、pause、resume、block——而不在於它印出那個數字的精確度。
 
 尚待完成的路線圖里程碑：Codex provider 轉接器（adapter）（M7/M8，
 [#9](https://github.com/huaiche94/auspex/issues/9)）、受管的 one-shot 與
@@ -108,6 +108,9 @@ shell 模式（M11，[#8](https://github.com/huaiche94/auspex/issues/8)）、
 [#10](https://github.com/huaiche94/auspex/issues/10)）、校準（calibration）
 pipeline（M13，#11）。
 [issue tracker](https://github.com/huaiche94/auspex/issues) 是即時更新的待辦清單。所有工作都受里程碑閘控（milestone-gated）：任何功能都不會在其里程碑之前被實作（`docs/design/Auspex_ADD.md` §31）。
+
+從上述 Bai 等論文提煉出、以研究為依據的新增項目——cache-aware 四類成本模型、以*觀測*而非預測抓出原地打轉 turn 的重複檔案操作 risk 訊號，以及 phase-aware 條件式預測——已作為路線圖筆記（僅為外部先驗，絕非擬合數字）記錄於
+[`docs/backlog/token-cost-prediction-research.md`](docs/backlog/token-cost-prediction-research.md)。
 
 ## 驗證一項變更
 

@@ -26,6 +26,36 @@
 
 ------------------------------------------------------------------------
 
+# External Evidence — 為何是區間，而非機率
+
+一份對八個 frontier 模型在 SWE-bench 上的獨立研究（Bai 等，*How Do AI
+Agents Spend Your Money? Analyzing and Predicting Token Consumption in
+Agentic Coding Tasks*，arXiv:2604.22750，2026）量測的，正是本文件所設計的
+任務——在 agent 執行前預測其 token 成本——其發現是下方每一項設計選擇所內建
+之「謙遜」的外部依據：
+
+-   **token 用量高度變異，且部分不可化約。** 同一任務的不同執行，總 token
+    可差到 **30×**，在最昂貴的任務上最嚴重。精確的每輪預測並非一個只待努力
+    就能解決的問題；它受限於現象本身。
+-   **自我預測很弱。** frontier 模型對自身 token 用量的預測只有弱到中等
+    （Pearson ≤ **0.39**，最佳為 output token；input 更差），且**系統性
+    低估**真實用量。任何自我預測路線都必須加寬 input 軸並施加向上偏誤修正。
+-   **感知難度不等於成本。** 專家難度評分與真實消耗只有弱相關（Kendall
+    **τ_b = 0.32**）。scope 估計不可把表面的 prompt 複雜度當成成本代理——
+    這與下方「為何單靠行數是錯的」一致。
+-   **成本由 input 主導，而 cache-read 主導金額。** input/output 比平均約
+    153；在顯式快取定價下，對累積 context 的重讀——而非 output——才是帳單
+    佔比最大的部分。估「錢」等於按 token 類別估 context 的成長與重讀次數。
+
+這些數字是對其他模型量測所得，**並未**被引入作為 Auspex 的係數；它們佐證的
+是設計的*形狀*——以區間取代點估計、uncalibrated 分數絕不標為機率
+（Constitution §7 第 7 條）、更寬的 input 區間，以及偏好**可觀測**的失敗訊號
+（例如反覆操作同一檔案）而非預測的 token 數。將這些發現落地的路線圖——
+cache-aware 成本拆解與重複檔案操作 risk factor——見
+`docs/backlog/token-cost-prediction-research.md`。
+
+------------------------------------------------------------------------
+
 # 演進路線圖
 
 ## 版本一 --- 規則型 Predictor（Rule Predictor）

@@ -132,7 +132,15 @@ labeled that way on every surface (Constitution §7 rule 7). The token
 forecast in particular barely responds to the prompt yet
 ([#42](https://github.com/huaiche94/auspex/issues/42)); calibration from
 accumulated real telemetry is the M13 milestone
-([#11](https://github.com/huaiche94/auspex/issues/11)).
+([#11](https://github.com/huaiche94/auspex/issues/11)). External research
+backs this stance rather than undercutting it: a study of eight frontier
+agents on SWE-bench (Bai et al.,
+[arXiv:2604.22750](https://arxiv.org/abs/2604.22750), 2026) finds token
+use can vary up to 30× across identical runs and that models predict
+their own cost only weakly (correlation ≤ 0.39, systematically low) — so
+a coarse, uncalibrated range is the honest ceiling, not a temporary one.
+Auspex's value is therefore in the **decision it gates** — checkpoint,
+pause, resume, block — not in the precision of the number it prints.
 
 Open roadmap milestones: Codex provider adapter (M7/M8,
 [#9](https://github.com/huaiche94/auspex/issues/9)), managed one-shot and
@@ -143,6 +151,13 @@ pipeline (M13, #11). The
 [issue tracker](https://github.com/huaiche94/auspex/issues) is the live
 backlog. Work is milestone-gated: nothing is implemented ahead of its
 milestone (`docs/design/Auspex_ADD.md` §31).
+
+Research-grounded additions distilled from Bai et al. (above) — a
+cache-aware four-class cost model, a repeated-file-operation risk signal
+that catches a spinning turn by *observation* instead of prediction, and
+phase-aware conditional forecasting — are captured as roadmap notes (as
+external priors, never as fitted numbers) in
+[`docs/backlog/token-cost-prediction-research.md`](docs/backlog/token-cost-prediction-research.md).
 
 ## Validate a change
 

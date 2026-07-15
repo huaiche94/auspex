@@ -28,6 +28,45 @@ evolutionary stages.
 
 ------------------------------------------------------------------------
 
+# External Evidence — Why Ranges, Not Probabilities
+
+An independent study of eight frontier models on SWE-bench (Bai et al.,
+*How Do AI Agents Spend Your Money? Analyzing and Predicting Token
+Consumption in Agentic Coding Tasks*, arXiv:2604.22750, 2026) measured
+exactly the task this document designs for — predicting an agent's token
+cost before it runs — and its findings are the external grounding for the
+humility baked into every design choice below:
+
+-   **Token usage is high-variance and partly irreducible.** Runs of the
+    same task differed by up to **30×** in total tokens, worst on the most
+    expensive tasks. Precise per-turn prediction is not a solved problem
+    waiting on effort; it is bounded by the phenomenon itself.
+-   **Self-prediction is weak.** Frontier models predicted their own token
+    usage only weakly-to-moderately (Pearson ≤ **0.39**, best case output
+    tokens; input worse) and **systematically underestimated** real usage.
+    Any self-prediction path must widen the input axis and apply an upward
+    bias correction.
+-   **Perceived difficulty is not cost.** Expert difficulty ratings
+    correlated only weakly with real consumption (Kendall **τ_b = 0.32**).
+    A scope estimate must not read surface prompt complexity as a cost
+    proxy — consistent with "Why Line Count Alone Is Wrong" below.
+-   **Cost is input-dominated, and cache-read dominates the dollars.**
+    Input/output ratios averaged ~153; under explicit-cache pricing the
+    re-read of accumulated context — not output — is the largest share of
+    the bill. Estimating dollars means estimating context growth and
+    re-reads, per token class.
+
+These numbers are measured on other models and are **not** imported as
+Auspex coefficients; they justify the *shape* of the design — ranges over
+point estimates, uncalibrated scores never labelled probabilities
+(Constitution §7 rule 7), wider input intervals, and a preference for
+**observed** failure signals (e.g. repeated same-file operations) over
+predicted token counts. The roadmap that operationalises these findings —
+the cache-aware cost decomposition and the repeated-file-operation risk
+factor — is `docs/backlog/token-cost-prediction-research.md`.
+
+------------------------------------------------------------------------
+
 # Evolution Roadmap
 
 ## Version 1 --- Rule Predictor

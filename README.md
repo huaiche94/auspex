@@ -2,6 +2,60 @@
 
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
+## Why Auspex, when agents already manage their own context?
+
+They do — and increasingly well. Claude Code ships layered compaction:
+bulky tool outputs are offloaded to disk early, the conversation is
+auto-summarized near the context limit, and recent files and todos are
+rehydrated afterward so the session keeps its momentum. Codex CLI
+compacts server-side through a dedicated endpoint and re-reads recently
+edited files after each pass. Both vendors now expose compaction directly
+in their APIs. Recycling a full context window is a solved — and rapidly
+commoditizing — problem.
+
+Auspex doesn't compete with any of that. It covers the three things
+native compaction doesn't:
+
+**1. Quota is not context.**
+Compaction keeps a session alive past the context ceiling, but it does
+nothing when your usage window runs dry at 2 a.m. The session simply
+dies, and every hour until you wake up is wasted. Auspex's Graceful Pause
+watches quota runway, finds a safe stopping point before the wall,
+checkpoints progress, and writes a wake task to local SQLite. The daemon
+revalidates quota and repo state, then resumes the run — surviving
+crashes and reboots along the way. Native compaction has no answer here;
+this is Auspex's home turf.
+
+**2. Compaction is lossy, and nobody audits the result.**
+Every summarization pass drops detail the earlier turns had accumulated —
+that's inherent to compression, not a bug to fix. The native mechanisms
+trust their own summaries; no independent check verifies that the agent
+stayed on course afterward. Auspex doesn't try to make the summary
+perfect. It makes the loss survivable: State Checkpointing requires
+verifiable evidence — test artifacts, checksums, Git snapshots — before
+any work unit can be marked completed. An agent that drifts after a
+compaction fails the evidence gate instead of silently shipping
+regressions. The gate lives outside the context window, so it never
+forgets.
+
+**3. Sessions end. Work shouldn't.**
+Native context management lives and dies with the process. Auspex
+persists progress trees, wake tasks, and decisions in SQLite, so an
+interrupted run — quota exhaustion, crash, reboot — picks up where it
+left off instead of starting over.
+
+**The one-line version**
+
+Auspex doesn't do compaction. It supervises it.
+
+The agent handles the page-turn. Auspex makes sure state is solidified
+before the page turns (`CHECKPOINT_AND_RUN`), that output after the turn
+still clears the evidence gate, and that quota interruptions become
+pauses instead of dead sessions. This makes Auspex complementary to the
+vendors' roadmaps, not a race against them: the better native compaction
+gets, the longer the tasks people dare to run unattended — and the more a
+supervision layer matters.
+
 **Auspex is a local-first predictive runtime guard for AI coding agents.**
 Before each turn with a provider like Claude Code, it estimates what the
 turn will cost — scope, tokens, quota fit, blast-radius risk — and applies

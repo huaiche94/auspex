@@ -4,6 +4,27 @@
 >
 > 本文件為非規範翻譯，內容以英文版為準（ADR-049）。
 
+## 為什麼需要 Auspex？agent 不是已經會自己管理 context 了嗎？
+
+確實會——而且愈來愈厲害。Claude Code 內建分層壓縮（layered compaction）：龐大的工具輸出會提早卸載（offload）到磁碟、對話在接近 context 上限時會自動摘要（auto-summarize），事後再把最近的檔案與 todo 重新補水（rehydrate）回來，讓 session 維持動能。Codex CLI 則透過專用端點（endpoint）在伺服器端做壓縮，並在每一輪之後重新讀取最近編輯過的檔案。兩家 vendor 現在都已在各自的 API 中直接開放壓縮能力。「回收一整個 context 視窗」已經是一個被解決、而且正在快速商品化（commoditizing）的問題。
+
+Auspex 並不與上述任何一項競爭。它涵蓋的是原生壓縮做不到的三件事：
+
+**1. 配額不等於 context。**
+壓縮能讓 session 撐過 context 上限，但當你的用量視窗（usage window）在凌晨兩點見底時，它什麼也做不了。session 就這樣死掉，而在你醒來之前的每一個小時都被浪費掉。Auspex 的 Graceful Pause（優雅暫停）會盯著配額剩餘跑道（quota runway），在撞牆之前找到安全的停止點、對進度建立檢查點，並把一個喚醒工作（wake task）寫進本機 SQLite。daemon 會重新驗證配額與 repo 狀態，然後恢復執行——過程中還能挺過 crash 與重開機。原生壓縮對此毫無對策；這正是 Auspex 的主場。
+
+**2. 壓縮是有損的，而且沒有人稽核結果。**
+每一次摘要都會丟掉先前回合累積下來的細節——這是壓縮的本質，不是可以修掉的 bug。原生機制信任它自己產生的摘要；沒有任何獨立檢查會去驗證 agent 在壓縮之後是否仍走在正軌上。Auspex 不試圖把摘要做到完美，而是讓「損失」變得可以存活（survivable）：State Checkpointing（狀態存證）要求在任何工作單元被標記為完成之前，必須提出可驗證的證據——測試產物、checksum、Git 快照。一個在壓縮後開始偏離（drift）的 agent 會卡在證據閘門（evidence gate）前，而不是默默把 regression 送出去。這道閘門存在於 context 視窗之外，所以它永遠不會遺忘。
+
+**3. session 會結束，但工作不該結束。**
+原生的 context 管理與行程（process）同生共死。Auspex 把進度樹（progress tree）、喚醒工作與決策持久化在 SQLite 中，因此一個被中斷的執行——配額耗盡、crash、重開機——會從中斷處接續，而不是從頭來過。
+
+**一句話版本**
+
+Auspex 不做壓縮，它監督壓縮。
+
+agent 負責翻頁（page-turn）；Auspex 負責確保翻頁之前狀態已經固化（`CHECKPOINT_AND_RUN`）、翻頁之後的輸出仍然通得過證據閘門，以及讓配額中斷變成暫停、而不是死掉的 session。這讓 Auspex 與各家 vendor 的路線圖互補、而非與之競速：原生壓縮做得愈好，人們愈敢放手讓它無人值守（unattended）跑更長的任務——而一層監督（supervision）機制也就愈重要。
+
 **Auspex 是為 AI 編碼代理（AI coding agents）打造的本地優先（local-first）預測式執行期守門系統（predictive runtime guard）。**
 在每次與 Claude Code 這類 provider（供應商）互動的回合（turn）開始前及進行中，它會估算這個回合的成本——範疇（scope）、token／配額消耗、完成可能性、爆炸半徑（blast-radius）風險——然後套用政策（policy），決定放行、警告、要求先建立檢查點、拆分、優雅暫停（gracefully pause），或直接阻擋這個回合。
 

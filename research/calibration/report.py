@@ -10,24 +10,34 @@ sample gate (8) are REPORTED as insufficient, never fitted. With sparse
 data the readiness section is the report's whole value; the coverage
 sections activate by themselves as capture fills in.
 
+Always computed from the calibration export alone:
+
+  * TOKEN COVERAGE: records carry per-turn predicted token_p50/p80/p90,
+    and the same record now carries the turn's ACTUAL total_tokens where
+    one was captured (#72 item 4: the Stop hook reads the session
+    transcript's exact per-turn usage onto turn.completed, and the Go
+    exporter joins it — managed-run usage rows land in the same field).
+    Joining predicted vs actual on turn_id yields the fraction of turns
+    whose actual landed <= P50 / <= P80 / <= P90. Only turns with BOTH
+    sides count, and the join count is always reported. Hook turns from
+    before #72's capture have no actual anywhere and can never join — an
+    honest, permanent gap for that history.
+  * DURATION COVERAGE (#62): records carry the predicted wall-clock band
+    duration_p50_ns..duration_p90_ns and, where a turn-stamped usage
+    event existed, the same turn's actual_duration_ms; joining the two
+    on turn_id reports band containment (within/below/above), ns→ms
+    reconciled here.
+
 With --observations, the report additionally folds in:
 
   * per-turn ACTUALS readiness derived from `auspex export observations`
     (observations.py's best-effort attribution): how many turns exist,
     how many are closed by a terminal event, and how many have derivable
     cost/context deltas;
-TOKEN COVERAGE is always computed: calibration records carry per-turn
-predicted token_p50/p80/p90, and the same record now carries the turn's
-ACTUAL total_tokens where one was captured (#72 item 4: the Stop hook
-reads the session transcript's exact per-turn usage onto turn.completed,
-and the Go exporter joins it — managed-run usage rows land in the same
-field). Joining predicted vs actual on turn_id yields the fraction of
-turns whose actual landed <= P50 / <= P80 / <= P90. Only turns with BOTH
-sides count, and the join count is always reported. With --observations,
-managed-run usage rows from the observations export additionally feed
-the join (the pre-#72 source, still honored for older exports); hook
-turns from before #72's capture have no actual anywhere and can never
-join — an honest, permanent gap for that history.
+  * COST-BAND COVERAGE (predicted cost_low_usd..cost_high_usd vs the
+    derived per-turn cost delta), plus managed-run usage rows as an
+    additional token-actual source (the pre-#72 path, still honored for
+    older exports).
 """
 
 from __future__ import annotations
@@ -174,11 +184,69 @@ def cost_coverage(records: list[Record], turns: list[TurnActuals]) -> dict:
     }
 
 
+def duration_coverage(records: list[Record]) -> dict:
+    """Join each turn's PREDICTED duration band (duration_p50_ns..
+    duration_p90_ns — the #62 scope-estimator forecast, converted ns→ms
+    here and nowhere else) with its ACTUAL per-turn duration
+    (actual_duration_ms — the turn's provider.usage.observed
+    total_duration_ms, joined by the Go exporter), and report band
+    containment. Both sides ride the calibration record itself, so no
+    observations export is needed — the report side of the #62 rail.
+
+    Honest gates mirror cost_coverage: only turns with BOTH a predicted
+    band and an actual count (the join count is part of the result); a
+    degenerate band (P50 == P90) still counts; zero joined rows yields
+    rate None, never a fabricated 0/100.
+
+    Band containment, not a point residual, for the same reason as the
+    cost band: the shipped forecast is a RANGE, so the honest question is
+    whether the actual landed inside it. below_band (actual < P50 end)
+    and above_band (actual > P90 end) are counted separately — above_band
+    dominating is the systematic under-forecast signal.
+    """
+    # Latest actual per turn (last-wins keeps the join deterministic,
+    # mirroring token_coverage/cost_coverage's rule for duplicate rows).
+    actuals: dict = {}
+    for r in records:
+        if r.actual_duration_ms is not None:
+            actuals[r.turn_id] = r.actual_duration_ms
+
+    predicted = [
+        r
+        for r in records
+        if r.duration_p50_ns is not None and r.duration_p90_ns is not None
+    ]
+    joined = [(r, actuals[r.turn_id]) for r in predicted if r.turn_id in actuals]
+
+    within = below = above = 0
+    for r, actual in joined:
+        low_ms = r.duration_p50_ns / 1_000_000
+        high_ms = r.duration_p90_ns / 1_000_000
+        if actual < low_ms:
+            below += 1
+        elif actual > high_ms:
+            above += 1
+        else:
+            within += 1
+
+    n = len(joined)
+    return {
+        "predicted_turns": len(predicted),
+        "actual_turns": len(actuals),
+        "joined_turns": n,
+        "within_band": within,
+        "below_band": below,
+        "above_band": above,
+        "containment_rate": (within / n) if n else None,
+    }
+
+
 def build_report(
     records: list[Record],
     turn_actuals: dict | None = None,
     token_cov: dict | None = None,
     cost_cov: dict | None = None,
+    duration_cov: dict | None = None,
 ) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
@@ -232,6 +300,14 @@ def build_report(
             "(the cost band derives from them) and the observations export "
             "brackets the same turn_ids"
         )
+    if duration_cov is not None and duration_cov["joined_turns"] == 0:
+        gaps.append(
+            "0 turns join a predicted duration band with an "
+            "actual_duration_ms (#62): the actual comes from turn-stamped "
+            "provider.usage.observed events (managed runs today) — "
+            "dogfood turns through `auspex run`, and check predictions "
+            "carry the duration_p50/p90 forecast"
+        )
 
     cohorts = [
         {
@@ -265,6 +341,7 @@ def build_report(
         "per_turn_actuals": turn_actuals,
         "token_coverage": token_cov,
         "cost_coverage": cost_cov,
+        "duration_coverage": duration_cov,
         "readiness_gaps": gaps,
     }
 
@@ -379,6 +456,38 @@ def render_text(report: dict) -> str:
         else:
             lines.append("  (no joined turns — containment not computable)")
 
+    duration_cov = report["duration_coverage"]
+    if duration_cov is not None:
+        lines.append("")
+        lines.append(
+            "duration-band coverage (predicted P50–P90 vs per-turn "
+            "actual_duration_ms, joined on turn_id):"
+        )
+        lines.append(
+            f"  turns with a predicted duration band: "
+            f"{duration_cov['predicted_turns']}"
+        )
+        lines.append(
+            f"  turns with a duration actual: {duration_cov['actual_turns']}"
+        )
+        lines.append(f"  joined turns (both sides): {duration_cov['joined_turns']}")
+        if duration_cov["joined_turns"]:
+            lines.append(
+                f"  actual within band: {duration_cov['within_band']}/"
+                f"{duration_cov['joined_turns']} "
+                f"({100.0 * duration_cov['containment_rate']:.0f}%)"
+            )
+            lines.append(
+                f"  actual below band (duration over-forecast): "
+                f"{duration_cov['below_band']}"
+            )
+            lines.append(
+                f"  actual above band (duration under-forecast): "
+                f"{duration_cov['above_band']}"
+            )
+        else:
+            lines.append("  (no joined turns — containment not computable)")
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -408,11 +517,13 @@ def main() -> int:
         turns = derive_turn_actuals(observations)
         turn_actuals = summarize_turn_actuals(turns)
         cost_cov = cost_coverage(records, turns)
-    # Token coverage no longer needs --observations: the calibration
-    # records carry their own per-turn actuals since #72 (managed-run
-    # usage rows still fold in when an observations export is supplied).
+    # Token and duration coverage no longer need --observations: the
+    # calibration records carry their own per-turn actuals (#72 for
+    # tokens, #62 for duration; managed-run usage rows still fold into
+    # the token join when an observations export is supplied).
     token_cov = token_coverage(records, observations)
-    report = build_report(records, turn_actuals, token_cov, cost_cov)
+    duration_cov = duration_coverage(records)
+    report = build_report(records, turn_actuals, token_cov, cost_cov, duration_cov)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

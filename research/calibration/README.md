@@ -33,7 +33,11 @@ Go binary. Inputs are the de-identified `auspex export` datasets
   `turn.completed` event and the calibration export carries it as
   `actual_*_tokens` fields (managed-run captures land in the same
   fields), so native hook turns join too — only history from before
-  that capture can never join. `--observations observations.jsonl`
+  that capture can never join. **Duration-band coverage** (#62) is
+  likewise always computed: the predicted
+  `duration_p50_ns..duration_p90_ns` band vs the same record's
+  `actual_duration_ms` (ns→ms reconciled in the report), with
+  within/below/above-band splits. `--observations observations.jsonl`
   folds in the per-turn actuals readiness section derived by
   `observations.py`, managed-run usage rows as an additional
   token-actual source (the pre-#72 path, still honored for older

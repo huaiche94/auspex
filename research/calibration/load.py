@@ -38,6 +38,17 @@ class Record:
     cost_low_usd: Optional[float]
     cost_high_usd: Optional[float]
     cost_model_family: Optional[str]
+    # #62 duration pair, riding like the cost fields. duration_p50_ns /
+    # duration_p90_ns are the PREDICTED wall-clock forecast in NANOSECONDS
+    # (the scope estimator's own unit); actual_duration_ms is the ACTUAL
+    # per-turn duration in MILLISECONDS (the turn's provider.usage.observed
+    # total_duration_ms). Distinct units, each matching its Go source
+    # verbatim — report.py's duration_coverage() reconciles them. None =
+    # honestly absent (an uncalibrated forecast that left duration unknown,
+    # or a turn with no attributable usage event) — never read as zero.
+    duration_p50_ns: Optional[int]
+    duration_p90_ns: Optional[int]
+    actual_duration_ms: Optional[int]
     overall_risk_score: float
     confidence: str
     calibrated: bool
@@ -111,6 +122,9 @@ def load(path: Path) -> Iterator[Record]:
                 cost_low_usd=raw.get("cost_low_usd"),
                 cost_high_usd=raw.get("cost_high_usd"),
                 cost_model_family=raw.get("cost_model_family"),
+                duration_p50_ns=raw.get("duration_p50_ns"),
+                duration_p90_ns=raw.get("duration_p90_ns"),
+                actual_duration_ms=raw.get("actual_duration_ms"),
                 overall_risk_score=raw["overall_risk_score"],
                 confidence=raw["confidence"],
                 calibrated=raw["calibrated"],

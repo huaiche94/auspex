@@ -32,7 +32,10 @@
   的 token 用量並寫到 `turn.completed` 事件上，而校準匯出以
   `actual_*_tokens` 欄位承載它（managed-run 的擷取也落在同一組欄位），
   因此原生 hook 回合也能 join —— 只有在該擷取上線之前的歷史資料永遠
-  無法 join。加上 `--observations observations.jsonl` 參數時，會併入由
+  無法 join。**時長區間涵蓋率**（#62）同樣一律計算：預測的
+  `duration_p50_ns..duration_p90_ns` 區間對上同一筆紀錄的
+  `actual_duration_ms`（ns→ms 的換算在報告端完成），並分開統計落在
+  區間之內／之下／之上的筆數。加上 `--observations observations.jsonl` 參數時，會併入由
   `observations.py` 推導出的每回合實際值就緒度區段、把 managed-run 的
   usage 資料列作為額外的 token 實際值來源（#72 之前的路徑，對較舊的匯
   出仍然有效），以及**成本區間涵蓋率**（預測成本區間

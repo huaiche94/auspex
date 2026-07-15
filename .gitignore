@@ -4,6 +4,9 @@
 .claude/worktrees/
 __pycache__/
 
+# Local build output (e.g. `go build -o bin/auspex`)
+/bin/
+
 # VS Code extension build outputs (issue #10)
 vscode/node_modules/
 vscode/out/

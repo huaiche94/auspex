@@ -1,10 +1,15 @@
 package pricing_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/huaiche94/auspex/internal/pricing"
 )
+
+// approxEqual compares two USD amounts with a tolerance that swamps float64
+// rounding but is far tighter than any cost the estimates carry.
+func approxEqual(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 // TestDefaultTable_FamilyResolution proves the case-insensitive
 // family-substring match resolves both real provider model IDs and
@@ -137,5 +142,81 @@ func TestNewTable_OverridesMergeOverDefaults(t *testing.T) {
 	}
 	if price, family := table.Price("unknown"); family != pricing.DefaultFamily || price.InputUSDPerMTok != 7 || price.OutputUSDPerMTok != 9 {
 		t.Errorf("fallback override not applied: family=%q price=%+v", family, price)
+	}
+}
+
+// TestFourClassCost_ExactArithmetic pins the explicit-cache formula for opus
+// ($5 in / $25 out): cache-read is 10% of input ($0.50/MTok) and cache-write
+// is a 25% surcharge ($6.25/MTok). Each class priced independently, then
+// summed.
+func TestFourClassCost_ExactArithmetic(t *testing.T) {
+	table := pricing.DefaultTable()
+	// 1000 tokens of each class keeps the expected values easy to read.
+	b, ok := table.FourClassCost("claude-opus-4-8", 1000, 1000, 1000, 1000)
+	if !ok {
+		t.Fatal("FourClassCost ok=false for valid counts")
+	}
+	if b.ModelFamily != "opus" {
+		t.Errorf("family = %q, want opus", b.ModelFamily)
+	}
+	const mtok = 1_000_000
+	wantIn := float64(1000) * 5 / mtok            // 0.005
+	wantCreate := float64(1000) * 5 * 1.25 / mtok // 0.00625
+	wantRead := float64(1000) * 5 * 0.10 / mtok   // 0.0005
+	wantOut := float64(1000) * 25 / mtok          // 0.025
+	if !approxEqual(b.NonCachedInputUSD, wantIn) ||
+		!approxEqual(b.CacheCreationUSD, wantCreate) ||
+		!approxEqual(b.CacheReadUSD, wantRead) ||
+		!approxEqual(b.OutputUSD, wantOut) {
+		t.Errorf("per-class = %+v; want in=%v create=%v read=%v out=%v",
+			b, wantIn, wantCreate, wantRead, wantOut)
+	}
+	if !approxEqual(b.TotalUSD, wantIn+wantCreate+wantRead+wantOut) {
+		t.Errorf("total = %v, want %v", b.TotalUSD, wantIn+wantCreate+wantRead+wantOut)
+	}
+}
+
+// TestFourClassCost_CacheReadDominatesRealisticTurn is the #66 thesis made
+// executable: for a realistic multi-round-trip Claude Code opus turn — a
+// growing ~120K-token context re-read across ~20 tool round-trips (2.4M
+// cache-read tokens), 40K newly cached, 30K output, 5K fresh input — the
+// CHEAPEST token class (cache-read, $0.50/MTok) is nonetheless the LARGEST
+// dollar share, because the context is re-read so many times within one turn.
+// The total (~$2.23) lands right on the #72 Phase-2 opus median actual
+// (~$1.90), i.e. cache-read traffic is what the 2-class forecast misses.
+func TestFourClassCost_CacheReadDominatesRealisticTurn(t *testing.T) {
+	table := pricing.DefaultTable()
+	b, ok := table.FourClassCost("claude-opus-4-8",
+		5_000,     // non-cached (fresh) input
+		40_000,    // cache creation (newly cached context)
+		2_400_000, // cache reads (context re-read across the turn's round-trips)
+		30_000,    // output
+	)
+	if !ok {
+		t.Fatal("FourClassCost ok=false for valid counts")
+	}
+	if b.CacheReadUSD <= b.OutputUSD ||
+		b.CacheReadUSD <= b.CacheCreationUSD ||
+		b.CacheReadUSD <= b.NonCachedInputUSD {
+		t.Errorf("cache-read is not the largest class: %+v", b)
+	}
+	// Sanity: the total is in the single-dollars range the Phase-2 opus
+	// median actual sits in, not the sub-cent range a 2-class token forecast
+	// of the same fresh work (5K in + 30K out ≈ $0.78) would produce.
+	if b.TotalUSD < 1.5 || b.TotalUSD > 3.0 {
+		t.Errorf("total = %.4f, want ≈ $2.2 (single-dollars)", b.TotalUSD)
+	}
+}
+
+// TestFourClassCost_HonestyGuards: a negative (unmeasured) class is rejected
+// rather than treated as a measured 0, and an all-zero turn is a valid $0.
+func TestFourClassCost_HonestyGuards(t *testing.T) {
+	table := pricing.DefaultTable()
+	if _, ok := table.FourClassCost("claude-opus-4-8", -1, 0, 0, 0); ok {
+		t.Error("negative token count must yield ok=false (unknown is not zero)")
+	}
+	b, ok := table.FourClassCost("claude-opus-4-8", 0, 0, 0, 0)
+	if !ok || b.TotalUSD != 0 {
+		t.Errorf("all-zero turn = (%+v, ok=%v), want valid $0", b, ok)
 	}
 }

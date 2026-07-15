@@ -201,3 +201,77 @@ func (t *Table) EstimateTurnCost(modelID string, tokensLow, tokensHigh int64) (C
 		Source:      SourceDefaultTable,
 	}, true
 }
+
+// Prompt-cache rate multipliers, relative to a family's base input rate, for
+// Anthropic's published EXPLICIT prompt caching at the default 5-minute TTL
+// Claude Code uses: a cache READ costs 10% of a fresh input token, and a
+// cache WRITE (cache creation) costs a 25% surcharge over one. (The
+// 1-hour-TTL write is 2× instead — out of scope until a turn selects it.)
+// Kept as multipliers of the input rate rather than five more hand-copied
+// per-family numbers, so the one published relationship has one home; a
+// model that ever needs different cache economics can grow explicit
+// ModelPrice fields later — the same documented-follow-up posture as the
+// config-override seam.
+const (
+	CacheReadInputMultiplier     = 0.10
+	CacheCreationInputMultiplier = 1.25
+)
+
+// CostBreakdown is a four-class turn cost decomposed by token class (#66 /
+// arXiv:2604.22750, the ADR-043 cost axis). Unlike EstimateTurnCost's
+// forecast RANGE, this is a POINT cost over KNOWN per-turn token counts — the
+// managed-run actual (internal/telemetry/claude persists all four classes per
+// turn) or, later, a four-class token forecast. Every field is a USD amount;
+// splitting them out is the whole point, because CacheReadUSD is typically the
+// largest share of the bill even though a cache-read token is the cheapest
+// class — purely because accumulated context is re-read across a turn's many
+// round-trips (the paper's central finding, and the mechanism behind #72
+// Phase 2's ~7–8× cost under-forecast).
+type CostBreakdown struct {
+	NonCachedInputUSD float64
+	CacheCreationUSD  float64
+	CacheReadUSD      float64
+	OutputUSD         float64
+	TotalUSD          float64
+
+	// ModelFamily is the resolved price-table key (as CostRange.ModelFamily).
+	ModelFamily string
+}
+
+// FourClassCost prices a turn under Anthropic-style EXPLICIT prompt caching:
+//
+//	nonCachedInput × r_in
+//	  + cacheCreation × (r_in × CacheCreationInputMultiplier)
+//	  + cacheRead     × (r_in × CacheReadInputMultiplier)
+//	  + output        × r_out
+//
+// The cache rates derive from the family's base input rate via the published
+// multipliers above (one source for the one published relationship). This is
+// the explicit-cache formula only; the implicit-cache variant (a GPT-5-style
+// single 0.2×-input class with no separate creation) is a sibling method for
+// whichever wave lands the Codex adapter (D-02), not built here.
+//
+// ok=false when any token count is negative (unknown is not zero — a caller
+// with an unmeasured class must not pass a fabricated 0 and treat the result
+// as complete); an all-zero turn is a valid $0. This never touches the
+// forecast card, which stays on the 2-class EstimateTurnCost band until a
+// four-class token forecast exists (capture-before-model: the four classes
+// are captured per managed turn, but the forecast that would consume them is
+// not built — that half is gated on managed-run data volume, not on capture).
+func (t *Table) FourClassCost(modelID string, nonCachedInput, cacheCreation, cacheRead, output int64) (CostBreakdown, bool) {
+	if nonCachedInput < 0 || cacheCreation < 0 || cacheRead < 0 || output < 0 {
+		return CostBreakdown{}, false
+	}
+	price, family := t.Price(modelID)
+	const mtok = 1_000_000
+	rIn := price.InputUSDPerMTok
+	b := CostBreakdown{
+		NonCachedInputUSD: float64(nonCachedInput) * rIn / mtok,
+		CacheCreationUSD:  float64(cacheCreation) * rIn * CacheCreationInputMultiplier / mtok,
+		CacheReadUSD:      float64(cacheRead) * rIn * CacheReadInputMultiplier / mtok,
+		OutputUSD:         float64(output) * price.OutputUSDPerMTok / mtok,
+		ModelFamily:       family,
+	}
+	b.TotalUSD = b.NonCachedInputUSD + b.CacheCreationUSD + b.CacheReadUSD + b.OutputUSD
+	return b, true
+}

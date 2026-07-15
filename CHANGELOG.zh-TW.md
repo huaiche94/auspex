@@ -46,6 +46,19 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **Cache-aware 四類成本模型**
+  （[#66](https://github.com/huaiche94/auspex/issues/66)，arXiv:2604.22750）：
+  `internal/pricing` 新增 `FourClassCost`,即 ADR-043 的成本軸原語——對「四種 token
+  class 皆已知」的 turn 產生一個 point `CostBreakdown`,每一類各自以 Anthropic 顯式快取
+  費率計價（cache read = input 的 10%、cache write = 125%,由基礎 input 費率經
+  `CacheReadInputMultiplier`／`CacheCreationInputMultiplier` 推導）。重點在於:即便
+  cache-read token 是最便宜的一類,`CacheReadUSD` 通常仍是帳單中最大的一塊——因為累積的
+  context 會在一個 turn 的多次 round-trip 中被反覆讀取——這正是 #72 Phase 2 那 ~7–8×
+  成本低估背後的機制,如今以可執行的方式驗證（一個真實的多 round-trip opus turn 合計
+  約 $2.2,吻合 Phase 2 的中位數,且 cache-read 為主導類別）。純新增;forecast card 維持
+  2 類（cache-blind）,直到四類 token「預測」出現為止——四種 class 目前每個 managed turn
+  都已擷取（`internal/telemetry/claude`）,所以這一半是 gate 在 managed-run 的資料量,而非
+  擷取本身。不涉及任何凍結契約,不需 migration。
 - **成本預測校準——逐 cohort 殘差（Phase 2）**
   （[#72](https://github.com/huaiche94/auspex/issues/72)）：
   `research/calibration/report.py` 現在會把 Phase 1 的成本 join 依 #20 的

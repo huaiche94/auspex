@@ -55,6 +55,23 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Cache-aware four-class cost model**
+  ([#66](https://github.com/huaiche94/auspex/issues/66),
+  arXiv:2604.22750): `internal/pricing` gains `FourClassCost`, the ADR-043
+  cost-axis primitive — a point `CostBreakdown` that prices a turn's four
+  token classes separately under Anthropic explicit-cache rates (cache read =
+  10% of input, cache write = 125%, derived from the base input rate via
+  `CacheReadInputMultiplier`/`CacheCreationInputMultiplier`). Its point:
+  `CacheReadUSD` is usually the largest share of the bill even though a
+  cache-read token is the cheapest class, because accumulated context is
+  re-read across a turn's many round-trips — the mechanism behind #72 Phase
+  2's ~7–8× cost under-forecast, now demonstrated executably (a realistic
+  multi-round-trip opus turn totals ~$2.2, matching the Phase-2 median, with
+  cache-read the dominant class). Additive; the forecast card stays 2-class
+  (cache-blind) until a four-class token **forecast** exists — the four
+  classes are already captured per managed turn (`internal/telemetry/claude`),
+  so that half is gated on managed-run data volume, not on capture. No frozen
+  contract touched, no migration.
 - **Cost-forecast calibration — per-cohort residual (Phase 2)**
   ([#72](https://github.com/huaiche94/auspex/issues/72)):
   `research/calibration/report.py` now stratifies the Phase-1 cost join by

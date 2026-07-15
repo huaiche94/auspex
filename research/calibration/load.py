@@ -30,6 +30,14 @@ class Record:
     token_p50: Optional[int]
     token_p80: Optional[int]
     token_p90: Optional[int]
+    # Predicted cost band (#72), priced from the token quantiles by
+    # internal/pricing — the exact band the forecast card showed
+    # (cost_low_usd = P50 × input price, cost_high_usd = P90 × output
+    # price). None when the row carried no token forecast (no forecast ->
+    # no cost estimate — unknown is not zero, never a fabricated $0).
+    cost_low_usd: Optional[float]
+    cost_high_usd: Optional[float]
+    cost_model_family: Optional[str]
     overall_risk_score: float
     confidence: str
     calibrated: bool
@@ -86,6 +94,9 @@ def load(path: Path) -> Iterator[Record]:
                 token_p50=raw.get("token_p50"),
                 token_p80=raw.get("token_p80"),
                 token_p90=raw.get("token_p90"),
+                cost_low_usd=raw.get("cost_low_usd"),
+                cost_high_usd=raw.get("cost_high_usd"),
+                cost_model_family=raw.get("cost_model_family"),
                 overall_risk_score=raw["overall_risk_score"],
                 confidence=raw["confidence"],
                 calibrated=raw["calibrated"],

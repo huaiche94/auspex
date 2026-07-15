@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/huaiche94/auspex/internal/pricing"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
@@ -50,6 +51,23 @@ type ExportRecord struct {
 	TokenP50 *int64 `json:"token_p50,omitempty"`
 	TokenP80 *int64 `json:"token_p80,omitempty"`
 	TokenP90 *int64 `json:"token_p90,omitempty"`
+
+	// Predicted cost band (#72): the ADR-043 cost forecast the user is
+	// actually shown — pricing.EstimateTurnCost applied to this row's token
+	// quantiles (LowUSD = TokenP50 × input price, HighUSD = TokenP90 ×
+	// output price) against its stamped model. Emitted from the SHIPPED
+	// pricing function, never a research-side re-derivation, so the
+	// calibration measures the exact number the forecast card rendered and
+	// there is no second price table to drift. Nil when the row carries no
+	// token forecast (no forecast → no cost estimate, never a fabricated $0
+	// — ADD principle 1). The ACTUAL per-turn cost is deliberately NOT here:
+	// total_cost_usd is session-cumulative, so the per-turn actual is a
+	// best-effort attribution owned by research/calibration/observations.py,
+	// never computed by these capture-before-model Go bridges. report.py
+	// joins this predicted band against that actual delta on turn_id.
+	CostLowUSD      *float64 `json:"cost_low_usd,omitempty"`
+	CostHighUSD     *float64 `json:"cost_high_usd,omitempty"`
+	CostModelFamily *string  `json:"cost_model_family,omitempty"`
 
 	// Scope quantiles + component risk scores + projections: live rows
 	// only (calibration_samples deliberately archives the compact pair).
@@ -123,6 +141,12 @@ func ExportCalibration(ctx context.Context, db *sqlite.DB, w io.Writer) (ExportS
 	summary := ExportSummary{}
 	enc := json.NewEncoder(w)
 
+	// The shipped default price table — the same one the forecast card
+	// prices against today (no config override is wired into the binary
+	// yet; see internal/pricing's package comment), so the exported cost
+	// band equals the number the user was shown for the turn.
+	priceTable := pricing.DefaultTable()
+
 	liveRows, err := queryRowMaps(ctx, db, `SELECT * FROM predictions ORDER BY created_at, id`)
 	if err != nil {
 		return summary, fmt.Errorf("retention: export: select predictions: %w", err)
@@ -134,6 +158,7 @@ func ExportCalibration(ctx context.Context, db *sqlite.DB, w io.Writer) (ExportS
 	for i, s := range samples {
 		rec := recordFromSample(s, "live")
 		enrichFromLiveRow(&rec, liveRows[i])
+		attachCostEstimate(&rec, priceTable)
 		if err := writeExportRecord(enc, rec, &summary); err != nil {
 			return summary, err
 		}
@@ -146,6 +171,7 @@ func ExportCalibration(ctx context.Context, db *sqlite.DB, w io.Writer) (ExportS
 	}
 	for _, row := range archivedRows {
 		rec := recordFromArchivedRow(row)
+		attachCostEstimate(&rec, priceTable)
 		if err := writeExportRecord(enc, rec, &summary); err != nil {
 			return summary, err
 		}
@@ -228,6 +254,35 @@ func enrichFromLiveRow(rec *ExportRecord, row map[string]any) {
 			rec.ReasonCodes = codes
 		}
 	}
+}
+
+// attachCostEstimate fills the #72 predicted cost band from the record's
+// own token quantiles + stamped model, using the SAME shipped pricing
+// function the forecast card renders (internal/pricing.Table.EstimateTurnCost)
+// so the calibration export measures the exact cost the user was shown —
+// no second price table, nothing to drift. It works identically for the
+// live and archived shapes because both already carry TokenP50/P90 and
+// ModelID by the time it runs. A row without both token bounds gets no
+// cost band (no token forecast → no cost estimate; unknown is not zero,
+// never a fabricated $0). A NULL model_id resolves to the labeled
+// DefaultFamily fallback, exactly as the forecast card does for a turn
+// evaluated before its identity was observed.
+func attachCostEstimate(rec *ExportRecord, table *pricing.Table) {
+	if rec.TokenP50 == nil || rec.TokenP90 == nil {
+		return
+	}
+	model := ""
+	if rec.ModelID != nil {
+		model = *rec.ModelID
+	}
+	cr, ok := table.EstimateTurnCost(model, *rec.TokenP50, *rec.TokenP90)
+	if !ok {
+		return
+	}
+	rec.CostLowUSD = &cr.LowUSD
+	rec.CostHighUSD = &cr.HighUSD
+	family := cr.ModelFamily
+	rec.CostModelFamily = &family
 }
 
 // recordFromArchivedRow maps a calibration_samples row (SELECT * map)

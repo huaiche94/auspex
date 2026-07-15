@@ -28,7 +28,17 @@ Go binary. Inputs are the de-identified `auspex export` datasets
 - `report.py` — data-readiness + (data permitting)
   calibration-coverage report over a calibration export;
   `--observations observations.jsonl` folds in the per-turn actuals
-  readiness section derived by `observations.py`.
+  readiness section derived by `observations.py`, plus two coverage
+  joins on `turn_id`: **token coverage** (predicted quantiles vs
+  managed-run `total_tokens` actuals — managed runs only, since the
+  statusline carries no per-turn tokens) and **cost-band coverage** (the
+  predicted cost band `cost_low_usd..cost_high_usd` vs the per-turn cost
+  delta `observations.py` derives). Cost coverage is the #72 hook-mode
+  opening: a per-turn cost delta is derivable from native hook telemetry
+  alone, so native-hook turns join here even when tokens cannot. It
+  reports band containment and, separately, actuals landing below (cost
+  over-forecast) vs above (cost under-forecast) the band — the
+  directional signal that quantifies the #42/#66 under-forecast.
 
 The predictor these reports are meant to eventually feed lives in
 `internal/predictor/`; the exporters live in `internal/retention/`

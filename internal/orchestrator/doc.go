@@ -6,18 +6,20 @@
 // policy, checkpointing, or pause logic itself; it sequences calls into
 // the services that do.
 //
-// # Scope of this node (runtime-b03: the Evaluate pipeline)
+// # What this package sequences
 //
-// agents/runtime.md Part B "Pipeline behavior" lists twelve steps overall;
-// this node covers steps 1-6 (receive input, resolve repository/worktree/
-// session, load Progress Tree + usage observations, snapshot Git state,
-// evaluate through the predictor role, apply policy) ending at a returned
-// app.Evaluation plus an app.DecisionResult. Steps 7-8 (produce a
-// provider-compatible response for allow / persist+return a decision ID
-// for block-checkpoint) are runtime-b04/b06's concern (hook handlers,
-// decision allow/deny) — this package exposes the Evaluate/Decide result
-// as a plain Go value; turning it into a provider-shaped HTTP/CLI response
-// is the caller's job, not this pipeline's.
+// agents/runtime.md Part B "Pipeline behavior" lists twelve steps overall.
+// This package began (runtime-b03) as just the Evaluate pipeline — steps
+// 1-6: receive input, resolve repository/worktree/session, load Progress
+// Tree + usage observations, snapshot Git state, evaluate through the
+// predictor role, apply policy — and has since grown to own the rest of
+// the hook lifecycle around it: the hook handlers (hooks.go), decision
+// allow/deny (decision.go), the daemon loop (daemon.go), pause lifecycle
+// (pauselifecycle.go), progress completion (progresscomplete.go), and GC
+// (gc.go). Its job stays the same throughout — it sequences calls into the
+// frozen internal/app services and returns plain Go values; turning a
+// result into a provider-shaped HTTP/CLI response is still the caller's
+// job, not this pipeline's.
 //
 // # What "resolve repository/worktree/session" means at this node
 //
@@ -39,19 +41,18 @@
 // freezes a real ResolverService port, swapping this node's resolve step
 // to call it is a localized, additive change.
 //
-// # Predictor pipeline: fake this wave
+// # Predictor pipeline: real
 //
 // Stage 5 ("evaluate through the predictor role") calls
-// app.EvaluationService.EvaluateTurn — the frozen port — but no real
-// implementation exists yet (predictor-08 Policy/predictor-09 Evaluation
-// persistence are not built this wave; EXECUTION_DAG.md marks runtime-b03
-// "Soft/fake-able on predictor-08/predictor-09; needs the real thing by
-// merge time"). Evaluate is wired against whatever app.EvaluationService
-// the caller injects via wiring.App — this wave, that is
-// internal/testutil/fakes.FakeEvaluationService (see
-// docs/implementation/vertical-slice/runtime.md's Wave 5 section for the exact call
-// site). No code in this package hardcodes a fake; swapping to the real
-// predictor.EvaluationService, once it lands, is a wiring-layer change
-// only (internal/app/wiring), not an orchestrator change — this package
-// depends solely on the app.EvaluationService interface type.
+// app.EvaluationService.EvaluateTurn — the frozen port. The real
+// implementation (predictor-08 Policy / predictor-09 Evaluation
+// persistence) has since landed, and cmd/auspex/wire.go injects it via
+// wiring.App; decision.go treats a non-nil EvaluationService as a HARD
+// dependency now, not the fake runtime-b03 started against. This vindicated
+// the original design: no code in this package ever hardcoded a fake, so
+// the swap to the real predictor.EvaluationService was a wiring-layer
+// change only (internal/app/wiring), not an orchestrator change — this
+// package depends solely on the app.EvaluationService interface type. Tests
+// still inject internal/testutil/fakes.FakeEvaluationService where they
+// want to drive the pipeline without the real predictor.
 package orchestrator

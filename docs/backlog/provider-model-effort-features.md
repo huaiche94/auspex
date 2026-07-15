@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Backlog / TODO** — recorded, not scheduled into an active wave |
+| Status | **Phases 0–1 landed** (2026-07-14) — capture (#20 Phase 0) and cohort filtering (ADR-047) shipped; **Phases 2–3 remain** (empirical calibration, blocked on #11 data; Codex adapter wiring) |
 | Tracking | Issue [#20](https://github.com/huaiche94/auspex/issues/20); ordering decision in `docs/DECISION_LOG.md` D-10 |
 | Origin | Owner request, 2026-07-13: "這個專案是否有考慮到不同家使用 claude(model, effort), codex(model, reasoning, speed) 當作參數來做預測公式/模型" — audit found the answer is *no*, this document is the todo |
 | Related | `Auspex_ADD.md` §15.2/§15.3, ADR-041 (forecast layer), ADR-043 (multi-resource runway), DECISION_LOG D-02 (second-provider line deferred), issues #13, #11 |

@@ -5,7 +5,7 @@
 | Field | Value |
 |---|---|
 | Phase | 3.7 — Post Wave 2 Analysis |
-| Status | **Canonical.** This is the single source of truth for every feature Auspex's predictor pipeline uses or will use. Every future predictor implementation must reference features only through this registry (Constitution-analogous rule, stated by the repository owner in this phase). Adding a new predictor feature without updating this registry is a design error. |
+| Status | **Canonical at creation (Phase 3.7, Wave 2 analysis) — now a point-in-time snapshot.** When written, this was declared the single source of truth for every feature Auspex's predictor pipeline uses or will use, and predictor work of that phase referenced features through it (a Constitution-analogous rule the repository owner stated at the time). Because it lives in the frozen `wave2-analysis/` directory it is **not continuously maintained here**: the live sources of truth going forward are the code (`internal/features/**`, `internal/domain/**`) and the ADD's §14/§15/§16 feature lists — the same two sources every entry below is already traceable to. Read it as the Wave-2 reference it is, reconciling against those live sources. |
 | Method | Every feature below is grounded in either (a) real, verified code (`internal/features/**`, `internal/domain/**`) or (b) the ADD's own already-specified §14/§15/§16 feature lists. No feature is invented for this registry that isn't traceable to one of those two sources. |
 
 ## How to read this registry

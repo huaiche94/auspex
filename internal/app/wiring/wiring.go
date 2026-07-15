@@ -7,16 +7,17 @@
 // the orchestrator (internal/orchestrator), and eventually the daemon —
 // consumes without knowing which concrete implementation it got.
 //
-// As of runtime-b02, no real implementation of any of these services
-// exists (checkpoint's Progress Tree/State Checkpoint services,
-// predictor's evaluation service, this same role's own pause service are
-// all later nodes). That is by design, not a gap: this node builds the
-// wiring SHAPE and proves it against internal/testutil/fakes
+// This node (runtime-b02) built the wiring SHAPE first and proved it
+// against internal/testutil/fakes before any real service existed
 // (EXECUTION_DAG.md runtime-b02: "can start against
-// claude-provider/checkpoint/predictor fakes"). When the real
-// constructors land, populating Services with them instead of fakes is
-// the only change — no signature here moves, because every field is a
-// frozen interface type.
+// claude-provider/checkpoint/predictor fakes"). The real implementations
+// have since landed — checkpoint's Progress Tree/State Checkpoint
+// services, predictor's evaluation service, this role's own pause service
+// — and cmd/auspex/wire.go now populates Services with them for the binary.
+// The design promise held: because every field is a frozen interface type,
+// no signature here moved, so the same container still accepts a fake for a
+// test or a real implementation for production (see this package's
+// *_swap_test.go, which exercise both against one wiring).
 //
 // Root wiring (cmd/auspex/main.go) is NOT this package's job: the
 // contract-integrator/foundation roles own composing this container into

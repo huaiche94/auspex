@@ -46,6 +46,27 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **成本預測校準軌道（Phase 1）**
+  （[#72](https://github.com/huaiche94/auspex/issues/72)）：校準匯出現在
+  每列都帶上預測成本區間（`cost_low_usd` / `cost_high_usd` /
+  `cost_model_family`），由與 forecast card 相同的 `internal/pricing`
+  價目表依 token 分位數計價——因此校準衡量的正是使用者看到的那個成本
+  數字，不會有第二份會漂移的價目表（`internal/retention/export.go`，
+  純新增欄位，無需 migration）。`research/calibration/report.py` 新增
+  **成本區間涵蓋率**區段，把該預測區間與 `observations.py` 從 session
+  累計的 `total_cost_usd` 序列推導出的每回合成本差值做 join。這正是
+  #72 指出的 hook 模式突破口：不同於 `total_tokens` 實際值（僅
+  managed run 有——statusline 不帶每回合 token），每回合**成本**差值單
+  靠原生 hook 遙測即可推導，所以原生 hook 回合終於能在不使用
+  `auspex run` 的情況下把預測與實際 join 起來（在擁有者第一份實地資料
+  上為 156/157 筆）。報告會分開統計實際值落在區間之下（成本高估）與之上
+  （成本低估）；第一次實際執行顯示 91% 落在區間之上——正是 token 冷啟動
+  （#42）與未計入快取的計價（#66）所預測的系統性低估，如今以真實資料
+  量化出來。每回合成本的**實際值**仍屬 research 層的歸因推導
+  （`observations.py`），絕不由 capture-before-model 的 Go bridge 計算。
+  純新增匯出欄位 → 向後相容 → 不需 ADR（Constitution §3）。Phase 2
+  （依已標記 cohort 擬合成本殘差——`claude/opus/xhigh` 與
+  `claude/fable/xhigh` 兩個 cohort 已達 §15.2 門檻）仍以 #11 為前置條件。
 - **每個 turn 的預估時間（duration forecast，Phase 1）**（#62）：scope
   估計器現在會填入原本預留的 `ScopeEstimate.DurationP50/P90` 欄位——一個
   由分類後的 scope 推導出的 cold-start wall-clock 估計

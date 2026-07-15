@@ -56,8 +56,9 @@ type Dirs struct {
 }
 
 // AppName is the leaf directory/namespace segment used under each OS's base
-// directory (e.g. "auspex" under XDG_CONFIG_HOME, or "Auspex" under
-// macOS's Application Support).
+// directory. The constant is used verbatim on every OS, so the segment is
+// "auspex" everywhere — "auspex" under XDG_CONFIG_HOME and "auspex" under
+// macOS's Application Support alike (no per-OS casing).
 const AppName = "auspex"
 
 // ErrNoHomeDir is returned (wrapped) when a home directory is required to

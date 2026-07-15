@@ -1,6 +1,6 @@
 // Package buildinfo holds the minimal build/version metadata needed to back
-// the `auspex version` command. Values are hardcoded for the vertical-slice
-// vertical slice; wiring these to real ldflags-injected values (release
+// the `auspex version` command. Values are hardcoded for the vertical
+// slice; wiring these to real ldflags-injected values (release
 // tag, commit SHA, build date) is out of scope for foundation-01.
 package buildinfo
 

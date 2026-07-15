@@ -1,11 +1,13 @@
 // restoredryrun.go: checkpoint-b08's "Restore dry-run" deliverable
 // (agents/checkpoint.md Part B deliverable #9; Auspex_ADD.md §19.6
-// "Restore"). Actual restore-that-mutates-the-working-tree remains
-// explicitly out of vertical-slice scope (this node's own DAG risk note: "actual
-// restore is stretch/deferred") — app.RepositoryCheckpointService.Restore
-// (the frozen port method) NEVER writes to the working tree, index, or any
-// ref; it only reports, in full ADD §19.6 detail, what a real restore
-// WOULD do if one existed.
+// "Restore") — the REPORTING half of restore. RestoreDryRun NEVER writes
+// to the working tree, index, or any ref; it only reports, in full ADD
+// §19.6 detail, what a real restore WOULD do. The mutating half now ships
+// alongside it in restore.go (RestoreApply, issue #6 / ADR-048), which
+// replays a verified checkpoint's patches into the worktree — so the
+// never-writes guarantee is a property of THIS file's dry-run path, not of
+// restore as a whole. RestoreApply reuses these checks (it runs
+// RestoreDryRun first, then applies), keeping the two halves in agreement.
 //
 // ADD §19.6 lists restore's required checks almost verbatim as this file's
 // own steps: "verify checksum; verify repo identity; reject path
@@ -14,9 +16,8 @@
 // --exact; produce report." Every one of those is implemented below EXCEPT
 // the two that only apply to a MUTATING restore ("never delete extra files
 // unless --exact" has nothing to check without a real apply step) — dry-run
-// mutates nothing, so there is nothing to constrain there yet; that
-// constraint's real enforcement point is whatever future node builds actual
-// restore.
+// mutates nothing, so there is nothing to constrain there; that
+// constraint's real enforcement point is RestoreApply in restore.go.
 package repocheckpoint
 
 import (

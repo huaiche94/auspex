@@ -5,7 +5,7 @@
 | Field | Value |
 |---|---|
 | Source | `Auspex_ADD.md` + `Auspex_Parallel_Execution_Plan.md` + `agents/*.md` (canonical per those docs) |
-| Scope | Full task-level breakdown of the vertical-slice seven-role vertical slice |
+| Scope | Full task-level breakdown of the seven-role vertical slice |
 | Status | **Wave 1 integrated (`main` @ `3fb37ce`). Amended 2026-07-12 per ADR-041 (predictor forecast layer) before Wave 2 implementation begins.** |
 | Supersedes | The earlier nine-role (`A00`–`A08`) version of this document, archived in git history at commit `f1d9065` and referenced from `docs/archive/agent-packets-v1/`. |
 | Amendments | `docs/adr/0041-predictor-forecast-layer.md` — inserted `predictor-05b`/`predictor-05c`, corrected `predictor-07`/`predictor-08`/`predictor-11` dependency edges. See §5 Summary for the resulting task-count delta. |
@@ -43,7 +43,7 @@ worktree/branch delivers both, in the order given below.
    role/branch boundary (`checkpoint`, `claude-provider`, `predictor` →
    `runtime`).
 3. Total task count, total LOC, and total file count are **unchanged**
-   (82 tasks + 1 final integration; ≈23,850 LOC; ≈359 files) — this is a
+   (84 tasks + 1 final integration; ≈24,550 LOC; ≈367 files) — this is a
    regrouping of who does the same work in what sequence, not a scope
    change.
 
@@ -498,7 +498,7 @@ orchestration) — orchestrates five durable writes spanning `checkpoint`
 Part A and Part B stores inside one logical operation.
 
 **New structural risk introduced by consolidation:** `runtime` is now the
-single largest role (21 of 82 tasks, ≈6,850 LOC) and sits on the critical
+single largest role (21 of 84 tasks, ≈6,850 LOC) and sits on the critical
 path immediately before `qa`. If this role is understaffed or falls behind,
 it now blocks both the pause/scheduler guarantees *and* the entire
 CLI/API surface — previously those were two roles that could in principle

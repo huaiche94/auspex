@@ -149,6 +149,63 @@ func TestExportCalibration_DurationPair_LiveRoundTrip(t *testing.T) {
 	}
 }
 
+// TestExportCalibration_CostBand_FromShippedPricing pins the #72 predicted
+// cost band: the export prices each row's token quantiles through the same
+// internal/pricing table the forecast card renders (LowUSD = P50 × input
+// price, HighUSD = P90 × output price), so the calibration measures the
+// exact cost the user was shown. A row with no token forecast carries no
+// cost band (unknown is not zero — never a fabricated $0).
+func TestExportCalibration_CostBand_FromShippedPricing(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	// Opus-priced row: seed defaults token_p50=1000, token_p90=3000; opus
+	// is $5 in / $25 out → low = 1000×5/1e6, high = 3000×25/1e6. The model
+	// FAMILY resolves from the model_id substring "opus", exactly as the
+	// forecast card resolves it.
+	seedLabeledPrediction(t, db, "pred-cost", "turn-cost", newTime, "claude", "claude-opus-4-8", "opus", "xhigh")
+
+	// A row with NO token forecast must export NO cost band.
+	exec(t, db, `INSERT INTO predictions (
+			id, turn_id, predictor_id, predictor_version, feature_set_version,
+			quota_risk_score, context_risk_score, completion_risk_score,
+			blast_radius_risk_score, overall_risk_score,
+			confidence, calibrated, reason_codes_json, created_at
+		) VALUES ('pred-notok', 'turn-notok', 'rule', 'v1', 'fs1', 0.1, 0.2, 0.3, 0.4, 0.5, 'low', 0, '[]', ?)`,
+		ts(newTime.Add(time.Second)))
+
+	var buf bytes.Buffer
+	if _, err := e.ExportCalibration(ctx, &buf); err != nil {
+		t.Fatalf("ExportCalibration: %v", err)
+	}
+	records := decodeExportLines(t, buf.Bytes())
+	byTurn := map[string]ExportRecord{}
+	for _, r := range records {
+		byTurn[r.TurnID] = r
+	}
+
+	// Replicate EstimateTurnCost's exact arithmetic so the comparison is a
+	// true byte-for-byte float match, not an approximation.
+	wantLow := float64(1000) * 5 / 1_000_000
+	wantHigh := float64(3000) * 25 / 1_000_000
+
+	cost := byTurn["turn-cost"]
+	if cost.CostModelFamily == nil || *cost.CostModelFamily != "opus" {
+		t.Errorf("cost_model_family = %v, want opus", cost.CostModelFamily)
+	}
+	if cost.CostLowUSD == nil || *cost.CostLowUSD != wantLow {
+		t.Errorf("cost_low_usd = %v, want %v", cost.CostLowUSD, wantLow)
+	}
+	if cost.CostHighUSD == nil || *cost.CostHighUSD != wantHigh {
+		t.Errorf("cost_high_usd = %v, want %v", cost.CostHighUSD, wantHigh)
+	}
+
+	notok := byTurn["turn-notok"]
+	if notok.CostLowUSD != nil || notok.CostHighUSD != nil || notok.CostModelFamily != nil {
+		t.Errorf("row without a token forecast must carry no cost band: %+v", notok)
+	}
+}
+
 func TestExportCalibration_ArchivedRow_IdentitySurvivesRetention(t *testing.T) {
 	e, db, _ := newTestEngine(t)
 	ctx := context.Background()

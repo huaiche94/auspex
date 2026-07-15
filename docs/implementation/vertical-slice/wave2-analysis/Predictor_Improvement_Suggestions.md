@@ -114,7 +114,7 @@ against. Note for future waves: `qa-01`'s CI matrix and `qa-02`'s E2E test
 (neither built yet) are themselves integration-test-heavy nodes and would
 be a natural first real data point once built.
 
-### 2.7 Cross-platform / OS-conditional-logic multiplier (new suggestion, not in the prompt's example list)
+### 2.7 Cross-platform / OS-conditional-logic multiplier (new suggestion)
 
 **Evidence-based, n=2, flagged explicitly as low-confidence per
 `Calibration_Report.md` §6.** Both nodes in this wave's dataset that

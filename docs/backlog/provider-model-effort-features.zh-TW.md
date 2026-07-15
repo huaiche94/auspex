@@ -6,7 +6,7 @@
 
 | 欄位 | 值 |
 |---|---|
-| 狀態 | **Backlog／TODO**——已記錄，尚未排入任何進行中的 wave |
+| 狀態 | **Phase 0–1 已落地**（2026-07-14）——擷取（#20 Phase 0）與 cohort 篩選（ADR-047）已上線；**Phase 2–3 待辦**（經驗校準，卡在 #11 資料；Codex adapter 接線） |
 | 追蹤 | Issue [#20](https://github.com/huaiche94/auspex/issues/20)；排序決策見 `docs/DECISION_LOG.md` D-10 |
 | 起源 | Owner 於 2026-07-13 提出的要求：「這個專案是否有考慮到不同家使用 claude(model, effort), codex(model, reasoning, speed) 當作參數來做預測公式/模型」——稽核後發現答案是*沒有*，本文件即為對應的 todo |
 | 相關 | `Auspex_ADD.md` §15.2/§15.3、ADR-041（forecast 層）、ADR-043（multi-resource runway）、DECISION_LOG D-02（第二個 provider 這條線已延後）、issue #13、#11 |

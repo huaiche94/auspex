@@ -7,7 +7,7 @@
 | 欄位 | 值 |
 |---|---|
 | 來源 | `Auspex_ADD.md` + `Auspex_Parallel_Execution_Plan.md` + `agents/*.md`（依上述文件為正典） |
-| 範圍 | 垂直切片（vertical-slice）七角色垂直切片的完整任務層級分解 |
+| 範圍 | 七角色垂直切片的完整任務層級分解 |
 | 狀態 | **Wave 1 已整合（`main` @ `3fb37ce`）。已於 2026-07-12 依 ADR-041（predictor forecast 層）在 Wave 2 實作開始前修訂。** |
 | 取代 | 本文件較早的九角色（`A00`–`A08`）版本，封存於 git 歷史中的提交 `f1d9065`，並由 `docs/archive/agent-packets-v1/` 參照。 |
 | 修訂 | `docs/adr/0041-predictor-forecast-layer.md` — 插入 `predictor-05b`／`predictor-05c`，修正 `predictor-07`／`predictor-08`／`predictor-11` 的相依邊。所產生的任務數變化見 §5 摘要。 |
@@ -41,8 +41,8 @@ Orchestration）。每個部分保有自己的任務序列、專屬路徑與 mig
    分支——已不再存在需要以替身跨團隊協調的理由。軟性／可用替身的相依，
    現在只用於任務確實跨越角色／分支邊界之處（`checkpoint`、
    `claude-provider`、`predictor` → `runtime`）。
-3. 總任務數、總 LOC、總檔案數**皆未改變**（82 項任務 + 1 項最終整合；
-   ≈23,850 LOC；≈359 個檔案）——這是「同樣的工作由誰、依什麼順序來做」
+3. 總任務數、總 LOC、總檔案數**皆未改變**（84 項任務 + 1 項最終整合；
+   ≈24,550 LOC；≈367 個檔案）——這是「同樣的工作由誰、依什麼順序來做」
    的重新分組，不是範圍變更。
 
 下方的**合併順序（Merge order）**是 `Auspex_Parallel_Execution_Plan.md`
@@ -492,7 +492,7 @@ flowchart TD
 邏輯操作內，協調橫跨 `checkpoint` Part A 與 Part B 儲存體的五次持久寫
 入。
 
-**因整併而新引入的結構性風險：** `runtime` 現在是單一最大的角色（82 項
+**因整併而新引入的結構性風險：** `runtime` 現在是單一最大的角色（84 項
 任務中佔 21 項，≈6,850 LOC），且緊接在 `qa` 之前位於關鍵路徑上。若此角
 色人力不足或進度落後，它會同時阻擋暫停／排程器保證*以及*整個 CLI／API
 介面——先前那是兩個原則上可以各自獨立補強的角色。

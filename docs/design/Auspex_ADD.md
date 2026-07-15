@@ -5845,6 +5845,39 @@ row count 與 digest，**驗證通過才刪除** raw rows（fail-closed，絕不
 vertical-slice 角色擁有）。詳見
 `docs/adr/0046-tiered-telemetry-retention.md`。
 
+## ADR-047 — Token forecaster 的相似 turn cohort 後備階梯（#20 Phase 1）
+
+**Decision：** 為 usage observation（`provider.usage.observed`）加上
+`model_id`/`effort` 身分標記（擷取，純增量式；標記缺席不阻擋任何事），並依
+ADR-044「變更需要 ADR」授權，將凍結 port
+`FeatureDataSource.RecentSimilarTurnTokens` 由裸 `[]float64` 改為
+`SimilarTurnTokens{Samples, Rung}`，讓 confidence/reason codes 能說明是哪一個
+cohort rung 回答。`SQLDataSource` 實作由具體到抽象的後備階梯（model+effort →
+model family → provider → session-recent），由樣本數 ≥ 8（ADD §15.2 門檻）的第
+一個 rung 回答。詳見 `docs/adr/0047-token-cohort-fallback-ladder.md`。
+
+## ADR-048 — 真正的 repository checkpoint restore（issue #6）
+
+**Decision：** Restore 以最狹窄的異動性基本操作重播 checkpoint——staged patch →
+`git apply --binary --index`、unstaged → `git apply --binary`、untracked.zip 依
+擷取時的路徑安全規則加上嚴格 no-clobber 逐項解壓。`git apply` 無法移動 HEAD／
+切分支／建 commit，「不異動 ref」是結構性保證而非慣例（Constitution 不可協商項
+#9）；測試斷言 restore 前後 HEAD、分支、commit 數逐位元組相同。沿用既有 §19.6
+dry-run 為承重前置關卡；凍結 request 純增量新增 `Apply bool`（零值維持
+ADR-048 之前的 dry-run 行為，依 ADR-044 修訂紀律，已補 CONTRACT_FREEZE.md 條
+目）。詳見 `docs/adr/0048-repository-checkpoint-restore.md`。
+
+## ADR-049 — 文件重整：design 移至 `docs/design/`、各資料夾加 README、新增繁體中文翻譯
+
+**Decision：** 三份 design 文件移至 `docs/design/`（檔名不變，故以文件名引用章節
+仍清楚可 grep）；維護中文件更新路徑參照；歷史紀錄（已核准 ADR、`docs/archive/**`、
+`docs/implementation/**` 進度紀錄、程式碼註解、checksum 過的 fixture）一律不改寫。
+每個資料夾新增 `README.md` 介紹（被測試列舉或 checksum 的 fixture 目錄除外）。
+雙語政策：每份文件性 markdown 都有 `<name>.zh-TW.md` 姊妹檔並互相交叉連結，且
+**文件原始撰寫語言即為規範文本**；唯 `docs/design/Auspex_ADD.md` 與
+`docs/DECISION_LOG.md` 為繁中原著規範、不設姊妹檔。詳見
+`docs/adr/0049-docs-reorg-bilingual.md`。
+
 ## ADR-050 — Hook 子指令 argv 採 kebab-case（正式化已出貨 CLI，取代附錄 E.3 的 PascalCase）
 
 **Decision：** `auspex hook <provider> <subcommand>` 的 CLI argv 採 kebab-case

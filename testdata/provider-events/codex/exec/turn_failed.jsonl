@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019f0000-3333-7aaa-8bbb-ccccdddd0202"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","item_type":"command_execution","command":"exit 7","aggregated_output":"","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","item_type":"command_execution","command":"exit 7","aggregated_output":"","exit_code":7,"status":"failed"}}
+{"type":"error","message":"FIXTURE-STREAM-ERROR-500 that must never persist."}
+{"type":"turn.failed","error":{"message":"FIXTURE-TURN-FAILED-MESSAGE-77"}}

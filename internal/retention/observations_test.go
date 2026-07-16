@@ -226,3 +226,67 @@ func TestExportObservations_NoPromptsPathsOrUnlistedFieldsInOutput(t *testing.T)
 		t.Errorf("whitelisted fields missing:\n%s", out)
 	}
 }
+
+// TestExportObservations_ToolOpAggregates_Whitelisted pins ADR-052
+// approval touch 3: the five #67 per-turn file-operation aggregates on
+// provider.turn.completed export through the whitelist projection —
+// counts and one ratio, absent-not-zero when the source turn carried
+// only a partial (or no) aggregate.
+func TestExportObservations_ToolOpAggregates_Whitelisted(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	// A full five-field turn (the worked example: 3 ops, 2 distinct
+	// files, 1 repeat, max 2), plus a hostile future-producer sibling key
+	// that must stay unexportable by construction.
+	seedEvent(t, db, "ev-full", "provider.turn.completed", newTime, "sessT", "turn-1",
+		`{"distinct_files_touched":2,"total_file_ops":3,"repeated_ops":1,"repeat_rate":0.3333333333333333,"max_ops_on_one_file":2,"most_touched_file":"/tmp/leaky.go"}`)
+	// The transcript-less degrade: total only.
+	seedEvent(t, db, "ev-degraded", "provider.turn.completed", newTime.Add(time.Minute), "sessT", "turn-2",
+		`{"total_file_ops":4}`)
+	// A pre-#67 turn: no aggregate keys at all.
+	seedEvent(t, db, "ev-old", "provider.turn.completed", newTime.Add(2*time.Minute), "sessT", "turn-3",
+		`{"stop_hook_active":false}`)
+
+	var buf bytes.Buffer
+	if _, err := e.ExportObservations(ctx, &buf); err != nil {
+		t.Fatalf("ExportObservations: %v", err)
+	}
+	records := decodeObservationLines(t, buf.Bytes())
+	if len(records) != 3 {
+		t.Fatalf("got %d records, want 3", len(records))
+	}
+	full, degraded, old := records[0], records[1], records[2]
+
+	if full.DistinctFilesTouched == nil || *full.DistinctFilesTouched != 2 ||
+		full.TotalFileOps == nil || *full.TotalFileOps != 3 ||
+		full.RepeatedOps == nil || *full.RepeatedOps != 1 ||
+		full.MaxOpsOnOneFile == nil || *full.MaxOpsOnOneFile != 2 {
+		t.Errorf("full aggregate fields: %+v", full)
+	}
+	if full.RepeatRate == nil || *full.RepeatRate < 0.333 || *full.RepeatRate > 0.334 {
+		t.Errorf("full repeat_rate = %v, want 1/3", full.RepeatRate)
+	}
+
+	if degraded.TotalFileOps == nil || *degraded.TotalFileOps != 4 {
+		t.Errorf("degraded total_file_ops = %v, want 4", degraded.TotalFileOps)
+	}
+	if degraded.DistinctFilesTouched != nil || degraded.RepeatedOps != nil ||
+		degraded.RepeatRate != nil || degraded.MaxOpsOnOneFile != nil {
+		t.Errorf("degraded record zero-filled identity fields: %+v (absence is not zero)", degraded)
+	}
+
+	if old.DistinctFilesTouched != nil || old.TotalFileOps != nil || old.RepeatedOps != nil ||
+		old.RepeatRate != nil || old.MaxOpsOnOneFile != nil {
+		t.Errorf("pre-#67 record zero-filled aggregate fields: %+v", old)
+	}
+
+	// The hostile sibling key — and its path value — cannot pass the
+	// projection, whitelist-by-construction.
+	out := buf.String()
+	for _, forbidden := range []string{"most_touched_file", "/tmp/leaky.go"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("export leaked %q:\n%s", forbidden, out)
+		}
+	}
+}

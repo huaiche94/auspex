@@ -109,6 +109,22 @@ type ObservationRecord struct {
 	// (#20 Phase 1) — one field serves both.
 	Effort       *string `json:"effort,omitempty"`
 	FailureClass *string `json:"failure_class,omitempty"`
+
+	// provider.turn.completed, issue #67 slice 3a (ADR-052 approval touch
+	// 3): the five per-turn file-operation aggregates the PostToolUse
+	// capture stamps at Stop. Pure counts and one ratio — the underlying
+	// file paths were interned to in-memory ordinals and discarded before
+	// these numbers were ever persisted (the source event's payload
+	// carries no path either, by internal/telemetry/claude/toolops.go's
+	// construction), so nothing here can join back to a file, a prompt,
+	// or an identity. repeat_rate is absent (not zero) when
+	// total_file_ops was 0 or when only the hook-counted degrade total
+	// was measurable.
+	DistinctFilesTouched *int64   `json:"distinct_files_touched,omitempty"`
+	TotalFileOps         *int64   `json:"total_file_ops,omitempty"`
+	RepeatedOps          *int64   `json:"repeated_ops,omitempty"`
+	RepeatRate           *float64 `json:"repeat_rate,omitempty"`
+	MaxOpsOnOneFile      *int64   `json:"max_ops_on_one_file,omitempty"`
 }
 
 // ObservationsSummary is what ExportObservations reports about a
@@ -224,6 +240,11 @@ func observationRecordFromRow(row map[string]any) ObservationRecord {
 	rec.ResetsAt = payloadString(payload, "resets_at")
 	rec.Effort = payloadString(payload, "effort")
 	rec.FailureClass = payloadString(payload, "failure_class")
+	rec.DistinctFilesTouched = payloadInt(payload, "distinct_files_touched")
+	rec.TotalFileOps = payloadInt(payload, "total_file_ops")
+	rec.RepeatedOps = payloadInt(payload, "repeated_ops")
+	rec.RepeatRate = payloadFloat(payload, "repeat_rate")
+	rec.MaxOpsOnOneFile = payloadInt(payload, "max_ops_on_one_file")
 	return rec
 }
 

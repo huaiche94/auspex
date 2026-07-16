@@ -11,6 +11,11 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Fixed（修正）
 
+- **SIGTERM 現在會取消根 context**
+  （[#88](https://github.com/huaiche94/auspex/issues/88)）：CLI context
+  以 `signal.NotifyContext(os.Interrupt, SIGTERM)` 包裹，kill auspex
+  不再孤兒化受管 provider 子程序（E2E：TERM → <1 秒退出、無孤兒）。
+
 - **Migration runner 會套用回填（backfilled，號碼有缺口／gap-numbered）的 migration**
   （[#22](https://github.com/huaiche94/auspex/issues/22)）：`Migrate` 現在會以「相對於
   `schema_migrations` 的集合差（set difference）」來計算待執行的工作，而不是「所有大於
@@ -45,6 +50,18 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
   `<name>.zh-TW.md` 繁體中文對照文件。英文仍是唯一的規範性文本。
 
 ### Added（新增）
+
+- **Statusline v4 —— 觀測三件組優先（#90 Phase A）**：Claude 行與
+  `hook codex status` 現在以最差配額窗（+ 重置時間）、runway ETA、
+  **今日花費與節奏**（`today $X · pace → ~$Y by 24:00`）領銜，
+  per-turn 預測片段降級到卡片表面。節奏為已捕捉成本實際值的純聚合
+  （今日無成本事件 → 區段省略，絕不顯示 $0.00；不足 10 分鐘的窗
+  不做外推）。新增 `internal/pace` 讀取輔助。
+- **`auspex doctor` capture 健康檢查（#90）**：各 provider 事件數 +
+  最後捕捉時間戳、最近 20 回合的 token 實際值覆蓋率（**0% 覆蓋率
+  直接 FAIL** —— 靜默斷流守門），以及 runway 產出檢查。對
+  `auspex.doctor.v1` 為加法式、唯讀。
+
 
 - **`auspex report [--window 7d] [--json]` —— 個人用量報告（#91）**：
   對本地儲存的唯讀報告 —— 總計（回合/session/成本/各類 token/API

@@ -10,6 +10,12 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Fixed
 
+- **SIGTERM now cancels the root context**
+  ([#88](https://github.com/huaiche94/auspex/issues/88)):
+  `signal.NotifyContext(os.Interrupt, SIGTERM)` wraps the CLI context, so
+  killing auspex no longer orphans a managed provider child (E2E: TERM →
+  exit <1s, no orphan).
+
 - **Migration runner applies backfilled (gap-numbered) migrations**
   ([#22](https://github.com/huaiche94/auspex/issues/22)): `Migrate` now
   computes pending work as a set difference against `schema_migrations`
@@ -54,6 +60,20 @@ follow [SemVer](https://semver.org/) once releases begin.
   sole normative text.
 
 ### Added
+
+- **Statusline v4 — observational trio first (#90 Phase A)**: both the
+  Claude line and `hook codex status` now lead with worst quota window
+  (+ reset time), runway ETA, and **today's spend + pace**
+  (`today $X · pace → ~$Y by 24:00`), demoting per-turn forecast
+  fragments to card surfaces. Pace is pure aggregation of captured cost
+  actuals (no cost events today → segment omitted, never $0.00; windows
+  under 10 minutes don't extrapolate). New `internal/pace` read helper.
+- **`auspex doctor` capture-health checks (#90)**: per-provider event
+  counts + last-capture timestamps, token-actual coverage over the last
+  20 turns (**0% coverage fails the doctor** — the silent-breakage
+  guard), and runway-production checks. Additive to
+  `auspex.doctor.v1`, read-only.
+
 
 - **`auspex report [--window 7d] [--json]` — personal usage report (#91)**:
   read-only report over the local store — totals (turns/sessions/cost/

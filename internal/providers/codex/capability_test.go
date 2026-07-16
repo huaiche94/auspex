@@ -33,14 +33,18 @@ func TestCapabilities_HookCapableInstallWithSessions(t *testing.T) {
 	want := domain.ProviderCapabilities{
 		PrePromptGate:         true,
 		HookAdditionalContext: true,
+		ManagedExecution:      true,
+		StructuredEventStream: true,
 		ExactTurnUsage:        true,
 		ContextWindowUsage:    true,
 		RollingQuotaUsage:     true,
 		QuotaResetTimestamp:   true,
-		// Everything else is deliberately false in Phase 1 — see the
-		// Capabilities doc comment for the per-field reasoning (notably
-		// SessionResume/SessionFork: present in the CLI but not driven by
-		// Auspex, i.e. degraded, recorded conservatively as false).
+		// Everything else is deliberately false — see the Capabilities
+		// doc comment for the per-field reasoning (notably SessionResume/
+		// SessionFork: `codex exec resume` exists in the CLI but is not
+		// driven by Auspex, i.e. degraded, recorded conservatively as
+		// false; and TurnInterrupt: the managed runner's context-cancel
+		// kill is process hygiene, not a graceful interrupt).
 	}
 	if caps != want {
 		t.Errorf("caps = %+v, want %+v", caps, want)
@@ -56,8 +60,24 @@ func TestCapabilities_NoSessionsDir_RolloutCapsAbsent(t *testing.T) {
 	if !caps.PrePromptGate || !caps.HookAdditionalContext {
 		t.Error("hook capabilities must not depend on the sessions dir")
 	}
-	if caps.ExactTurnUsage || caps.ContextWindowUsage || caps.RollingQuotaUsage || caps.QuotaResetTimestamp {
+	if caps.ContextWindowUsage || caps.RollingQuotaUsage || caps.QuotaResetTimestamp {
 		t.Errorf("rollout-derived capabilities declared without a sessions dir: %+v", caps)
+	}
+	// ExactTurnUsage survives the missing rollout on an exec-capable
+	// version: the managed runner reads turn.completed.usage directly.
+	if !caps.ManagedExecution || !caps.StructuredEventStream || !caps.ExactTurnUsage {
+		t.Errorf("managed-exec capabilities must not depend on the sessions dir: %+v", caps)
+	}
+}
+
+func TestCapabilities_PreExecVersionNoSessions_NothingUsageish(t *testing.T) {
+	r := &CapabilityReader{SessionsDir: "/probe/sessions", Stat: statMissing}
+	caps, err := r.Capabilities(context.Background(), codexInstallation("0.143.0"))
+	if err != nil {
+		t.Fatalf("Capabilities: %v", err)
+	}
+	if caps != (domain.ProviderCapabilities{}) {
+		t.Errorf("caps = %+v, want all false (pre-exec version, no rollout dir)", caps)
 	}
 }
 
@@ -70,6 +90,9 @@ func TestCapabilities_PreHookVersion_HookCapsAbsent(t *testing.T) {
 		}
 		if caps.PrePromptGate || caps.HookAdditionalContext {
 			t.Errorf("version %q: hook capabilities declared for a pre-hook/unparseable version", version)
+		}
+		if caps.ManagedExecution || caps.StructuredEventStream {
+			t.Errorf("version %q: managed-exec capabilities declared for a pre-exec/unparseable version", version)
 		}
 	}
 }

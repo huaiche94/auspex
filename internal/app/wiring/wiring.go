@@ -166,6 +166,16 @@ type HookSupport struct {
 	// orchestrator.HookDeps.Bootstrapper's own documented contract.
 	Bootstrapper *orchestrator.SessionBootstrapper
 
+	// CodexStatus optionally enables `auspex hook codex status` (issue
+	// #9 Phase 1b): the DB read-back a stdin-less caller (tmux) uses to
+	// render the latest Codex session's one-line status. The real value is
+	// an orchestrator.CodexStatusStore over the same *sqlite.DB
+	// cmd/auspex/wire.go composes; nil degrades the command to the bare
+	// "ax»" line per orchestrator.HookDeps.CodexStatus's own documented
+	// contract — the right degrade for compositions without an events
+	// store to read from.
+	CodexStatus orchestrator.CodexStatusReader
+
 	// Forecast optionally enables the issue-#14 forecast surfaces: the
 	// UserPromptSubmit hook's additionalContext card, the statusline
 	// --emit-line display, and `auspex evaluate`'s card output. Like
@@ -274,6 +284,7 @@ func (a *App) RootCmd() *cobra.Command {
 		Forecast:     a.services.Hooks.Forecast,
 		Bootstrapper: a.services.Hooks.Bootstrapper,
 		OpenTurns:    a.services.Hooks.OpenTurns,
+		CodexStatus:  a.services.Hooks.CodexStatus,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()
@@ -299,6 +310,12 @@ func (a *App) RootCmd() *cobra.Command {
 	replaceSubcommand(root, "hook", func(short string) *cobra.Command {
 		newHook := &cobra.Command{Use: "hook", Short: short}
 		newHook.AddCommand(cli.NewHookClaudeCmd(hookDeps))
+		// codex (issue #9 Phase 1): the same deps drive the codex subtree —
+		// deliberately, so the gate `auspex hook codex user-prompt-submit`
+		// enforces is the exact evaluation path the claude hook runs, and
+		// codex telemetry persists through the same provider-agnostic
+		// EventStore (Event.Provider distinguishes the rows).
+		newHook.AddCommand(cli.NewHookCodexCmd(hookDeps))
 		return newHook
 	})
 

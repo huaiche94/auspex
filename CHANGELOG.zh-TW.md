@@ -46,6 +46,14 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **`auspex report [--window 7d] [--json]` —— 個人用量報告（#91）**：
+  對本地儲存的唯讀報告 —— 總計（回合/session/成本/各類 token/API
+  時間）、provider × model × effort 分解、右尺寸提示（cohort 中位數，
+  n≥8 才顯示、以觀察句式呈現）、cache 衛生區段（read-vs-fresh 比 +
+  cache-creation 顛簸旗標）、配額事件 + 最近逼近值、以及成本最高的
+  5 個回合。成本歸因鏡像校準的 bracketing（無基準 → 無差分，絕不
+  捏造零值）；全程 unknown ≠ zero；`--json` = `auspex.report.v1`。
+
 - **Codex 的 managed one-shot 模式（#9，M7 Phase 1）**：`auspex run
   --provider codex -- "<prompt>"` 會 spawn `codex exec --json`、解析
   JSONL 流（fixtures 對 v0.144.4 binary 內嵌 schema 釘死）、正規化進

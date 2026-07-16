@@ -5903,6 +5903,20 @@ cache-creation）、`total_tokens`（= input + output，對齊凍結的
 已接受缺口：archived 列缺 token 實際值（retention 範圍未來可補）。詳見
 `docs/adr/0051-turn-usage-from-stop-transcript.md`。
 
+## ADR-052 — 事件 payload 與匯出表面的 ADR 觸發條件（並核准 #67 capture step）
+
+**Decision：** ADR 觸發條件為四種實質而非「新增 payload 欄位」動作本身：
+①解析新資料來源；②語義凍結或分歧；③擴充版本化匯出表面（observations
+白名單、校準匯出、daemon API schema）；④任何非加法變更。加法式、僅數字、
+fail-open、語義已記錄、未入版本化表面的 payload 鍵免 ADR。此裁決追認
+PR #73/duration rail 的免 ADR 先例、解釋 ADR-051 的必要性（新來源＋語義，
+非欄位本身）、並維持 §7.6 對 #67 的要求（觸發③）。同時核准 #67 slice 3a
+三觸點：`post-tool-use` hook 子指令、turn.completed 五個聚合欄位
+（distinct_files_touched/total_file_ops/repeated_ops/repeat_rate/
+max_ops_on_one_file）、observations 白名單擴充。隱私：路徑永不持久化
+（含 hash），行程內序號化計數後即丟棄。詳見
+`docs/adr/0052-additive-payload-adr-triggers.md`。
+
 ---
 
 # 34. Codex Execution Contract

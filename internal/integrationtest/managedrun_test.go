@@ -48,6 +48,9 @@ const (
 	managedRunSession  = "sess-managed-run"
 	managedRunWorktree = "wt-managed-run"
 	managedRunPrompt   = "implement a small fix"
+	// The codex managed exec E2E (issue #9 M7 Phase 1) runs against its
+	// own seeded session so the two providers' event trails never blur.
+	managedExecSession = "sess-managed-exec"
 )
 
 // buildFakeProviderBinary compiles internal/managed/testdata/fakeprovider
@@ -114,6 +117,8 @@ func buildManagedRunRoot(t *testing.T, evalOverride app.EvaluationService) (*cob
 			[]any{managedRunWorktree, "repo-mr", "/tmp/repo-mr", "/tmp/repo-mr/.git", now, now}},
 		{`INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, started_at) VALUES (?, ?, ?, ?, ?)`,
 			[]any{managedRunSession, managedRunWorktree, "claude", "managed_stream_json", now}},
+		{`INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, started_at) VALUES (?, ?, ?, ?, ?)`,
+			[]any{managedExecSession, managedRunWorktree, "codex", "managed_stream_json", now}},
 	}
 	for _, s := range seed {
 		if _, err := db.Conn().ExecContext(ctx, s.q, s.args...); err != nil {
@@ -368,6 +373,229 @@ func TestManagedRun_EndToEnd_BlockRefusesToSpawn(t *testing.T) {
 	if started != 1 {
 		t.Errorf("turn.started events = %d, want 1 (the gate's own record of the blocked attempt)", started)
 	}
+}
+
+// TestManagedRunCodex_EndToEnd_GatePersistedEventsAttribution is the
+// codex analog of the claude E2E above (issue #9 M7 Phase 1): the REAL
+// `auspex run --provider codex` command over the REAL production stack,
+// spawning the same compiled fake provider pointed at the SYNTHETIC
+// `codex exec --json` fixture (testdata/provider-events/codex/exec —
+// provenance in internal/managed/codexstream_test.go; no real codex
+// binary runs, no provider quota is spent). HOME is isolated to a temp
+// dir so nothing can accidentally read the host's real ~/.codex state.
+func TestManagedRunCodex_EndToEnd_GatePersistedEventsAttribution(t *testing.T) {
+	bin := buildFakeProviderBinary(t)
+	argvFile := filepath.Join(t.TempDir(), "argv.json")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecStreamFixture(t, "normal.jsonl"))
+	t.Setenv("AUSPEX_FAKE_ARGV_FILE", argvFile)
+
+	root, db := buildManagedRunRoot(t, nil)
+	ctx := context.Background()
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"run",
+		"--provider", "codex",
+		"--session-id", managedExecSession,
+		"--worktree-id", managedRunWorktree,
+		"--provider-bin", bin,
+		"--", managedRunPrompt,
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("auspex run --provider codex over the real stack: %v\nstderr: %s", err, stderr.String())
+	}
+
+	// --- attribution JSON -------------------------------------------------
+	var out managedRunAttribution
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("stdout is not one attribution JSON document: %v\n%s", err, stdout.String())
+	}
+	if out.SchemaVersion != "auspex.run.v1" || out.SessionID != managedExecSession || out.TurnID == "" {
+		t.Errorf("attribution = %+v, want auspex.run.v1 / %s / non-empty turn", out, managedExecSession)
+	}
+	if out.EvaluationID == nil || *out.EvaluationID == "" {
+		t.Error("evaluation_id is null/empty — the gate did not run")
+	}
+	if out.ExitCode != 0 {
+		t.Errorf("exit_code = %d, want 0", out.ExitCode)
+	}
+	if out.IsError == nil || *out.IsError {
+		t.Errorf("is_error = %v, want false (the stream's turn.completed)", out.IsError)
+	}
+	// The exec stream reports no cost/duration; the attribution must say
+	// null, never a fabricated figure (unknown is not zero).
+	if out.TotalCostUSD != nil || out.DurationMs != nil {
+		t.Errorf("cost/duration = %v/%v, want null/null for codex exec", out.TotalCostUSD, out.DurationMs)
+	}
+	// turn.started (gate) + session.started + turn.completed + usage.
+	if out.EventsPersisted != 4 {
+		t.Errorf("events_persisted = %d, want 4", out.EventsPersisted)
+	}
+
+	// --- events durably persisted under provider=codex, one TurnID -------
+	countEvents := func(query string, args ...any) int {
+		t.Helper()
+		var n int
+		if err := db.Conn().QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+			t.Fatalf("count %q: %v", query, err)
+		}
+		return n
+	}
+	for _, eventType := range []string{"provider.turn.started", "provider.session.started", "provider.turn.completed", "provider.usage.observed"} {
+		if n := countEvents(`SELECT COUNT(*) FROM events WHERE event_type = ? AND provider = 'codex' AND session_id = ? AND turn_id = ?`,
+			eventType, managedExecSession, out.TurnID); n != 1 {
+			t.Errorf("%s rows (provider=codex, turn-stamped) = %d, want 1", eventType, n)
+		}
+	}
+	// Exact usage numbers under the shared vocabulary: fresh input
+	// 4200-3072=1128, cache read 3072, output 180, reasoning 64, total
+	// 1128+180=1308 — deliberately NOT codex's cached-inclusive 4380.
+	var usagePayloadJSON string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT payload_json FROM events WHERE event_type = 'provider.usage.observed' AND turn_id = ?`, out.TurnID,
+	).Scan(&usagePayloadJSON); err != nil {
+		t.Fatalf("read usage payload: %v", err)
+	}
+	var usagePayload map[string]any
+	if err := json.Unmarshal([]byte(usagePayloadJSON), &usagePayload); err != nil {
+		t.Fatalf("decode usage payload: %v", err)
+	}
+	if usagePayload["input_tokens"] != 1128.0 || usagePayload["cache_read_input_tokens"] != 3072.0 ||
+		usagePayload["output_tokens"] != 180.0 || usagePayload["reasoning_output_tokens"] != 64.0 ||
+		usagePayload["total_tokens"] != 1308.0 {
+		t.Errorf("usage payload = %v, want 1128/3072/180/64/1308", usagePayload)
+	}
+	// session.started carries the provider's own thread locator.
+	var threadPayloadJSON string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT payload_json FROM events WHERE event_type = 'provider.session.started' AND turn_id = ?`, out.TurnID,
+	).Scan(&threadPayloadJSON); err != nil {
+		t.Fatalf("read session.started payload: %v", err)
+	}
+	if !bytes.Contains([]byte(threadPayloadJSON), []byte("019f0000-3333-7aaa-8bbb-ccccdddd0201")) {
+		t.Errorf("session.started payload = %s, want the fixture's thread_id", threadPayloadJSON)
+	}
+
+	// Privacy: neither the raw prompt nor the fixture's item/agent text
+	// may reach the database (Constitution §7 rule 2).
+	for _, needle := range []string{managedRunPrompt, "FIXTURE-AGENT-TEXT-42", "echo 21+21"} {
+		if n := countEvents(`SELECT COUNT(*) FROM events WHERE payload_json LIKE ?`, "%"+needle+"%"); n != 0 {
+			t.Errorf("%d event payloads contain %q", n, needle)
+		}
+	}
+
+	// --- argv proof: exactly ADD §21.8's `codex exec --json <prompt>` ----
+	argvJSON, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("argv file: %v", err)
+	}
+	var argv []string
+	if err := json.Unmarshal(argvJSON, &argv); err != nil {
+		t.Fatalf("decoding argv: %v", err)
+	}
+	want := []string{"exec", "--json", managedRunPrompt}
+	if len(argv) != len(want) {
+		t.Fatalf("argv = %v, want %v", argv, want)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Fatalf("argv[%d] = %q, want %q", i, argv[i], want[i])
+		}
+	}
+
+	// Human surface: relayed JSONL went to stderr, stdout stayed machine-pure.
+	if !bytes.Contains(stderr.Bytes(), []byte(`"type":"turn.completed"`)) {
+		t.Errorf("stderr lacks the relayed exec JSONL lines:\n%s", stderr.String())
+	}
+}
+
+// TestManagedRunCodex_EndToEnd_TurnFailedSurfaced drives the failure
+// fixture end to end: the provider exits 1 after emitting turn.failed,
+// and the run must surface a non-zero exit + is_error attribution while
+// persisting provider.turn.failed (never a fabricated usage event, and
+// never the failure message's text — only its length).
+func TestManagedRunCodex_EndToEnd_TurnFailedSurfaced(t *testing.T) {
+	bin := buildFakeProviderBinary(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecStreamFixture(t, "turn_failed.jsonl"))
+	t.Setenv("AUSPEX_FAKE_EXIT_CODE", "1")
+
+	root, db := buildManagedRunRoot(t, nil)
+	ctx := context.Background()
+
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{
+		"run",
+		"--provider", "codex",
+		"--session-id", managedExecSession,
+		"--worktree-id", managedRunWorktree,
+		"--provider-bin", bin,
+		"--", managedRunPrompt,
+	})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("a provider that ran and failed is attribution data, not a command error: %v\nstderr: %s", err, stderr.String())
+	}
+	var out managedRunAttribution
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("decode attribution: %v\n%s", err, stdout.String())
+	}
+	if out.ExitCode != 1 {
+		t.Errorf("exit_code = %d, want 1 (the provider's own non-zero exit surfaced)", out.ExitCode)
+	}
+	if out.IsError == nil || !*out.IsError {
+		t.Errorf("is_error = %v, want true (the stream's turn.failed)", out.IsError)
+	}
+
+	var failedPayloadJSON string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT payload_json FROM events WHERE event_type = 'provider.turn.failed' AND provider = 'codex' AND turn_id = ?`, out.TurnID,
+	).Scan(&failedPayloadJSON); err != nil {
+		t.Fatalf("read turn.failed payload: %v", err)
+	}
+	var failedPayload map[string]any
+	if err := json.Unmarshal([]byte(failedPayloadJSON), &failedPayload); err != nil {
+		t.Fatalf("decode turn.failed payload: %v", err)
+	}
+	if failedPayload["turn_failed_seen"] != true || failedPayload["failure_message_len"] != 30.0 || failedPayload["error_events"] != 1.0 {
+		t.Errorf("turn.failed payload = %v", failedPayload)
+	}
+
+	var usageRows int
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM events WHERE event_type = 'provider.usage.observed' AND turn_id = ?`, out.TurnID,
+	).Scan(&usageRows); err != nil {
+		t.Fatalf("count usage rows: %v", err)
+	}
+	if usageRows != 0 {
+		t.Errorf("usage rows = %d, want 0 — no turn.completed means no usage observation", usageRows)
+	}
+
+	// The failure texts must never persist (length-only discipline).
+	for _, needle := range []string{"FIXTURE-TURN-FAILED-MESSAGE-77", "FIXTURE-STREAM-ERROR-500"} {
+		var n int
+		if err := db.Conn().QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE payload_json LIKE ?`, "%"+needle+"%").Scan(&n); err != nil {
+			t.Fatalf("scan needle: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("%d event payloads contain %q", n, needle)
+		}
+	}
+}
+
+func codexExecStreamFixture(t *testing.T, name string) string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Join("..", "..", "testdata", "provider-events", "codex", "exec", name))
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	return abs
 }
 
 // TestManagedRun_TokenActuals_CohortLadderWakesUp is issue #11's closing

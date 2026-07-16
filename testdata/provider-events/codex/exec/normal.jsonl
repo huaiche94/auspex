@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019f0000-3333-7aaa-8bbb-ccccdddd0201"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","item_type":"command_execution","command":"echo 21+21","aggregated_output":"","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","item_type":"command_execution","command":"echo 21+21","aggregated_output":"42\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","item_type":"agent_message","text":"FIXTURE-AGENT-TEXT-42 that must never persist."}}
+{"type":"turn.completed","usage":{"input_tokens":4200,"cached_input_tokens":3072,"output_tokens":180,"reasoning_output_tokens":64,"total_tokens":4380}}

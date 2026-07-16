@@ -23,6 +23,11 @@
 //	AUSPEX_FAKE_STDERR      when set, this literal string is written to
 //	                        stderr (exercises the runner's stderr
 //	                        passthrough).
+//	AUSPEX_FAKE_SLEEP_MS    when set, sleep this many milliseconds after
+//	                        writing the stream and before exiting —
+//	                        stands in for a long-running provider so the
+//	                        runner's context-cancellation kill path can
+//	                        be exercised without a real hang.
 //	AUSPEX_FAKE_EXIT_CODE   process exit code (default 0).
 package main
 
@@ -31,6 +36,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 func main() {
@@ -56,6 +62,11 @@ func main() {
 	}
 	if msg := os.Getenv("AUSPEX_FAKE_STDERR"); msg != "" {
 		fmt.Fprintln(os.Stderr, msg)
+	}
+	if v := os.Getenv("AUSPEX_FAKE_SLEEP_MS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			time.Sleep(time.Duration(n) * time.Millisecond)
+		}
 	}
 	code := 0
 	if v := os.Getenv("AUSPEX_FAKE_EXIT_CODE"); v != "" {

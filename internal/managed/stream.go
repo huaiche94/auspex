@@ -136,14 +136,23 @@ type rawStreamLine struct {
 // readStream consumes r line by line until EOF (or a read error, which is
 // treated as EOF — the process-level failure surfaces from the caller's
 // Wait, not from here), relaying every raw line verbatim to relay when
-// non-nil and folding each into the summary. bufio.Reader.ReadBytes is
-// used instead of bufio.Scanner deliberately: assistant lines carry whole
-// message bodies and can exceed any fixed token limit, and a Scanner
-// buffer overflow would abort the WHOLE stream (the exact wholesale
-// failure mode issue #27's statusline incident documents) rather than
-// degrade one line.
+// non-nil and folding each into the summary.
 func readStream(r io.Reader, relay io.Writer) StreamSummary {
 	var summary StreamSummary
+	scanStreamLines(r, relay, summary.observeLine)
+	return summary
+}
+
+// scanStreamLines is the shared line pump under both provider stream
+// parsers (readStream here, readCodexStream in codexstream.go): read r
+// line by line until EOF (or a read error, treated as EOF), relay every
+// raw line verbatim to relay when non-nil, and hand each line to observe.
+// bufio.Reader.ReadBytes is used instead of bufio.Scanner deliberately:
+// provider lines carry whole message bodies and can exceed any fixed
+// token limit, and a Scanner buffer overflow would abort the WHOLE stream
+// (the exact wholesale failure mode issue #27's statusline incident
+// documents) rather than degrade one line.
+func scanStreamLines(r io.Reader, relay io.Writer, observe func(line []byte)) {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadBytes('\n')
@@ -153,10 +162,10 @@ func readStream(r io.Reader, relay io.Writer) StreamSummary {
 				// not stop outcome attribution.
 				_, _ = relay.Write(line)
 			}
-			summary.observeLine(line)
+			observe(line)
 		}
 		if err != nil {
-			return summary
+			return
 		}
 	}
 }

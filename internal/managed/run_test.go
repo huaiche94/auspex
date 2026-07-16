@@ -372,6 +372,188 @@ func TestRunner_Run_SpawnFailure_TypedErrorAndTerminalEvent(t *testing.T) {
 	}
 }
 
+// --- the codex managed exec runner (issue #9 M7 Phase 1) -------------------
+
+func codexExecFixtureAbs(t *testing.T, name string) string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Join("..", "..", "testdata", "provider-events", "codex", "exec", name))
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	return abs
+}
+
+func baseCodexRunRequest() RunRequest {
+	req := baseRunRequest()
+	req.Provider = ProviderCodex
+	return req
+}
+
+func TestRunner_Run_Codex_HappyPath_GatesSpawnsParsesPersists(t *testing.T) {
+	bin := buildFakeProvider(t)
+	argvFile := filepath.Join(t.TempDir(), "argv.json")
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecFixtureAbs(t, "normal.jsonl"))
+	t.Setenv("AUSPEX_FAKE_ARGV_FILE", argvFile)
+
+	persister := &runTestPersister{}
+	runner := newTestRunner(persister, allowingEvaluation(app.PolicyRun), bin)
+
+	var relay bytes.Buffer
+	req := baseCodexRunRequest()
+	req.StreamRelay = &relay
+
+	outcome, err := runner.Run(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if outcome.ExitCode != 0 {
+		t.Errorf("ExitCode = %d, want 0", outcome.ExitCode)
+	}
+	// 1 turn.started (gate) + 3 terminal (session.started from
+	// thread.started, turn.completed, usage.observed).
+	if outcome.EventsPersisted != 4 {
+		t.Errorf("EventsPersisted = %d, want 4", outcome.EventsPersisted)
+	}
+	if len(persister.calls) != 2 {
+		t.Fatalf("persister.calls = %d batches, want 2 (gate, terminal)", len(persister.calls))
+	}
+
+	// The gate's turn.started must carry the run's HONEST provider —
+	// issue #9 M7's generalization of the issue-#8 claude-only gate.
+	started := eventOfType(t, persister.calls[0], v1.EventProviderTurnStarted)
+	if started.Provider != "codex" {
+		t.Errorf("turn.started Provider = %q, want codex", started.Provider)
+	}
+	if started.TurnID != string(outcome.TurnID) {
+		t.Errorf("turn.started TurnID = %q, want %q", started.TurnID, outcome.TurnID)
+	}
+
+	sessionStarted := eventOfType(t, persister.calls[1], v1.EventProviderSessionStarted)
+	if sessionStarted.Payload["thread_id"] != "019f0000-3333-7aaa-8bbb-ccccdddd0201" {
+		t.Errorf("session.started payload = %+v, want the stream's thread_id", sessionStarted.Payload)
+	}
+
+	completed := eventOfType(t, persister.calls[1], v1.EventProviderTurnCompleted)
+	if completed.Provider != "codex" || completed.TurnID != string(outcome.TurnID) || completed.WorktreeID != "wt-run-test" {
+		t.Errorf("turn.completed scope = provider %q turn %q worktree %q", completed.Provider, completed.TurnID, completed.WorktreeID)
+	}
+	if completed.Payload["exit_code"] != 0 || completed.Payload["turn_completed_seen"] != true {
+		t.Errorf("turn.completed payload = %+v", completed.Payload)
+	}
+
+	// Exact usage attribution under the shared vocabulary: fresh input
+	// 4200-3072=1128, cache read 3072, output 180, reasoning 64, total
+	// 1128+180=1308 (never codex's own cached-inclusive 4380).
+	usage := eventOfType(t, persister.calls[1], v1.EventProviderUsageObserved)
+	if usage.Payload["input_tokens"] != int64(1128) || usage.Payload["cache_read_input_tokens"] != int64(3072) ||
+		usage.Payload["output_tokens"] != int64(180) || usage.Payload["reasoning_output_tokens"] != int64(64) ||
+		usage.Payload["total_tokens"] != int64(1308) {
+		t.Errorf("usage payload = %+v, want 1128/3072/180/64/1308", usage.Payload)
+	}
+	if usage.TurnID != string(outcome.TurnID) {
+		t.Errorf("usage TurnID = %q, want %q (exact turn attribution)", usage.TurnID, outcome.TurnID)
+	}
+
+	// Argv proof: exactly ADD §21.8's `codex exec --json <prompt>`,
+	// prompt as one argv element (Constitution §7 rule 5).
+	argvJSON, err := os.ReadFile(argvFile)
+	if err != nil {
+		t.Fatalf("reading argv file: %v", err)
+	}
+	var argv []string
+	if err := json.Unmarshal(argvJSON, &argv); err != nil {
+		t.Fatalf("decoding argv file: %v", err)
+	}
+	wantArgv := []string{"exec", "--json", "add a small test"}
+	if len(argv) != len(wantArgv) {
+		t.Fatalf("argv = %v, want %v", argv, wantArgv)
+	}
+	for i := range argv {
+		if argv[i] != wantArgv[i] {
+			t.Fatalf("argv[%d] = %q, want %q (full argv %v)", i, argv[i], wantArgv[i], argv)
+		}
+	}
+
+	if relay.Len() == 0 {
+		t.Error("StreamRelay received nothing, want the raw JSONL lines")
+	}
+}
+
+func TestRunner_Run_Codex_TurnFailed_PersistsFailureNoUsage(t *testing.T) {
+	bin := buildFakeProvider(t)
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecFixtureAbs(t, "turn_failed.jsonl"))
+	t.Setenv("AUSPEX_FAKE_EXIT_CODE", "1")
+
+	persister := &runTestPersister{}
+	runner := newTestRunner(persister, allowingEvaluation(app.PolicyWarn), bin)
+
+	outcome, err := runner.Run(context.Background(), baseCodexRunRequest())
+	if err != nil {
+		t.Fatalf("Run: %v — a provider that ran and exited non-zero is attribution data, not a Run error", err)
+	}
+	if outcome.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", outcome.ExitCode)
+	}
+	if outcome.Codex.Failed == nil {
+		t.Error("outcome.Codex.Failed is nil, want the parsed turn.failed")
+	}
+	if len(persister.calls) != 2 {
+		t.Fatalf("persister.calls = %d batches, want 2", len(persister.calls))
+	}
+	failed := eventOfType(t, persister.calls[1], v1.EventProviderTurnFailed)
+	if failed.Payload["exit_code"] != 1 || failed.Payload["turn_failed_seen"] != true ||
+		failed.Payload["error_events"] != 1 || failed.Payload["failure_message_len"] != 30 {
+		t.Errorf("turn.failed payload = %+v", failed.Payload)
+	}
+	for _, ev := range persister.calls[1] {
+		if ev.EventType == v1.EventProviderUsageObserved {
+			t.Error("usage event fabricated although turn.completed never arrived (unknown is not zero)")
+		}
+	}
+}
+
+// TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly pins the
+// process-hygiene contract for the codex spec: cancelling the run's
+// context kills the provider (exec.CommandContext), Run returns instead
+// of hanging, the unobserved exit code is an honest -1, and the run still
+// gets its terminal turn.failed (the started event never dangles). The
+// fake provider sleeps far longer than the test would ever wait, so a
+// return at all proves the kill.
+func TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly(t *testing.T) {
+	bin := buildFakeProvider(t)
+	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecFixtureAbs(t, "normal.jsonl"))
+	t.Setenv("AUSPEX_FAKE_SLEEP_MS", "60000")
+
+	persister := &runTestPersister{}
+	runner := newTestRunner(persister, allowingEvaluation(app.PolicyRun), bin)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+
+	outcome, err := runner.Run(ctx, baseCodexRunRequest())
+	if err != nil {
+		t.Fatalf("Run: %v — a cancelled provider is a failed run result, never a Run error or a hang", err)
+	}
+	if outcome.ExitCode != -1 {
+		t.Errorf("ExitCode = %d, want -1 (killed; no exit code observed)", outcome.ExitCode)
+	}
+	if len(persister.calls) != 2 {
+		t.Fatalf("persister.calls = %d batches, want 2 (gate, terminal)", len(persister.calls))
+	}
+	failed := eventOfType(t, persister.calls[1], v1.EventProviderTurnFailed)
+	if failed.Payload["exit_code"] != -1 {
+		t.Errorf("turn.failed payload = %+v, want exit_code -1", failed.Payload)
+	}
+	// The stream written BEFORE the kill was already parsed — captured
+	// attribution survives the interruption.
+	if outcome.Codex.Completed == nil {
+		t.Error("outcome.Codex.Completed is nil — pre-kill stream lines were lost")
+	}
+}
+
 func TestRunner_Run_Validation(t *testing.T) {
 	runner := newTestRunner(&runTestPersister{}, allowingEvaluation(app.PolicyRun), "unused")
 
@@ -379,7 +561,7 @@ func TestRunner_Run_Validation(t *testing.T) {
 		name   string
 		mutate func(*RunRequest)
 	}{
-		{"unsupported provider", func(r *RunRequest) { r.Provider = "codex" }},
+		{"unsupported provider", func(r *RunRequest) { r.Provider = "gemini" }},
 		{"missing session", func(r *RunRequest) { r.SessionID = "" }},
 		{"missing worktree", func(r *RunRequest) { r.WorktreeID = "" }},
 		{"empty prompt", func(r *RunRequest) { r.Prompt = "" }},

@@ -413,7 +413,7 @@ func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (U
 		}, nil
 	}
 
-	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed)
+	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed, claudetelemetry.Provider)
 
 	result := UserPromptSubmitResult{
 		Response:         claudehooks.UserPromptSubmitResponse{Decision: claudehooks.HookDecisionAllow},
@@ -482,9 +482,20 @@ type promptEvaluation struct {
 // evaluateSubmittedPrompt runs the single production path from a parsed
 // (already privacy-safe: hash/length/approx-tokens only) prompt event to
 // a persisted evaluation + policy decision. Shared verbatim by the
-// UserPromptSubmit hook and `auspex evaluate` (issue #14 deliverable
-// 5's "share code, don't duplicate"), so an offline evaluation is the
-// same evaluation a hook would have produced.
+// UserPromptSubmit hook, `auspex evaluate` (issue #14 deliverable
+// 5's "share code, don't duplicate"), and the managed gate
+// (managedgate.go), so an offline or managed evaluation is the same
+// evaluation a hook would have produced.
+//
+// provider is the identifier stamped onto the persisted turn.started
+// event and handed to EvaluateTurn — claudetelemetry.Provider on the two
+// hook-shaped paths, the managed run's own provider on the gate path
+// (issue #9 M7: a codex managed run's turn.started must say codex, never
+// the claude default). The event's payload shape and idempotency key are
+// provider-independent by construction: the payload carries only the
+// hash/size/feature vocabulary shared by every provider's turn.started,
+// and the key digests (session, prompt hash) — one session re-submitting
+// one prompt is one turn start, whichever CLI drove it.
 //
 // One TurnID is minted and used for BOTH the persisted
 // provider.turn.started event and EvaluateTurn — stamping the event
@@ -494,7 +505,7 @@ type promptEvaluation struct {
 // joins on. Before issue #14 the event carried no turn_id and the minted
 // TurnID existed only on the prediction row, leaving persisted
 // evaluations unreachable from their session.
-func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudehooks.UserPromptSubmitEvent) (promptEvaluation, error) {
+func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudehooks.UserPromptSubmitEvent, provider string) (promptEvaluation, error) {
 	// Issue #17: lazily register this session's repositories/worktrees/
 	// provider_sessions chain from the payload's cwd BEFORE persisting or
 	// evaluating — EvaluateTurn's very first pipeline step is
@@ -510,6 +521,10 @@ func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudeho
 
 	observedAt := deps.Clock.Now()
 	event := deps.normalizer().NormalizeUserPromptSubmit(parsed, observedAt)
+	// The claude normalizer built the (provider-independent) payload and
+	// key; the provider column records who this turn actually belongs to
+	// (a no-op re-stamp on the claude paths — see the doc comment).
+	event.Provider = provider
 
 	pe := promptEvaluation{turnID: domain.TurnID(deps.IDs.NewID())}
 	event.TurnID = string(pe.turnID)
@@ -522,7 +537,7 @@ func evaluateSubmittedPrompt(ctx context.Context, deps HookDeps, parsed claudeho
 	eval, err := deps.Evaluation.EvaluateTurn(ctx, app.EvaluateTurnRequest{
 		SessionID:  parsed.SessionID,
 		TurnID:     pe.turnID,
-		Provider:   "claude",
+		Provider:   provider,
 		PromptHash: parsed.PromptSHA256,
 	})
 	if err != nil {

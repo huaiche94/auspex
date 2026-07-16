@@ -31,6 +31,7 @@ import (
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/evaluation"
 	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
 )
 
 // EvaluatePromptRequest is EvaluatePrompt's input. Prompt is consumed
@@ -72,7 +73,7 @@ func EvaluatePrompt(ctx context.Context, deps HookDeps, req EvaluatePromptReques
 	}
 
 	parsed := claudehooks.NewUserPromptSubmitEvent(req.SessionID, req.Prompt)
-	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed)
+	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed, claudetelemetry.Provider)
 	if err != nil {
 		return EvaluatePromptResult{}, err
 	}

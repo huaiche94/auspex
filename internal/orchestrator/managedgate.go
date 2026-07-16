@@ -48,15 +48,22 @@ import (
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/evaluation"
 	claudehooks "github.com/huaiche94/auspex/internal/hooks/claude"
+	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
 )
 
 // ManagedPromptRequest is EvaluateManagedPrompt's input. Prompt is
 // consumed in-memory (hashed immediately — see the file doc comment). CWD
 // is the directory the managed provider process will run in; nil/empty
 // skips the issue-#17 session bootstrap exactly like a hook payload with
-// no cwd field (unknown is not zero — no row is fabricated).
+// no cwd field (unknown is not zero — no row is fabricated). Provider is
+// the managed run's provider identifier, stamped onto the persisted
+// turn.started event and handed to EvaluateTurn (issue #9 M7: a codex
+// managed run's gate telemetry must say codex); empty defaults to
+// claudetelemetry.Provider, preserving every pre-M7 caller's exact
+// behavior.
 type ManagedPromptRequest struct {
 	SessionID domain.SessionID
+	Provider  string
 	Prompt    string
 	CWD       *string
 }
@@ -102,10 +109,20 @@ func EvaluateManagedPrompt(ctx context.Context, deps HookDeps, req ManagedPrompt
 		}
 	}
 
+	provider := req.Provider
+	if provider == "" {
+		provider = claudetelemetry.Provider
+	}
+
+	// The event construction (hash-immediately) is claude's helper for
+	// EVERY provider: NewUserPromptSubmitEvent only derives the
+	// provider-independent hash/size/feature trio from the prompt text —
+	// there is nothing claude-specific to leak, and the honest provider
+	// id is stamped downstream (see evaluateSubmittedPrompt's doc).
 	parsed := claudehooks.NewUserPromptSubmitEvent(req.SessionID, req.Prompt)
 	parsed.CWD = req.CWD
 
-	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed)
+	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed, provider)
 	result := ManagedPromptResult{TurnID: pe.turnID, Persisted: pe.persisted}
 	if err != nil {
 		return result, err

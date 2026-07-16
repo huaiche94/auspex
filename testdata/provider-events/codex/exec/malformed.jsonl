@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"019f0000-3333-7aaa-8bbb-ccccdddd0203"}
+this line is not JSON at all {{{
+{"type":"turn.started"}
+{"type":"turn.completed","usage":{"input_tokens":"not-a-number"}}
+{"type":"turn.completed","usage":{"input_tokens":1500,"cached_input_tokens":1024,"output_tokens":90,"reasoning_output_tokens":30,"total_tokens":1590}}

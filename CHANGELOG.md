@@ -55,6 +55,18 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Managed one-shot mode for Codex (#9, M7 Phase 1)**: `auspex run
+  --provider codex -- "<prompt>"` spawns `codex exec --json`, parses the
+  JSONL stream (fixtures pinned against the v0.144.4 binary's embedded
+  schema), normalizes into the frozen envelope
+  (`thread.started`→session, `turn.completed`→turn + exact usage with
+  the fresh-input/cache-read split, `turn.failed`→failure with
+  message-length only), and attributes the outcome. The runner's
+  provider gate is generalized to a per-provider spec (claude behavior
+  byte-identical); managed-exec capabilities declared honestly
+  (`ExactTurnUsage` true; live-stream/interrupt/resume false,
+  doc-commented). E2E against a fake codex binary — zero quota spent.
+
 - **VS Code companion renders FR-162 from the session-status API (#10)**:
   the extension consumes `auspex.daemon.session_status.v1` inside its
   existing SSE/15s-poll refresh (no second loop) and replaces the

@@ -46,6 +46,16 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **Codex 的 managed one-shot 模式（#9，M7 Phase 1）**：`auspex run
+  --provider codex -- "<prompt>"` 會 spawn `codex exec --json`、解析
+  JSONL 流（fixtures 對 v0.144.4 binary 內嵌 schema 釘死）、正規化進
+  凍結 envelope（`thread.started`→session、`turn.completed`→turn +
+  精確用量（fresh input 與 cache-read 拆分）、`turn.failed`→失敗，僅存
+  訊息長度），並完成 outcome 歸因。runner 的 provider 閘門泛化為
+  per-provider spec（claude 行為逐位元組不變）；managed-exec capability
+  誠實宣告（`ExactTurnUsage` 為真；live-stream/interrupt/resume 為假並
+  附文件註解）。以假 codex binary 完成 E2E —— 零 quota 消耗。
+
 - **VS Code companion 由 session-status API 渲染 FR-162（#10）**：
   extension 在既有的 SSE/15 秒輪詢刷新內消費
   `auspex.daemon.session_status.v1`（不另開輪詢），以真實區塊取代佔位 ——

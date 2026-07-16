@@ -1,7 +1,9 @@
 // Package codex normalizes the intermediate Go structs produced by
 // internal/hooks/codex (SessionStartEvent, UserPromptSubmitEvent,
-// StopEvent) and this package's own rollout reader (RolloutSnapshot) into
-// the frozen pkg/protocol/v1.Event envelope — issue #9 Phase 1's analog of
+// StopEvent), this package's own rollout reader (RolloutSnapshot), and
+// internal/managed's exec-stream summary (ManagedExecOutcome,
+// managedexec.go — issue #9 M7 Phase 1) into the frozen
+// pkg/protocol/v1.Event envelope — issue #9 Phase 1's analog of
 // internal/telemetry/claude. This is the sole path from raw Codex CLI
 // payloads into Auspex's wire event protocol; no other package
 // constructs a v1.Event from Codex payloads.

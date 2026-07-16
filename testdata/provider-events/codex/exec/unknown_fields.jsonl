@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019f0000-3333-7aaa-8bbb-ccccdddd0205","experimental_flag":true,"nested":{"depth":1}}
+{"type":"turn.started","turn_hint":"fast"}
+{"type":"thread.goal.updated","objective":"an event kind this parser has never seen"}
+{"type":"item.completed","item":{"id":"item_0","item_type":"todo_list","items":[{"text":"n1","completed":true}]}}
+{"type":"turn.diff","unified_diff":"--- a\n+++ b"}
+{"type":"turn.completed","usage":{"input_tokens":2000,"cached_input_tokens":0,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":2100},"extra_counter":9}

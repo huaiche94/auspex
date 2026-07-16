@@ -34,6 +34,17 @@ fails loudly when they drift.
   `.golden.json` responses; consumed by the `internal/hooks/claude`,
   `internal/telemetry/claude`, `internal/providers/claude`, and
   `internal/cli` test suites.
+- `provider-events/codex/` — Codex CLI fixtures: hook payloads
+  (`sessionstart/`, `userpromptsubmit/`, `stop/`), session rollout JSONL
+  (`rollout/`), and `exec/` — synthetic `codex exec --json` JSONL event
+  streams hand-authored to ADD §21.8 plus the v0.144.4 binary's embedded
+  event schema (`thread.started`/`turn.started`/`item.*`/
+  `turn.completed`/`turn.failed`/`error`); NOT recordings of any real
+  session — numbers-only values chosen for assertability, with
+  `FIXTURE-*` placeholder text present solely so privacy tests can prove
+  non-retention. Consumed by `internal/hooks/codex`,
+  `internal/telemetry/codex`, `internal/managed`, and
+  `internal/integrationtest`.
 - `repositories/` — repository-*content* fixtures for
   `internal/repocheckpoint`/`internal/gitx`; see
   [`repositories/README.md`](repositories/README.md) (no real `.git`

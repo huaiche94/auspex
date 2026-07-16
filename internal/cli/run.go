@@ -1,10 +1,12 @@
 // run.go: the REAL `auspex run` command (issue #8's managed one-shot
-// MVP, ADD §8.1). Shape: `auspex run --provider claude --session-id <id>
+// MVP, ADD §8.1; extended to codex by issue #9 M7 Phase 1, ADD §21.8).
+// Shape: `auspex run --provider claude|codex --session-id <id>
 // --worktree-id <id> [--task-id <id>] [--provider-bin <path>] --
 // <prompt>`. All orchestration lives in internal/managed.Runner (gate ->
-// spawn -> parse -> persist); this file only maps flags/args to a
-// RunRequest and renders the outcome, per ADD §10.1's "business logic
-// stays out of RunE handlers".
+// spawn -> parse -> persist; the per-provider argv/parser/normalizer
+// table is internal/managed/provider.go); this file only maps flags/args
+// to a RunRequest and renders the outcome, per ADD §10.1's "business
+// logic stays out of RunE handlers".
 //
 // Output discipline (agents/runtime.md Part B "JSON and errors"): stdout
 // carries EXACTLY one thing — the schema-versioned `auspex.run.v1`
@@ -96,11 +98,14 @@ func NewRunCmd(deps orchestrator.HookDeps) *cobra.Command {
 			return writeJSON(cmd, body)
 		},
 	}
-	cmd.Flags().StringVar(&provider, "provider", managed.ProviderClaude, "Provider to run (only \"claude\" is supported by this increment)")
+	cmd.Flags().StringVar(&provider, "provider", managed.ProviderClaude, "Provider to run (\"claude\" or \"codex\")")
 	cmd.Flags().StringVar(&sessionID, "session-id", "", "Session ID to attribute this run to")
 	cmd.Flags().StringVar(&worktreeID, "worktree-id", "", "Worktree ID to attribute this run to")
 	cmd.Flags().StringVar(&taskID, "task-id", "", "Optional task ID to attribute this run to")
-	cmd.Flags().StringVar(&providerBin, "provider-bin", managed.DefaultProviderBin, "Provider binary to spawn (argv only, resolved via PATH)")
+	// Empty means "the provider's own default binary" (claude/codex per
+	// --provider) — the default cannot be a literal binary name anymore
+	// without silently spawning claude for --provider codex.
+	cmd.Flags().StringVar(&providerBin, "provider-bin", "", "Provider binary to spawn (argv only, resolved via PATH; empty = the provider's default)")
 	return cmd
 }
 
@@ -143,6 +148,15 @@ func buildRunOutput(sessionID string, outcome managed.RunOutcome) runOutput {
 		out.IsError = res.IsError
 		out.TotalCostUSD = res.TotalCostUSD
 		out.DurationMs = res.DurationMs
+	}
+	// Codex managed exec (issue #9 M7): the stream's own terminal verdict
+	// maps onto is_error (turn.failed observed -> true; turn.completed
+	// observed -> false; neither -> null, unknown is not zero). Cost and
+	// duration stay null — the exec JSONL stream reports neither, and
+	// this surface never fabricates a figure.
+	if cs := outcome.Codex; cs.Failed != nil || cs.Completed != nil {
+		failed := cs.Failed != nil
+		out.IsError = &failed
 	}
 	return out
 }

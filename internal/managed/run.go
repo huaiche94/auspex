@@ -17,16 +17,15 @@ import (
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/orchestrator"
-	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
 )
 
-// ProviderClaude is the one provider this increment supports (issue #8
-// MVP; the Codex managed adapter is ADD M7, a different milestone).
+// ProviderClaude is the claude managed one-shot provider (issue #8 MVP);
+// ProviderCodex and the per-provider spec table live in provider.go.
 const ProviderClaude = "claude"
 
-// DefaultProviderBin is the provider binary spawned when Runner.
-// ProviderBin is empty: the user's own `claude` CLI, resolved from PATH
-// by os/exec exactly like any argv-only process launch.
+// DefaultProviderBin is the provider binary spawned for ProviderClaude
+// when Runner.ProviderBin is empty: the user's own `claude` CLI, resolved
+// from PATH by os/exec exactly like any argv-only process launch.
 const DefaultProviderBin = "claude"
 
 // Runner executes managed one-shot runs. Hooks carries the SAME
@@ -78,6 +77,14 @@ type RunRequest struct {
 // internal/gitx.ExecRunner's convention). EventsPersisted counts events
 // durably handed to the store across the whole run (the gate's
 // provider.turn.started plus the terminal batch).
+//
+// Exactly one of the two stream summaries is populated, per the run's
+// provider (the other stays its zero value): Stream for ProviderClaude,
+// Codex for ProviderCodex — separate typed fields rather than a shared
+// abstraction because the two providers' stream vocabularies genuinely
+// differ (claude's result line carries cost/duration; codex's
+// turn.completed carries tokens only) and collapsing them would either
+// drop or fabricate fields.
 type RunOutcome struct {
 	TurnID       domain.TurnID
 	EvaluationID domain.EvaluationID
@@ -86,6 +93,7 @@ type RunOutcome struct {
 
 	ExitCode        int
 	Stream          StreamSummary
+	Codex           CodexStreamSummary
 	EventsPersisted int
 }
 
@@ -125,23 +133,26 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 	if humanLog == nil {
 		humanLog = io.Discard
 	}
+	// validate already proved the spec exists.
+	spec, _ := specFor(req.Provider)
 	bin := r.ProviderBin
 	if bin == "" {
-		bin = DefaultProviderBin
+		bin = spec.defaultBin
 	}
 
-	// Session bootstrap (issue #17) with the honest managed invocation
-	// mode, BEFORE the gate: the gate's shared path re-bootstraps with
-	// the hook default, but provider_sessions.invocation_mode is
-	// first-observation-wins, so registering first is what makes the row
-	// say managed_stream_json (see orchestrator.SessionBootstrap's field
-	// doc). Nil-receiver-safe and fail-open by Bootstrap's own contract.
+	// Session bootstrap (issue #17) with the honest provider and managed
+	// invocation mode, BEFORE the gate: the gate's shared path
+	// re-bootstraps with the hook default, but provider_sessions'
+	// provider/invocation_mode are first-observation-wins, so registering
+	// first is what makes the row say managed_stream_json under the run's
+	// own provider (see orchestrator.SessionBootstrap's field doc).
+	// Nil-receiver-safe and fail-open by Bootstrap's own contract.
 	if req.Dir != "" {
 		r.Hooks.Bootstrapper.Bootstrap(ctx, orchestrator.SessionBootstrap{
 			SessionID:      req.SessionID,
 			Dir:            req.Dir,
-			Provider:       claudetelemetry.Provider,
-			InvocationMode: orchestrator.InvocationModeManagedStreamJSON,
+			Provider:       req.Provider,
+			InvocationMode: spec.invocationMode,
 		})
 	}
 
@@ -156,6 +167,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 	}
 	gate, gateErr := orchestrator.EvaluateManagedPrompt(ctx, r.Hooks, orchestrator.ManagedPromptRequest{
 		SessionID: req.SessionID,
+		Provider:  req.Provider,
 		Prompt:    req.Prompt,
 		CWD:       cwd,
 	})
@@ -196,9 +208,10 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 	}
 
 	// Spawn: argv-only, never a shell string (Constitution §7 rule 5).
-	// The exact argv shape is ADD §22.1's supported managed path:
-	// `claude -p <prompt> --output-format stream-json --verbose`.
-	cmd := exec.CommandContext(ctx, bin, "-p", req.Prompt, "--output-format", "stream-json", "--verbose")
+	// The exact per-provider argv shape lives on the spec (provider.go):
+	// ADD §22.1's `claude -p <prompt> --output-format stream-json
+	// --verbose`, ADD §21.8's `codex exec --json <prompt>`.
+	cmd := exec.CommandContext(ctx, bin, spec.argv(req.Prompt)...)
 	cmd.Dir = req.Dir
 
 	// The stream relay (this goroutine, during readStream) and the
@@ -240,7 +253,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 		// typed, retryable error naming only the binary — never the
 		// prompt.
 		outcome.ExitCode = -1
-		outcome.EventsPersisted += r.persistTerminal(ctx, req, gate.TurnID, -1, StreamSummary{}, true)
+		outcome.EventsPersisted += r.persistTerminal(ctx, spec, req, gate.TurnID, -1, outcome, true)
 		return outcome, &domain.Error{
 			Code:      domain.ErrCodeUnavailable,
 			Message:   "managed: starting provider binary failed",
@@ -249,7 +262,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 		}
 	}
 
-	outcome.Stream = readStream(stdout, relay)
+	spec.consume(stdout, relay, &outcome)
 
 	exitCode := 0
 	if waitErr := cmd.Wait(); waitErr != nil {
@@ -264,7 +277,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 		}
 	}
 	outcome.ExitCode = exitCode
-	outcome.EventsPersisted += r.persistTerminal(ctx, req, gate.TurnID, exitCode, outcome.Stream, false)
+	outcome.EventsPersisted += r.persistTerminal(ctx, spec, req, gate.TurnID, exitCode, outcome, false)
 	return outcome, nil
 }
 
@@ -290,8 +303,8 @@ func (r *Runner) validate(req RunRequest) error {
 	fail := func(msg string, details map[string]string) error {
 		return &domain.Error{Code: domain.ErrCodeValidation, Message: msg, Retryable: false, Details: details}
 	}
-	if req.Provider != ProviderClaude {
-		return fail("managed: only provider \"claude\" is supported by this increment (issue #8 MVP)", map[string]string{"provider": req.Provider})
+	if _, ok := specFor(req.Provider); !ok {
+		return fail("managed: unsupported provider \""+req.Provider+"\" (this increment supports \"claude\" and \"codex\")", map[string]string{"provider": req.Provider})
 	}
 	if req.SessionID == "" {
 		return fail("managed: SessionID is required", nil)
@@ -312,46 +325,16 @@ func (r *Runner) validate(req RunRequest) error {
 	return nil
 }
 
-// persistTerminal normalizes the run's terminal outcome into events
-// (internal/telemetry/claude.NormalizeManagedRun), best-effort correlates
-// them (issue #1; nil-receiver-safe), and best-effort persists them
-// through the same Persister/TxRunner seam the hook path uses — returning
-// how many events were durably handed over (0 on any persistence
-// degrade, mirroring HookDeps' own persist discipline: losing telemetry
-// is never a reason to fail the user's finished run).
-func (r *Runner) persistTerminal(ctx context.Context, req RunRequest, turnID domain.TurnID, exitCode int, stream StreamSummary, spawnFailed bool) int {
-	o := claudetelemetry.ManagedRunOutcome{
-		SessionID:   req.SessionID,
-		TurnID:      turnID,
-		WorktreeID:  req.WorktreeID,
-		TaskID:      req.TaskID,
-		ExitCode:    exitCode,
-		SpawnFailed: spawnFailed,
-		// The stream's own model declaration (system init line), "" when
-		// never observed — the normalizer stamps it onto the usage event
-		// so ADR-047's cohort ladder can family-label the token sample
-		// without guessing.
-		ModelID: stream.Model,
-	}
-	if res := stream.Result; res != nil {
-		o.ResultSeen = true
-		o.ResultSubtype = res.Subtype
-		o.IsError = res.IsError
-		o.DurationMs = res.DurationMs
-		o.DurationAPIMs = res.DurationAPIMs
-		o.NumTurns = res.NumTurns
-		o.TotalCostUSD = res.TotalCostUSD
-		o.ResultTextLen = res.ResultTextLen
-		if u := res.Usage; u != nil {
-			o.InputTokens = u.InputTokens
-			o.OutputTokens = u.OutputTokens
-			o.CacheReadInputTokens = u.CacheReadInputTokens
-			o.CacheCreationInputTokens = u.CacheCreationInputTokens
-		}
-	}
-
-	normalizer := claudetelemetry.NewNormalizer(r.Hooks.Clock, r.Hooks.IDs)
-	events := normalizer.NormalizeManagedRun(o, r.Hooks.Clock.Now())
+// persistTerminal normalizes the run's terminal outcome into events via
+// the provider spec's own normalizer (provider.go; claude ->
+// NormalizeManagedRun, codex -> NormalizeManagedExec), best-effort
+// correlates them (issue #1; nil-receiver-safe), and best-effort persists
+// them through the same Persister/TxRunner seam the hook path uses —
+// returning how many events were durably handed over (0 on any
+// persistence degrade, mirroring HookDeps' own persist discipline: losing
+// telemetry is never a reason to fail the user's finished run).
+func (r *Runner) persistTerminal(ctx context.Context, spec providerSpec, req RunRequest, turnID domain.TurnID, exitCode int, outcome RunOutcome, spawnFailed bool) int {
+	events := spec.terminalEvents(r.Hooks.Clock, r.Hooks.IDs, req, turnID, exitCode, outcome, spawnFailed)
 	r.Hooks.Correlator.Correlate(ctx, events)
 	if r.Hooks.Persister == nil || r.Hooks.TxRunner == nil {
 		return 0

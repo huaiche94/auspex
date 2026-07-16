@@ -12,7 +12,16 @@ out of the MVP; see [`../../README.md`](../../README.md)).
   chunk splits, CRLF, heartbeats, and the reconnect backoff schedule
   ([`../sse.ts`](../sse.ts)).
 - `types.test.ts` — response/metadata parsing against fixtures copied
-  field-for-field from the Go handlers ([`../types.ts`](../types.ts)).
+  field-for-field from the Go handlers, including the populated,
+  all-null, and malformed `auspex.daemon.session_status.v1` shapes
+  ([`../types.ts`](../types.ts)).
+- `sections.test.ts` — the FR-162 honesty rendering of
+  [`../sections.ts`](../sections.ts): unknown-vs-present for every
+  session section, calibration labelling, quota staleness, the
+  progress hierarchy, and the wake-job cancel wiring.
+- `client.test.ts` — `getSessionStatus` URL/auth/404 behaviour of
+  [`../client.ts`](../client.ts) against a real loopback `node:http`
+  server.
 
 ## How they run
 
@@ -25,5 +34,6 @@ explicit file list, failing loudly if zero test files are discovered
 runs the same `npm test` step on Node pinned to exactly 22.11.0.
 
 Not covered here: `extension.ts`/`tree.ts` (extension-host UI wiring,
-exercised manually) and the live network paths in `client.ts`
-(smoke-tested against a real daemon).
+exercised manually — `tree.ts` is a thin mapping of the tested
+`sections.ts` view-model onto `vscode.TreeItem`) and the SSE network
+path in `client.ts` (smoke-tested against a real daemon).

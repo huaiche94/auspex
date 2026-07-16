@@ -37,10 +37,12 @@ import {
   HealthResponse,
   JobView,
   ProtocolEvent,
+  SessionStatusSnapshot,
   StatusResponse,
   parseJobsResponse,
   parseJobView,
   parseMetadata,
+  parseSessionStatus,
   parseStatusResponse,
 } from './types';
 
@@ -162,6 +164,36 @@ export async function getStatus(conn: DaemonConnection): Promise<StatusResponse 
 /** GET /v1/scheduler/jobs. */
 export async function getJobs(conn: DaemonConnection): Promise<JobView[]> {
   return parseJobsResponse(await request(conn, 'GET', '/v1/scheduler/jobs')) ?? [];
+}
+
+/**
+ * GET /v1/session/status (most-recent session — the default view, which
+ * needs no session id) or GET /v1/session/{id}/status (FR-162, schema
+ * auspex.daemon.session_status.v1; internal/sessionstatus).
+ *
+ * Resolves to undefined on 404 — the reader's honest "no sessions exist
+ * yet" answer (internal/sessionstatus/reader.go), and also what a
+ * pre-FR-162 daemon's mux returns for the unknown route — both of which
+ * the UI renders as "no session data yet", never as an error. Other
+ * failures (auth, 5xx, network) still throw so the caller can distinguish
+ * an unreachable daemon from an empty one.
+ */
+export async function getSessionStatus(
+  conn: DaemonConnection,
+  sessionID?: string
+): Promise<SessionStatusSnapshot | undefined> {
+  const path =
+    sessionID !== undefined && sessionID !== ''
+      ? `/v1/session/${encodeURIComponent(sessionID)}/status`
+      : '/v1/session/status';
+  try {
+    return parseSessionStatus(await request(conn, 'GET', path));
+  } catch (err) {
+    if (err instanceof DaemonApiError && err.status === 404) {
+      return undefined; // no session recorded yet: a normal state
+    }
+    throw err;
+  }
 }
 
 /** Raw GET, for the "Show Raw Status" command (pretty-printed verbatim). */

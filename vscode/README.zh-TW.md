@@ -18,17 +18,24 @@
 
 - **狀態列項目（Status bar item）** — daemon 存活狀態與喚醒工作
   摘要（`auspex: not running` 是一種*正常*狀態，會平靜地顯示，
-  絕不會跳出錯誤彈窗）。
-- **Auspex activity-bar 檢視畫面** — 包含 Status、Progress、
-  Checkpoints、Pause state、Scheduled wake jobs 等區塊。狀態為
-  `scheduled` 的工作會附帶一個內嵌的 **Cancel** 按鈕（FR-163）。
+  絕不會跳出錯誤彈窗）；工具提示另外顯示目前 session 的風險與
+  runway（尚無資料時誠實顯示「unknown」）。
+- **Auspex activity-bar 檢視畫面** — 六個 FR-162 區塊加上 daemon
+  狀態與喚醒工作佇列：**Status**、**Risk**、**Runway**、
+  **Quota freshness**、**Progress**、**Checkpoints**、**Pause state**、
+  **Scheduled wake jobs**。session 區塊呈現 daemon 的 per-session
+  read-model（`GET /v1/session/status`，schema
+  `auspex.daemon.session_status.v1` — `internal/sessionstatus`）。狀態為
+  `scheduled` 的喚醒工作會附帶一個內嵌的 **Cancel** 按鈕（FR-163），
+  在佇列區塊與其所屬 pause 記錄之下皆可使用。
 - **指令** — `Auspex: Refresh`、`Auspex: Cancel Scheduled Resume`、
   `Auspex: Show Raw Status`。
 - **即時更新** — 訂閱 daemon 的 SSE 串流（`GET /v1/events/stream`），
   採指數退避（exponential-backoff）重連機制，另外每 15 秒輪詢一次
   作為安全網。daemon 的 broker 不保留事件歷史記錄
   （`internal/daemon/broker.go`），因此不支援 `Last-Event-ID` 重播：
-  每次（重新）連線都會從 status／jobs 端點重新讀取目前狀態。
+  每次（重新）連線都會從 status／jobs／session 端點重新讀取目前
+  狀態。
 
 ## 連線方式（以及絕不會碰觸的部分）
 
@@ -48,16 +55,37 @@
 擴充套件的私有狀態、不會碰觸 provider 憑證，也完全不含
 `vscode.extensions` 狀態存取。
 
-## 誠實揭露的缺口（FR-162）
+## 誠實呈現（FR-162）
 
-daemon 的 `GET /v1/status` 目前僅提供版本、上線時間（uptime），
-以及各狀態喚醒工作的數量統計（`auspex.daemon.status.v1`，
-`internal/httpapi/httpapi.go`）。它**尚未**提供風險分數、
-runway／quota 的新鮮度、progress-tree 快照、checkpoints，或
-pause-record 狀態。這些 FR-162 相關區塊會明確顯示「daemon API
-尚未提供此資訊」的占位文字，並以工具提示（tooltip）點名缺口所在——
-此擴充套件不會自行捏造端點或虛構數值。這些缺口以 issue #10 的
-後續事項追蹤。
+daemon 現已提供完整的 FR-162 per-session read-model：
+`GET /v1/session/status`（最近一個 session——預設檢視）與
+`GET /v1/session/{id}/status`，schema 為
+`auspex.daemon.session_status.v1`
+（`internal/sessionstatus/snapshot.go`）。過去的「daemon API 尚未
+提供此資訊」占位文字已移除；各區塊依伺服器端的誠實不變量
+（ADD §8.8、Constitution §7）呈現真實資料：
+
+- **未知絕不顯示為零。** 伺服器以 JSON `null` 回應的區塊（尚無
+  prediction、尚無 runway forecast、尚無 checkpoint、尚無 pause
+  記錄），以及「尚無任何 session」的 404，都會顯示為明確的
+  「unknown／no data yet」項目——絕不虛構分數、百分比或預測。為
+  null 的可選純量（`used_percent`、burn rate、重置時間……）顯示為
+  「unknown」或直接省略，不會顯示為 0。
+- **`calibrated: false` 代表估計值，不是機率。** 來自未校準模型的
+  風險與 runway 分數會標示為「uncalibrated estimate」；此情況下
+  `hit_probability` 也會改稱「hit estimate」（Constitution 原則
+  #2）。
+- **Quota 過期標示僅屬顯示層。** 伺服器計算每個視窗的
+  `age_seconds`；此擴充套件在超過 5 分鐘時標示該視窗為
+  「stale」（`src/sections.ts` 的 `QUOTA_STALE_AFTER_SECONDS`）——
+  這是顯示層的選擇並記載於項目工具提示中，並非伺服器的判斷。
+
+仍然為真、且在 UI 中誠實陳述的缺口：**progress tree** 目前通常是
+空的（多數 session 尚無任何東西寫入 `progress_nodes`）、**risk** 在
+prediction 可連結到該 session 之前為 null、**runway** 在 forecast
+寫入之前為 null（native-hook 模式自 PR #85 起有即時資料）。payload
+僅承載數字與 id——節點標題、checkpoint manifest 與檔案系統路徑皆已
+在伺服器端排除（FR-171）。
 
 ## 開發
 
@@ -84,13 +112,21 @@ npm test            # builds, then scripts/run-tests.js (node --test with
   chunk 切分、CRLF、心跳（heartbeats）、退避排程
   （`src/test/sse.test.ts`）；
 - `src/types.ts` — 依照從 Go handler 逐欄位複製而來的 fixture，
-  驗證 response／metadata 剖析（`src/test/types.test.ts`）。
+  驗證 response／metadata 剖析，包含完整填值、全 null 與格式錯誤的
+  session-status 形狀（`src/test/types.test.ts`）；
+- `src/sections.ts` — FR-162 的誠實呈現：每個 session 區塊的
+  unknown-vs-present、校準標示、quota 過期標示、progress 階層、
+  取消按鈕串接（`src/test/sections.test.ts`）；
+- `src/client.ts` — `getSessionStatus` 的 URL／auth／404 行為，
+  以真實的 loopback `node:http` 伺服器驗證
+  （`src/test/client.test.ts`）。
 
 未涵蓋於自動化測試的部分：`src/extension.ts`／`src/tree.ts`
-（extension-host 的 UI 串接——以人工方式驗證）以及 `src/client.ts`
-中實際連線的網路路徑（以真實 daemon 進行 smoke test；詳見該 PR 的
-驗證備註）。刻意在 MVP 階段省略 `@vscode/test-electron` 測試框架，
-以維持工具鏈的精簡。
+（extension-host 的 UI 串接——`tree.ts` 只是把已測試的
+`sections.ts` view-model 薄薄地映射到 `vscode.TreeItem`，以人工方式
+驗證）以及 `src/client.ts` 中 SSE 的網路路徑（以真實 daemon 進行
+smoke test；詳見該 PR 的驗證備註）。刻意在 MVP 階段省略
+`@vscode/test-electron` 測試框架，以維持工具鏈的精簡。
 
 從原始碼執行：在 VS Code 中開啟 `vscode/`，執行
 `npm ci && npm run build`，然後按下 F5（「Run Extension」——標準的

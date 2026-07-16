@@ -2,25 +2,44 @@
  * tree.ts — the "Auspex" activity-bar tree view (FR-162).
  *
  * Honesty rule (repo discipline): every rendered value comes from a field
- * the daemon API actually serves (internal/httpapi/httpapi.go). Where
- * FR-162 names data the current /v1/status payload
- * (auspex.daemon.status.v1) does not yet expose — risk scores, runway,
- * quota freshness, the progress-tree snapshot, checkpoints, pause-record
- * state — the section renders as an explicit "not exposed by the daemon
- * API yet" placeholder with a tooltip naming the gap, rather than
- * inventing an endpoint or fabricating values. Those gaps are listed as
- * follow-ups in the PR body for issue #10.
+ * the daemon API actually serves. Since PR #84 the daemon exposes the
+ * FR-162 per-session read-model (GET /v1/session/status, schema
+ * auspex.daemon.session_status.v1 — internal/sessionstatus/snapshot.go),
+ * so the Risk / Runway / Quota freshness / Progress / Checkpoints / Pause
+ * sections render real data. The honesty invariant carries through:
+ * sections the server serves as JSON null (no prediction, no forecast, no
+ * checkpoint, no pause yet) render as explicit "unknown / no data yet"
+ * items — never fabricated zeros — and uncalibrated scores are labelled
+ * estimates, not probabilities (Constitution §7). The rendering logic
+ * lives in sections.ts (vscode-free, unit-tested); this module only maps
+ * those plain items onto vscode.TreeItem.
  */
 
 import * as vscode from 'vscode';
 
-import { JobView, ProtocolEvent, StatusResponse } from './types';
+import {
+  SectionItem,
+  checkpointItems,
+  formatDuration,
+  iconForJobStatus,
+  pauseItems,
+  progressItems,
+  quotaItems,
+  riskItems,
+  runwayItems,
+} from './sections';
+import { JobView, ProtocolEvent, SessionStatusSnapshot, StatusResponse } from './types';
+
+export { formatDuration } from './sections';
 
 /** The controller state the tree renders from (one immutable snapshot). */
 export interface ViewState {
   /** undefined => daemon not running / unreachable (the NORMAL cold state). */
   status: StatusResponse | undefined;
   jobs: JobView[];
+  /** undefined => no session recorded yet (404 — a normal state) or the
+   * session endpoint was unavailable; sections render "no data yet". */
+  session: SessionStatusSnapshot | undefined;
   address: string | undefined;
   /** Last SSE event observed this session (live view only; broker.go has no replay). */
   lastEvent: { type: string; event: ProtocolEvent | undefined; receivedAt: Date } | undefined;
@@ -28,10 +47,13 @@ export interface ViewState {
   connectionNote: string;
 }
 
-type Section = 'status' | 'progress' | 'checkpoints' | 'pause' | 'jobs';
+type Section = 'status' | 'risk' | 'runway' | 'quota' | 'progress' | 'checkpoints' | 'pause' | 'jobs';
 
 const SECTION_LABELS: Record<Section, string> = {
   status: 'Status',
+  risk: 'Risk',
+  runway: 'Runway',
+  quota: 'Quota freshness',
   progress: 'Progress',
   checkpoints: 'Checkpoints',
   pause: 'Pause state',
@@ -46,15 +68,6 @@ class Node extends vscode.TreeItem {
   }
 }
 
-/** Tooltip used by every not-yet-exposed FR-162 section. */
-function gapTooltip(what: string): string {
-  return (
-    `${what} is not exposed by the daemon API yet ` +
-    '(GET /v1/status serves auspex.daemon.status.v1: version, uptime, wake-job counts only — ' +
-    'internal/httpapi/httpapi.go). Tracked as an issue #10 follow-up; this extension does not invent data.'
-  );
-}
-
 export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly emitter = new vscode.EventEmitter<Node | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
@@ -62,6 +75,7 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
   private state: ViewState = {
     status: undefined,
     jobs: [],
+    session: undefined,
     address: undefined,
     lastEvent: undefined,
     connectionNote: 'discovering…',
@@ -90,15 +104,20 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
       case 'status':
         node.children = this.statusChildren();
         break;
+      case 'risk':
+        node.children = this.sessionSection(riskItems);
+        break;
+      case 'runway':
+        node.children = this.sessionSection(runwayItems);
+        break;
+      case 'quota':
+        node.children = this.sessionSection(quotaItems);
+        break;
       case 'progress':
-        node.children = [
-          gapLeaf('No progress tree in the status payload yet', gapTooltip('The progress-tree snapshot')),
-        ];
+        node.children = this.sessionSection(progressItems);
         break;
       case 'checkpoints':
-        node.children = [
-          gapLeaf('No checkpoint listing in the daemon API yet', gapTooltip('Checkpoint state')),
-        ];
+        node.children = this.sessionSection(checkpointItems);
         break;
       case 'pause':
         node.children = this.pauseChildren();
@@ -108,6 +127,18 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
         break;
     }
     return node;
+  }
+
+  /**
+   * A session-scoped FR-162 section: daemon-down renders the cold-state
+   * leaf; otherwise the (vscode-free) builder decides between real data
+   * and its honest "no data yet" items.
+   */
+  private sessionSection(build: (s: SessionStatusSnapshot | undefined) => SectionItem[]): Node[] {
+    if (!this.state.status) {
+      return [gapLeaf(`daemon: ${this.state.connectionNote}`, 'Start it with: auspex daemon run. This is a normal state, not an error.')];
+    }
+    return build(this.state.session).map(toNode);
   }
 
   private statusChildren(): Node[] {
@@ -136,17 +167,30 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
     const jobsLeaf = new Node(`wake jobs: ${counts === '' ? 'none' : counts}`);
     jobsLeaf.iconPath = new vscode.ThemeIcon('list-ordered');
     children.push(jobsLeaf);
-    // FR-162 names risk / runway / quota freshness — not in this payload.
-    const gap = gapLeaf('risk / runway / quota freshness: not exposed yet', gapTooltip('Risk, runway, and quota freshness'));
-    children.push(gap);
+    // The session the FR-162 sections below are scoped to (most recent).
+    if (this.state.session) {
+      const sessionLeaf = new Node(`session: ${this.state.session.session_id}`);
+      sessionLeaf.iconPath = new vscode.ThemeIcon('person');
+      sessionLeaf.tooltip =
+        'Most recent session (GET /v1/session/status, auspex.daemon.session_status.v1). ' +
+        'The Risk / Runway / Quota freshness / Progress / Checkpoints / Pause sections are scoped to it.';
+      children.push(sessionLeaf);
+    } else {
+      const sessionLeaf = new Node('session: none recorded yet');
+      sessionLeaf.iconPath = new vscode.ThemeIcon('info');
+      sessionLeaf.tooltip =
+        'GET /v1/session/status answered 404: the daemon has not recorded any session yet ' +
+        '(or the endpoint was unavailable — see the Auspex output channel). A normal state.';
+      children.push(sessionLeaf);
+    }
     return children;
   }
 
   private pauseChildren(): Node[] {
     const children: Node[] = [];
-    // The daemon has no pause-record read endpoint yet; the only live,
-    // API-sourced signal is the pause.* SSE events the worker publishes
-    // (pkg/protocol/v1 event.go; internal/daemon/worker.go publish()).
+    // The live, session-local SSE signal (pkg/protocol/v1 event.go;
+    // internal/daemon/worker.go publish()) — kept alongside the persisted
+    // pause record because the broker has no history.
     const last = this.state.lastEvent;
     if (last && last.type.startsWith('pause.')) {
       const leaf = new Node(`last pause event: ${last.type}`);
@@ -156,9 +200,7 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
       leaf.tooltip = `Live SSE event from the daemon worker${typeof pauseID === 'string' ? ` (pause ${pauseID})` : ''}. The broker keeps no history; this is session-local.`;
       children.push(leaf);
     }
-    children.push(
-      gapLeaf('No pause-record endpoint in the daemon API yet', gapTooltip('Pause-record state'))
-    );
+    children.push(...this.sessionSection(pauseItems));
     return children;
   }
 
@@ -195,38 +237,37 @@ export class AuspexTreeProvider implements vscode.TreeDataProvider<Node> {
   }
 }
 
+/** Map one vscode-free SectionItem (sections.ts) onto a TreeItem. */
+function toNode(item: SectionItem): Node {
+  const hasChildren = item.children !== undefined && item.children.length > 0;
+  const node = new Node(
+    item.label,
+    hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
+  );
+  if (item.description !== undefined) {
+    node.description = item.description;
+  }
+  if (item.tooltip !== undefined) {
+    node.tooltip = item.tooltip;
+  }
+  if (item.icon !== undefined) {
+    node.iconPath = new vscode.ThemeIcon(item.icon);
+  }
+  if (item.id !== undefined) {
+    node.id = item.id;
+  }
+  if (item.contextValue !== undefined) {
+    node.contextValue = item.contextValue;
+  }
+  if (hasChildren) {
+    node.children = (item.children ?? []).map(toNode);
+  }
+  return node;
+}
+
 function gapLeaf(label: string, tooltip: string): Node {
   const leaf = new Node(label);
   leaf.iconPath = new vscode.ThemeIcon('info');
   leaf.tooltip = tooltip;
   return leaf;
-}
-
-function iconForJobStatus(status: string): string {
-  switch (status) {
-    case 'scheduled':
-      return 'clock';
-    case 'leased':
-      return 'sync';
-    case 'done':
-      return 'check';
-    case 'dead':
-      return 'error';
-    default:
-      return 'question';
-  }
-}
-
-export function formatDuration(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  if (m > 0) {
-    return `${m}m ${sec}s`;
-  }
-  return `${sec}s`;
 }

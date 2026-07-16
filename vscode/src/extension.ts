@@ -3,9 +3,12 @@
  * refresh, and the command palette surface (issue #10; ADD §8.4).
  *
  * FR coverage:
- *  - FR-162: status bar + tree view render what GET /v1/status and
- *    GET /v1/scheduler/jobs actually serve (tree.ts documents the honest
- *    gaps for fields the API does not expose yet).
+ *  - FR-162: status bar + tree view render what GET /v1/status,
+ *    GET /v1/scheduler/jobs, and GET /v1/session/status (the per-session
+ *    read-model: risk, runway, quota freshness, progress, checkpoint,
+ *    pause — auspex.daemon.session_status.v1) actually serve. Sections
+ *    the server answers with null render as explicit "no data yet" items
+ *    (sections.ts), never fabricated values.
  *  - FR-163: "Auspex: Cancel Scheduled Resume" and the inline tree-item
  *    Cancel both POST /v1/scheduler/jobs/{id}/cancel.
  *  - FR-164: the extension reads ONLY Auspex's own files (daemon.json,
@@ -28,11 +31,18 @@ import {
   EventStream,
   getJobs,
   getRaw,
+  getSessionStatus,
   getStatus,
   hostDirs,
 } from './client';
 import { AuspexTreeProvider, ViewState } from './tree';
-import { CANCELLED_BY_OPERATOR, JobView, ProtocolEvent, StatusResponse } from './types';
+import {
+  CANCELLED_BY_OPERATOR,
+  JobView,
+  ProtocolEvent,
+  SessionStatusSnapshot,
+  StatusResponse,
+} from './types';
 
 /** Poll interval for status/jobs between SSE pushes. SSE is the fast
  * path; polling is the safety net (and the only path while the stream is
@@ -51,6 +61,7 @@ class AuspexController implements vscode.Disposable {
   private state: ViewState = {
     status: undefined,
     jobs: [],
+    session: undefined,
     address: undefined,
     lastEvent: undefined,
     connectionNote: 'discovering…',
@@ -127,8 +138,20 @@ class AuspexController implements vscode.Disposable {
       }
       let status: StatusResponse | undefined;
       let jobs: JobView[] = [];
+      let session: SessionStatusSnapshot | undefined;
       try {
-        [status, jobs] = await Promise.all([getStatus(conn), getJobs(conn)]);
+        // getSessionStatus already maps 404 ("no sessions exist yet", a
+        // normal state) to undefined; any OTHER session-endpoint failure
+        // is logged but must not blank the daemon-global sections, so it
+        // degrades to "no session data yet" instead of "unreachable".
+        [status, jobs, session] = await Promise.all([
+          getStatus(conn),
+          getJobs(conn),
+          getSessionStatus(conn).catch((err): SessionStatusSnapshot | undefined => {
+            this.output.appendLine(`session status unavailable: ${String(err)}`);
+            return undefined;
+          }),
+        ]);
       } catch (err) {
         // Metadata present but the daemon did not answer: stale file
         // after a crash (metadata.go documents this state) — still not
@@ -141,6 +164,7 @@ class AuspexController implements vscode.Disposable {
         ...this.state,
         status,
         jobs,
+        session,
         address: conn.metadata.address,
         connectionNote: 'ok',
       };
@@ -152,7 +176,14 @@ class AuspexController implements vscode.Disposable {
   }
 
   private renderNotRunning(note: string): void {
-    this.state = { ...this.state, status: undefined, jobs: [], address: undefined, connectionNote: note };
+    this.state = {
+      ...this.state,
+      status: undefined,
+      jobs: [],
+      session: undefined,
+      address: undefined,
+      connectionNote: note,
+    };
     this.tree.setState(this.state);
     this.statusBar.text = '$(circle-slash) auspex: not running';
     this.statusBar.tooltip = new vscode.MarkdownString(
@@ -176,16 +207,27 @@ class AuspexController implements vscode.Disposable {
       parts.push(`${leased} running`);
     }
     this.statusBar.text = parts.join(' · ');
-    // FR-162 asks for policy action / risk / runway freshness here; the
-    // status payload does not carry them yet (httpapi.go statusResponse),
-    // so the tooltip says so instead of showing fabricated values.
+    // FR-162 risk/runway, sourced from GET /v1/session/status — rendered
+    // honestly: null sections say "unknown", uncalibrated scores are
+    // labelled estimates (Constitution §7), and nothing is shown as zero.
+    const session = this.state.session;
+    const sessionLine = session
+      ? `- session: \`${session.session_id}\``
+      : '- session: none recorded yet';
+    const riskLine = session?.risk
+      ? `- risk: ${session.risk.overall_risk_score.toFixed(2)} (${session.risk.confidence || 'confidence unknown'}${session.risk.calibrated ? '' : ', uncalibrated estimate'})`
+      : '- risk: unknown (no prediction yet)';
+    const runwayLine = session?.runway
+      ? `- runway (${session.runway.limit_id}): risk ${session.runway.risk_score.toFixed(2)}${session.runway.calibrated ? '' : ' (uncalibrated estimate)'}`
+      : '- runway: unknown (no forecast yet)';
     this.statusBar.tooltip = new vscode.MarkdownString(
       [
         `**Auspex daemon** v${s.version} at \`${this.state.address ?? '?'}\``,
         `- uptime: ${s.uptime_seconds}s`,
         `- wake jobs: ${JSON.stringify(s.jobs)}`,
-        '',
-        '_Risk / policy action / runway freshness are not exposed by the daemon API yet (issue #10 follow-up)._',
+        sessionLine,
+        riskLine,
+        runwayLine,
       ].join('\n')
     );
   }
@@ -197,11 +239,22 @@ class AuspexController implements vscode.Disposable {
       return;
     }
     const raw: Record<string, unknown> = {};
-    for (const path of ['/v1/health', '/v1/version', '/v1/capabilities', '/v1/status', '/v1/scheduler/jobs']) {
+    const paths = [
+      '/v1/health',
+      '/v1/version',
+      '/v1/capabilities',
+      '/v1/status',
+      '/v1/session/status',
+      '/v1/scheduler/jobs',
+    ];
+    for (const path of paths) {
       try {
         raw[path] = await getRaw(conn, path);
       } catch (err) {
-        raw[path] = { unreachable: String(err) };
+        // A DaemonApiError is an ANSWER (e.g. /v1/session/status → 404
+        // while no session exists yet); only non-API failures are
+        // labelled unreachable.
+        raw[path] = err instanceof DaemonApiError ? { error: String(err) } : { unreachable: String(err) };
       }
     }
     const doc = await vscode.workspace.openTextDocument({
@@ -248,8 +301,10 @@ class AuspexController implements vscode.Disposable {
 
   /** FR-163 via the tree item's inline Cancel button. */
   private async cancelFromTreeItem(item?: { id?: string }): Promise<void> {
-    // tree.ts sets TreeItem.id = "auspex.job.<jobID>".
-    const jobID = item?.id?.startsWith('auspex.job.') ? item.id.slice('auspex.job.'.length) : undefined;
+    // tree.ts sets TreeItem.id = "auspex.job.<jobID>" in the Scheduled
+    // wake jobs section; sections.ts uses "auspex.pausejob.<jobID>" for
+    // the same job under Pause state (TreeItem ids must be tree-unique).
+    const jobID = stripJobIdPrefix(item?.id);
     if (!jobID) {
       return this.cancelViaQuickPick();
     }
@@ -285,6 +340,19 @@ class AuspexController implements vscode.Disposable {
     }
     await this.refresh();
   }
+}
+
+/** "auspex.job.wj-1" / "auspex.pausejob.wj-1" → "wj-1"; anything else → undefined. */
+function stripJobIdPrefix(id: string | undefined): string | undefined {
+  if (id === undefined) {
+    return undefined;
+  }
+  for (const prefix of ['auspex.job.', 'auspex.pausejob.']) {
+    if (id.startsWith(prefix)) {
+      return id.slice(prefix.length);
+    }
+  }
+  return undefined;
 }
 
 export function activate(context: vscode.ExtensionContext): void {

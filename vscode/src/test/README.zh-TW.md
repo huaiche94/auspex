@@ -14,7 +14,15 @@
   chunk 切分、CRLF、心跳（heartbeat），以及重連退避（backoff）排程
   （[`../sse.ts`](../sse.ts)）。
 - `types.test.ts` —— 針對回應／中繼資料的解析測試，比對逐欄位自 Go
-  handler 複製而來的 fixture（[`../types.ts`](../types.ts)）。
+  handler 複製而來的 fixture，包含完整填值、全 null 與格式錯誤的
+  `auspex.daemon.session_status.v1` 形狀
+  （[`../types.ts`](../types.ts)）。
+- `sections.test.ts` —— [`../sections.ts`](../sections.ts) 的 FR-162
+  誠實呈現測試：每個 session 區塊的 unknown-vs-present、校準標示、
+  quota 過期標示、progress 階層，以及喚醒工作的取消串接。
+- `client.test.ts` —— [`../client.ts`](../client.ts) 中
+  `getSessionStatus` 的 URL／auth／404 行為，以真實的 loopback
+  `node:http` 伺服器驗證。
 
 ## 執行方式
 
@@ -28,5 +36,6 @@
 `npm test` 步驟。
 
 本目錄未涵蓋：`extension.ts`／`tree.ts`（擴充套件宿主 UI 接線，以人工
-方式驗證）以及 `client.ts` 中的即時網路路徑（以真實 daemon 進行冒煙測
-試）。
+方式驗證——`tree.ts` 只是把已測試的 `sections.ts` view-model 薄薄地映
+射到 `vscode.TreeItem`）以及 `client.ts` 中 SSE 的網路路徑（以真實
+daemon 進行冒煙測試）。

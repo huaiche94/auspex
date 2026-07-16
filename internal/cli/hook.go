@@ -2,10 +2,12 @@ package cli
 
 import (
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/huaiche94/auspex/internal/hooks/claude"
+	"github.com/huaiche94/auspex/internal/hooks/codex"
 	"github.com/huaiche94/auspex/internal/orchestrator"
 )
 
@@ -31,6 +33,49 @@ func newHookCmd() *cobra.Command {
 		Short: "Provider hook entry points",
 	}
 	cmd.AddCommand(newHookClaudeStubCmd())
+	cmd.AddCommand(newHookCodexStubCmd())
+	return cmd
+}
+
+func newHookCodexStubCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "codex",
+		Short: "Codex CLI hook entry points",
+	}
+	cmd.AddCommand(
+		&cobra.Command{
+			Use:   "session-start",
+			Short: "Handle a Codex SessionStart hook event",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("hook codex session-start")
+			},
+		},
+		&cobra.Command{
+			Use:   "user-prompt-submit",
+			Short: "Handle a Codex UserPromptSubmit hook event",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("hook codex user-prompt-submit")
+			},
+		},
+		&cobra.Command{
+			Use:   "stop",
+			Short: "Handle a Codex Stop hook event",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("hook codex stop")
+			},
+		},
+		&cobra.Command{
+			Use:   "status",
+			Short: "Print a one-line status display for the latest Codex session",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("hook codex status")
+			},
+		},
+	)
 	return cmd
 }
 
@@ -215,6 +260,131 @@ func newRealStopFailureCmd(deps orchestrator.HookDeps) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// NewHookCodexCmd builds the REAL `auspex hook codex ...` subtree (issue
+// #9 Phase 1), wired against deps — the codex sibling of NewHookClaudeCmd,
+// swapped in by internal/app/wiring.App.RootCmd() exactly the same way.
+//
+// The same "JSON and errors" leaf contract applies: read the full raw hook
+// payload from stdin, never log or echo it, always write a syntactically
+// valid provider-compatible JSON response to stdout (Codex validates hook
+// stdout when non-empty, and `{}` is the every-field-defaulted valid body
+// for all three hook output schemas), and exit 0 in every case except a
+// genuine command-usage error. A block decision is content in the response
+// body, never a non-zero exit.
+func NewHookCodexCmd(deps orchestrator.HookDeps) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "codex",
+		Short: "Codex CLI hook entry points",
+	}
+	cmd.AddCommand(
+		newRealCodexSessionStartCmd(deps),
+		newRealCodexUserPromptSubmitCmd(deps),
+		newRealCodexStopCmd(deps),
+		newRealCodexStatusCmd(deps),
+	)
+	return cmd
+}
+
+func newRealCodexSessionStartCmd(deps orchestrator.HookDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "session-start",
+		Short: "Handle a Codex SessionStart hook event",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stdin, err := readAllStdin(cmd)
+			if err != nil {
+				return err
+			}
+			// HandleCodexSessionStart is fail-open on malformed input;
+			// its returned error is reserved for framework-level faults.
+			if _, err := orchestrator.HandleCodexSessionStart(cmd.Context(), deps, stdin); err != nil {
+				return writeJSON(cmd, []byte(`{}`))
+			}
+			// session-start.command.output has no decision field; `{}` is
+			// the valid no-opinion response.
+			return writeJSON(cmd, []byte(`{}`))
+		},
+	}
+}
+
+func newRealCodexUserPromptSubmitCmd(deps orchestrator.HookDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "user-prompt-submit",
+		Short: "Handle a Codex UserPromptSubmit hook event",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stdin, err := readAllStdin(cmd)
+			if err != nil {
+				return err
+			}
+			result, err := orchestrator.HandleCodexUserPromptSubmit(cmd.Context(), deps, stdin)
+			if err != nil {
+				// Framework-level fault: the hook fallback must still be
+				// syntactically valid, so answer the safe allow.
+				return writeJSON(cmd, codex.FallbackAllowResponse())
+			}
+			body, encErr := codex.EncodeUserPromptSubmitResponse(result.Response)
+			if encErr != nil {
+				return writeJSON(cmd, codex.FallbackAllowResponse())
+			}
+			return writeJSON(cmd, body)
+		},
+	}
+}
+
+func newRealCodexStopCmd(deps orchestrator.HookDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop",
+		Short: "Handle a Codex Stop hook event",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stdin, err := readAllStdin(cmd)
+			if err != nil {
+				return err
+			}
+			if _, err := orchestrator.HandleCodexStop(cmd.Context(), deps, stdin); err != nil {
+				return writeJSON(cmd, []byte(`{}`))
+			}
+			// stop.command.output's decision field is block-only and this
+			// handler never blocks a stop; `{}` is the valid no-opinion
+			// response.
+			return writeJSON(cmd, []byte(`{}`))
+		},
+	}
+}
+
+// newRealCodexStatusCmd builds `auspex hook codex status` (issue #9 Phase
+// 1b): the one hook leaf that reads NO stdin — it exists precisely for
+// callers that cannot provide any (tmux status-right polling every ~15s).
+// It prints the one-line display for the most recent Codex session
+// observed in --cwd (default: the calling process's working directory) and
+// exits 0 on every outcome, degrading to the bare "ax»" line rather than
+// erroring — a status bar consumer must never see a stack trace.
+func newRealCodexStatusCmd(deps orchestrator.HookDeps) *cobra.Command {
+	var cwd string
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Print a one-line status display for the latest Codex session",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir := cwd
+			if dir == "" {
+				// Best-effort: an unresolvable working directory just means
+				// the latest codex session anywhere is shown.
+				dir, _ = os.Getwd()
+			}
+			line, err := orchestrator.HandleCodexStatus(cmd.Context(), deps, dir)
+			if err != nil {
+				return err
+			}
+			_, writeErr := cmd.OutOrStdout().Write([]byte(line + "\n"))
+			return writeErr
+		},
+	}
+	cmd.Flags().StringVar(&cwd, "cwd", "", "Directory to resolve the Codex session for (default: current working directory)")
+	return cmd
 }
 
 // readAllStdin reads the full hook payload from cmd's configured input

@@ -238,6 +238,11 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// prediction↔actual outcome join (ADR-046's documented
 			// upgrade point).
 			OpenTurns: &orchestrator.OpenTurnStore{DB: db},
+			// `auspex hook codex status` (issue #9 Phase 1b) reads the
+			// latest codex session's persisted context/quota observations
+			// back out of the same DB the codex hook subtree writes into —
+			// the stdin-less render path tmux polls.
+			CodexStatus: &orchestrator.CodexStatusStore{DB: db},
 			// The REAL evaluation.Service doubles as the issue-#14
 			// forecast-card source (it satisfies orchestrator.
 			// ForecastCardSource — ForecastCard/LatestForecastCard read

@@ -122,6 +122,14 @@ type HookDeps struct {
 	// export's actual side). nil disables stamping entirely — terminal
 	// events persist with SessionID only, exactly the pre-#11 behavior.
 	OpenTurns OpenTurnResolver
+
+	// CodexStatus optionally enables `auspex hook codex status` (issue
+	// #9 Phase 1b, codexstatus.go): the DB read-back that lets a stdin-less
+	// caller (tmux) render the latest Codex session's one-line status for a
+	// directory. nil degrades that command to the bare "ax»" line — the
+	// same nil-is-a-documented-degrade convention every optional field in
+	// this struct follows; no other handler consults it.
+	CodexStatus CodexStatusReader
 }
 
 // OpenTurnResolver resolves a session's latest started turn. ok=false

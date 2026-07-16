@@ -1,0 +1,10 @@
+{
+  "session_id": "019f0000-1111-7aaa-8bbb-ccccdddd0001",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/home/dev/projects/sample",
+  "transcript_path": "/home/dev/.codex/sessions/2026/07/14/rollout-2026-07-14T09-00-00-019f0000-1111-7aaa-8bbb-ccccdddd0001.jsonl",
+  "model": "gpt-5.2-codex",
+  "permission_mode": "default",
+  "turn_id": "019f0000-2222-7aaa-8bbb-ccccdddd0103",
+  "prompt": ""
+}

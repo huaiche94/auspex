@@ -55,6 +55,30 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Codex native-hook provider adapter, Phase 1 (#9)**: new
+  `internal/hooks/codex` / `internal/telemetry/codex` /
+  `internal/providers/codex` packages behind the existing provider
+  interfaces — `auspex hook codex session-start|user-prompt-submit|stop`
+  (kebab-case per ADR-050) ingest Codex CLI sessions into the frozen
+  event envelope, with the pre-prompt gate (allow/block + forecast card
+  via `additionalContext`) running the same evaluation pipeline as
+  Claude. At Stop the session rollout JSONL's `token_count` event is
+  read (numbers only, fail-open, ADR-051 discipline) yielding exact
+  per-turn tokens (fresh/cached/output/reasoning), context-window usage,
+  and BOTH rate-limit windows (5h primary + weekly secondary) as
+  `provider.usage/context/quota.observed`. Capabilities are detected,
+  not hardcoded; fixtures are pinned against the v0.144.4 binary's
+  embedded hook schemas; claude's `EventStore` reused as-is — zero
+  migrations, no frozen-contract changes. Reference config at
+  `integrations/codex/hooks.json`.
+
+- **`auspex hook codex status [--cwd DIR]`** — stdin-less status line
+  for surfaces that cannot feed hook stdin (tmux status bar, scripts):
+  reads the most recent Codex session for the directory from the DB and
+  renders the same v3 line as the Claude statusline
+  (`ax» <model> │ quota │ context │ verdict`). Additive CLI surface
+  (no ADR: new leaf behind the ADR-050-blessed hook tree).
+
 - **Per-turn token usage captured from the Stop transcript (ADR-051)**
   ([#72](https://github.com/huaiche94/auspex/issues/72)): at Stop, the hook
   parses the completed turn's slice of the Claude Code transcript

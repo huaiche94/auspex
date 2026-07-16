@@ -46,6 +46,27 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **Codex native-hook provider adapter，Phase 1（#9）**：新增
+  `internal/hooks/codex` / `internal/telemetry/codex` /
+  `internal/providers/codex` 三個 package，藏在既有 provider 介面之後 ——
+  `auspex hook codex session-start|user-prompt-submit|stop`（kebab-case，
+  依 ADR-050）將 Codex CLI session 攝入凍結事件 envelope，pre-prompt gate
+  （allow/block + 經 `additionalContext` 的 forecast card）跑與 Claude 相同
+  的評估管線。Stop 時讀取 session rollout JSONL 的 `token_count` 事件
+  （僅數字、fail-open、ADR-051 紀律），取得每回合精確 token
+  （fresh/cached/output/reasoning）、context window 使用率、以及**兩個**
+  配額窗（5 小時 primary + 週 secondary），寫入
+  `provider.usage/context/quota.observed`。Capability 為執行期偵測而非寫死；
+  fixtures 對 v0.144.4 binary 內嵌 hook schema 釘死；直接重用 claude 的
+  `EventStore` —— 零 migration、無凍結契約變更。參考設定見
+  `integrations/codex/hooks.json`。
+
+- **`auspex hook codex status [--cwd DIR]`** —— 無 stdin 的狀態行，供
+  無法餵 hook stdin 的表面使用（tmux status bar、腳本）：從 DB 讀取該
+  目錄最近的 Codex session，渲染與 Claude statusline 相同的 v3 行
+  （`ax» <model> │ quota │ context │ verdict`）。加法式 CLI 表面
+  （無需 ADR：ADR-050 已祝福的 hook 樹下之新葉）。
+
 - **Stop transcript 擷取每回合 token 用量（ADR-051）**
   （[#72](https://github.com/huaiche94/auspex/issues/72)）：Stop 時 hook
   解析 Claude Code transcript（`transcript_path`）中剛完成回合的切片，

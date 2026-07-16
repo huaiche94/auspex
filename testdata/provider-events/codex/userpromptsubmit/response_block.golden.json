@@ -1,0 +1,1 @@
+{"decision":"block","reason":"Auspex evaluation eval-1 requires a checkpoint or explicit override before this task starts.","hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"forecast: sample"}}

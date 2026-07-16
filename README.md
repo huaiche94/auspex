@@ -57,10 +57,10 @@ gets, the longer the tasks people dare to run unattended — and the more a
 supervision layer matters.
 
 **Auspex is a local-first predictive runtime guard for AI coding agents.**
-Before each turn with a provider like Claude Code, it estimates what the
-turn will cost — scope, tokens, quota fit, blast-radius risk — and applies
-policy: run it, warn, require a checkpoint first, split it, pause
-gracefully, or block it.
+Before each turn with a provider like Claude Code or Codex CLI, it
+estimates what the turn will cost — scope, tokens, quota fit,
+blast-radius risk — and applies policy: run it, warn, require a
+checkpoint first, split it, pause gracefully, or block it.
 
 Checkpoint/resume/memory tools answer *"how do we continue?"*. Auspex
 answers the question that comes first: **"should we even start this
@@ -69,8 +69,9 @@ undertaking begins and rules whether it may proceed.)
 
 ## What it does, in one session
 
-Once wired into Claude Code (see [Quick start](#quick-start)), every
-prompt you submit is evaluated before it runs. This is real output from
+Once wired into Claude Code or Codex CLI (see
+[Quick start](#quick-start)), every prompt you submit is evaluated
+before it runs. This is real output from
 one of this repository's own development sessions — Auspex dogfoods
 itself daily:
 
@@ -128,7 +129,14 @@ To wire it into Claude Code, follow
 `hooks.json`/`plugin.json` examples that route Claude Code's
 UserPromptSubmit / Stop / StopFailure / statusline events through
 `auspex hook claude <event>`, plus `auspex init` to register the current
-repository. The hooks **fail open** — an Auspex crash never blocks your
+repository. Codex CLI is wired the same way:
+[`integrations/codex/hooks.json`](integrations/codex/hooks.json) routes
+its SessionStart / UserPromptSubmit / Stop events through
+`auspex hook codex <event>` (hook argv is kebab-case, ADR-050). In both
+cases the Stop-side capture records exact per-turn token usage — all
+four token classes, Claude from the session transcript (ADR-051), Codex
+from the session rollout JSONL — numbers only, never prompt or output
+text. The hooks **fail open** — an Auspex crash never blocks your
 session; run `auspex evaluate` directly to surface real errors.
 
 ### The command tree
@@ -142,12 +150,14 @@ auspex pause request|cancel   safe-point pause with a durable wake job
 auspex resume                 re-verified resume
 auspex scheduler run-once     execute due wake jobs without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
-auspex run ...                run a provider one-shot prompt under the managed gate
+auspex run ...                one-shot prompt under the managed gate (claude|codex)
 auspex init                   register the current repository/session
 auspex status | doctor        session/checkpoint/pause state; environment health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis
 auspex hook claude <event>    the four hook entrypoints Claude Code calls
+auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
+auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
 ```
 
 Every command speaks schema-versioned JSON on stdout (`--json`, FR-160)
@@ -160,10 +170,12 @@ consume it:
  "retryable":false,"details":{"reason":"quota_hit"}}
 ```
 
-A VS Code companion extension ([`vscode/`](vscode/README.md)) shows
-daemon status, the wake-job queue, and an inline cancel button for
-scheduled resumes; it is used from source or a locally packaged VSIX
-until the marketplace publisher is registered
+A VS Code companion extension ([`vscode/`](vscode/README.md)) renders
+the daemon's per-session status view — risk, runway, quota freshness,
+progress, checkpoints, and pause state, where unknown renders as
+"unknown", never as a fabricated zero — plus the wake-job queue with an
+inline cancel button for scheduled resumes; it is used from source or a
+locally packaged VSIX until the marketplace publisher is registered
 ([#18](https://github.com/huaiche94/auspex/issues/18)).
 
 ## Project status
@@ -177,15 +189,34 @@ the per-prompt forecast surface
 ([#14](https://github.com/huaiche94/auspex/issues/14)), tiered telemetry
 retention (ADR-046), real repository-checkpoint restore
 ([#6](https://github.com/huaiche94/auspex/issues/6)), and the VS Code
-companion MVP. This repository's own Claude Code sessions feed telemetry
-into a local Auspex daily.
+companion ([#10](https://github.com/huaiche94/auspex/issues/10)), now
+fed by a daemon session-status API (`GET /v1/session/status`,
+`auspex.daemon.session_status.v1`). Codex CLI is a first-class second
+provider ([#9](https://github.com/huaiche94/auspex/issues/9)): both
+native hooks (`auspex hook codex <event>`) and the managed one-shot
+(`auspex run --provider codex`, over `codex exec --json`) ship; what
+remains in #9 is the M7 Phase-2 tail — app-server subscription,
+graceful interrupt, `codex exec resume`. Native-hook sessions capture
+exact per-turn token usage for both providers — Claude from the Stop
+transcript (ADR-051), Codex from the session rollout JSONL — and live
+runway forecasts computed from that real quota telemetry feed the
+policy's runway reason codes plus an in-horizon statusline hint
+(`⏳ runway ~Ns`). This repository's own sessions feed telemetry into a
+local Auspex daily.
 
 **The honest caveat:** every forecast is still produced by cold-start
 rules, not calibrated models. Scores are not probabilities and are
 labeled that way on every surface (Constitution §7 rule 7). The token
 forecast in particular barely responds to the prompt yet
-([#42](https://github.com/huaiche94/auspex/issues/42)); calibration from
-accumulated real telemetry is the M13 milestone
+([#42](https://github.com/huaiche94/auspex/issues/42)). The calibration
+*rails* are all in place — predicted-vs-actual pairs for cost, duration,
+and exact tokens accumulate from normal use, and the first field
+dataset already quantifies the gap: the cold-start cost forecast
+under-forecasts real cost roughly 7–9× at the median, driven by
+cache-read-blind pricing
+([#66](https://github.com/huaiche94/auspex/issues/66)). The
+fit-and-feed-back step that turns those pairs into calibrated forecasts
+is the open M13 milestone
 ([#11](https://github.com/huaiche94/auspex/issues/11)). External research
 backs this stance rather than undercutting it: a study of eight frontier
 agents on SWE-bench (Bai et al.,
@@ -196,18 +227,29 @@ a coarse, uncalibrated range is the honest ceiling, not a temporary one.
 Auspex's value is therefore in the **decision it gates** — checkpoint,
 pause, resume, block — not in the precision of the number it prints.
 
-Open roadmap milestones: Codex provider adapter (M7/M8,
-[#9](https://github.com/huaiche94/auspex/issues/9)), managed one-shot and
-shell modes (M11, [#8](https://github.com/huaiche94/auspex/issues/8)),
-full VS Code companion (M12,
-[#10](https://github.com/huaiche94/auspex/issues/10)), calibration
-pipeline (M13, #11). The
+Open roadmap milestones: the Codex M7 Phase-2 tail — app-server
+subscription, graceful interrupt, `codex exec resume`
+([#9](https://github.com/huaiche94/auspex/issues/9)); the managed shell
+mode (M11, [#8](https://github.com/huaiche94/auspex/issues/8)); the
+calibration fit-and-feed-back pipeline (M13,
+[#11](https://github.com/huaiche94/auspex/issues/11)); pre-release
+namespace claims ([#18](https://github.com/huaiche94/auspex/issues/18));
+tool-operation capture with spin detection and phase-aware gating
+([#67](https://github.com/huaiche94/auspex/issues/67)/[#68](https://github.com/huaiche94/auspex/issues/68),
+ADR-gated); research-derived forecast upgrades
+([#65](https://github.com/huaiche94/auspex/issues/65), the forecast half
+of [#66](https://github.com/huaiche94/auspex/issues/66),
+[#42](https://github.com/huaiche94/auspex/issues/42),
+[#20](https://github.com/huaiche94/auspex/issues/20) — data-gated); and
+a signal-handling fix for the managed runner
+([#88](https://github.com/huaiche94/auspex/issues/88)). The
 [issue tracker](https://github.com/huaiche94/auspex/issues) is the live
 backlog. Work is milestone-gated: nothing is implemented ahead of its
 milestone (`docs/design/Auspex_ADD.md` §31).
 
 Research-grounded additions distilled from Bai et al. (above) — a
-cache-aware four-class cost model, a repeated-file-operation risk signal
+cache-aware four-class cost model (its capture half has landed; the
+forecast half is open in #66), a repeated-file-operation risk signal
 that catches a spinning turn by *observation* instead of prediction, and
 phase-aware conditional forecasting — are captured as roadmap notes (as
 external priors, never as fitted numbers) in
@@ -233,6 +275,7 @@ cmd/auspex/           CLI entrypoint (thin main; wiring in internal/app)
 internal/             application core, domain model, adapters (Go)
 pkg/protocol/v1/      public wire protocol types
 integrations/claude/  Claude Code hook wiring (hooks.json / plugin.json)
+integrations/codex/   Codex CLI hook wiring (hooks.json)
 vscode/               VS Code companion extension (TypeScript)
 schemas/              JSON Schemas for the frozen wire shapes
 research/             offline Python analysis — never a runtime dependency

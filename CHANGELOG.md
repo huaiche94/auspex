@@ -308,9 +308,11 @@ follow [SemVer](https://semver.org/) once releases begin.
   ([#42](https://github.com/huaiche94/auspex/issues/42)); calibration
   from real telemetry is milestone M13
   ([#11](https://github.com/huaiche94/auspex/issues/11)).
-- Claude Code is the only provider adapter; Codex (M7/M8) is tracked in
-  [#9](https://github.com/huaiche94/auspex/issues/9). Managed one-shot /
-  shell modes (M11) are tracked in
+- Codex is now a first-class provider (native hooks + managed one-shot);
+  the M7 Phase-2 tail (app-server subscription, graceful interrupt,
+  `codex exec resume`) is tracked in
+  [#9](https://github.com/huaiche94/auspex/issues/9). The managed shell
+  mode (M11) is tracked in
   [#8](https://github.com/huaiche94/auspex/issues/8).
 - Prompt-feature extraction runs multiple O(n) passes on the blocking
   hook path ([#51](https://github.com/huaiche94/auspex/issues/51)) and

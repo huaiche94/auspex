@@ -266,9 +266,10 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
   （[#42](https://github.com/huaiche94/auspex/issues/42)）；根據真實遙測資料進行校準是
   M13 里程碑
   （[#11](https://github.com/huaiche94/auspex/issues/11)）。
-- 目前唯一的 provider 轉接器是 Claude Code；Codex（M7/M8）追蹤於
-  [#9](https://github.com/huaiche94/auspex/issues/9)。受管的 one-shot／
-  shell 模式（M11）追蹤於
+- Codex 現已是第一級 provider（native hooks + 受管 one-shot）；M7
+  Phase 2 尾段（app-server 訂閱、優雅中斷、`codex exec resume`）追蹤於
+  [#9](https://github.com/huaiche94/auspex/issues/9)。受管 shell 模式
+  （M11）追蹤於
   [#8](https://github.com/huaiche94/auspex/issues/8)。
 - Prompt 特徵萃取在阻塞式（blocking）hook 路徑上會執行多次 O(n)
   掃描（[#51](https://github.com/huaiche94/auspex/issues/51)），且其 payload

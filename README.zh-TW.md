@@ -26,13 +26,13 @@ Auspex 不做壓縮，它監督壓縮。
 agent 負責翻頁（page-turn）；Auspex 負責確保翻頁之前狀態已經固化（`CHECKPOINT_AND_RUN`）、翻頁之後的輸出仍然通得過證據閘門，以及讓配額中斷變成暫停、而不是死掉的 session。這讓 Auspex 與各家 vendor 的路線圖互補、而非與之競速：原生壓縮做得愈好，人們愈敢放手讓它無人值守（unattended）跑更長的任務——而一層監督（supervision）機制也就愈重要。
 
 **Auspex 是為 AI 編碼代理（AI coding agents）打造的本地優先（local-first）預測式執行期守門系統（predictive runtime guard）。**
-在每次與 Claude Code 這類 provider（供應商）互動的回合（turn）開始前及進行中，它會估算這個回合的成本——範疇（scope）、token／配額消耗、完成可能性、爆炸半徑（blast-radius）風險——然後套用政策（policy），決定放行、警告、要求先建立檢查點、拆分、優雅暫停（gracefully pause），或直接阻擋這個回合。
+在每次與 Claude Code、Codex CLI 這類 provider（供應商）互動的回合（turn）開始前及進行中，它會估算這個回合的成本——範疇（scope）、token／配額消耗、完成可能性、爆炸半徑（blast-radius）風險——然後套用政策（policy），決定放行、警告、要求先建立檢查點、拆分、優雅暫停（gracefully pause），或直接阻擋這個回合。
 
 它回答的問題與 checkpoint／resume／memory 類工具不同：不是「我們該如何繼續？」，而是「這個回合我們一開始就該執行嗎？」（拉丁文 *auspex* 指的是在一件事展開之前解讀徵兆、裁定是否可以進行的占卜官。）
 
 ## 一次 session 就能看到的效果
 
-一旦接上 Claude Code（見〔快速開始〕(#快速開始)），你送出的每一個 prompt 在執行前都會先被評估。以下是本專案自身某次真實開發 session 的實際輸出——Auspex 每天都在對自己做 dogfooding：
+一旦接上 Claude Code 或 Codex CLI（見〔快速開始〕(#快速開始)），你送出的每一個 prompt 在執行前都會先被評估。以下是本專案自身某次真實開發 session 的實際輸出——Auspex 每天都在對自己做 dogfooding：
 
 ```text
 Auspex forecast (uncalibrated estimate — scores are not probabilities):
@@ -70,7 +70,14 @@ go build -o auspex ./cmd/auspex
 `hooks.json`／`plugin.json` 範例，會將 Claude Code 的
 UserPromptSubmit / Stop / StopFailure / statusline 事件導向
 `auspex hook claude <event>`，另外還有 `auspex init` 可以註冊目前的
-repository。這些 hook 會**fail open（失效開放）**——Auspex 發生 crash 絕不會阻擋你的
+repository。Codex CLI 也以同樣的方式接上：
+[`integrations/codex/hooks.json`](integrations/codex/hooks.json) 會將它的
+SessionStart / UserPromptSubmit / Stop 事件導向
+`auspex hook codex <event>`（hook 的 argv 採 kebab-case，ADR-050）。兩者的
+Stop 端擷取都會記錄精確的逐回合（per-turn）token 用量——完整四類 token，
+Claude 來自 session transcript（ADR-051）、Codex 來自 session rollout
+JSONL——僅數字，絕不保存 prompt 或輸出文字。這些 hook
+會**fail open（失效開放）**——Auspex 發生 crash 絕不會阻擋你的
 session；直接執行 `auspex evaluate` 即可看到真正的錯誤訊息。
 
 ### 指令樹（The command tree）
@@ -84,12 +91,14 @@ auspex pause request|cancel   safe-point pause with a durable wake job
 auspex resume                 re-verified resume
 auspex scheduler run-once     execute due wake jobs without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
-auspex run ...                run a provider one-shot prompt under the managed gate
+auspex run ...                one-shot prompt under the managed gate (claude|codex)
 auspex init                   register the current repository/session
 auspex status | doctor        session/checkpoint/pause state; environment health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis
 auspex hook claude <event>    the four hook entrypoints Claude Code calls
+auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
+auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
 ```
 
 每一個指令都會在 stdout 上輸出具 schema 版本（schema-versioned）的 JSON（`--json`，FR-160），並以單一種型別化（typed）的錯誤格式回報失敗，讓人類與 agent 都能消化這個輸出：
@@ -100,8 +109,10 @@ auspex hook claude <event>    the four hook entrypoints Claude Code calls
  "retryable":false,"details":{"reason":"quota_hit"}}
 ```
 
-VS Code 隨附延伸模組（companion extension，[`vscode/`](vscode/README.md)）會顯示
-daemon 狀態、wake-job 佇列，以及排程恢復（scheduled resume）的內嵌取消按鈕；在
+VS Code 隨附延伸模組（companion extension，[`vscode/`](vscode/README.md)）會呈現
+daemon 的逐 session 狀態視圖——風險（risk）、剩餘跑道（runway）、配額新鮮度（quota
+freshness）、進度、checkpoint 與暫停狀態；未知（unknown）就呈現為「未知」，絕不以捏造的零代替——外加
+wake-job 佇列與排程恢復（scheduled resume）的內嵌取消按鈕；在
 marketplace 發布者（publisher）完成註冊之前
 （[#18](https://github.com/huaiche94/auspex/issues/18)），這個延伸模組僅能從原始碼或本機打包的 VSIX 使用。
 
@@ -116,21 +127,44 @@ session bootstrap（[#17](https://github.com/huaiche94/auspex/issues/17)）、
 （[#14](https://github.com/huaiche94/auspex/issues/14)）、分層遙測（telemetry）
 資料保留（ADR-046）、真正的 repository-checkpoint 還原
 （[#6](https://github.com/huaiche94/auspex/issues/6)），以及 VS Code
-companion 延伸模組的 MVP。本 repository 自身的 Claude Code session 每天都會把遙測資料餵給本機的一個 Auspex。
+companion 延伸模組（[#10](https://github.com/huaiche94/auspex/issues/10)）——後者現在由
+daemon 的 session-status API（`GET /v1/session/status`，
+`auspex.daemon.session_status.v1`）供應資料。Codex CLI 已是第一級（first-class）的第二個
+provider（[#9](https://github.com/huaiche94/auspex/issues/9)）：native
+hook（`auspex hook codex <event>`）與受管
+one-shot（`auspex run --provider codex`，經由 `codex exec --json`）皆已出貨；#9
+剩下的是 M7 Phase 2 的尾巴——app-server 訂閱、graceful
+interrupt、`codex exec resume`。native-hook session 現在能為兩個
+provider 擷取精確的逐回合（per-turn）token 用量——Claude 來自 Stop
+transcript（ADR-051）、Codex 來自 session
+rollout JSONL——而由這些真實配額遙測算出的即時剩餘跑道（runway）預測，會觸發
+policy 的 runway reason code，並在視野內（in-horizon）時於 statusline
+顯示提示（`⏳ runway ~Ns`）。本 repository 自身的 session 每天都會把遙測資料餵給本機的一個 Auspex。
 
 **誠實的但書：**每一個預測目前仍然是由 cold-start（冷啟動）規則產生，而非經過校準（calibrated）的模型。分數不是機率，並且在每一個呈現介面上都明確標示為如此（Constitution §7 第 7 條）。token 預測目前尤其幾乎不隨 prompt 內容而變動
-（[#42](https://github.com/huaiche94/auspex/issues/42)）；根據累積的真實遙測資料進行校準是 M13 里程碑
-（[#11](https://github.com/huaiche94/auspex/issues/11)）。外部研究是支撐而非推翻這個立場：一份對八個 frontier agent 在 SWE-bench 上的研究（Bai 等，[arXiv:2604.22750](https://arxiv.org/abs/2604.22750)，2026）發現，同一任務的不同執行 token 用量可差到 30×，而且模型對自身成本的預測只有弱相關（correlation ≤ 0.39、且系統性偏低）——因此粗略、未校準的區間是誠實的上限，而非暫時的權宜。所以 Auspex 的價值在於它所把關的**決策**——checkpoint、pause、resume、block——而不在於它印出那個數字的精確度。
+（[#42](https://github.com/huaiche94/auspex/issues/42)）。校準的*軌道*（rails）已全部到位——成本、時長與精確
+token 的「預測 vs 實際」配對會在日常使用中持續累積，而第一批實地資料已經量化了差距：cold-start
+成本預測在中位數低估了實際成本約 7–9×，主因是對 cache-read 視而不見的計價
+（[#66](https://github.com/huaiche94/auspex/issues/66)）。把這些配對轉化為經校準預測的擬合與回饋（fit-and-feed-back）步驟，是仍待完成的
+M13 里程碑（[#11](https://github.com/huaiche94/auspex/issues/11)）。外部研究是支撐而非推翻這個立場：一份對八個 frontier agent 在 SWE-bench 上的研究（Bai 等，[arXiv:2604.22750](https://arxiv.org/abs/2604.22750)，2026）發現，同一任務的不同執行 token 用量可差到 30×，而且模型對自身成本的預測只有弱相關（correlation ≤ 0.39、且系統性偏低）——因此粗略、未校準的區間是誠實的上限，而非暫時的權宜。所以 Auspex 的價值在於它所把關的**決策**——checkpoint、pause、resume、block——而不在於它印出那個數字的精確度。
 
-尚待完成的路線圖里程碑：Codex provider 轉接器（adapter）（M7/M8，
-[#9](https://github.com/huaiche94/auspex/issues/9)）、受管的 one-shot 與
-shell 模式（M11，[#8](https://github.com/huaiche94/auspex/issues/8)）、
-完整的 VS Code companion（M12，
-[#10](https://github.com/huaiche94/auspex/issues/10)）、校準（calibration）
-pipeline（M13，#11）。
+尚待完成的路線圖里程碑：Codex M7 Phase 2 的尾巴——app-server 訂閱、graceful
+interrupt、`codex exec resume`
+（[#9](https://github.com/huaiche94/auspex/issues/9)）；受管 shell
+模式（M11，[#8](https://github.com/huaiche94/auspex/issues/8)）；校準（calibration）的擬合與回饋（fit-and-feed-back）pipeline（M13，
+[#11](https://github.com/huaiche94/auspex/issues/11)）；發布前的命名空間（namespace）認領
+（[#18](https://github.com/huaiche94/auspex/issues/18)）；工具操作（tool-operation）擷取，含原地打轉（spin）偵測與
+phase-aware 把關
+（[#67](https://github.com/huaiche94/auspex/issues/67)／[#68](https://github.com/huaiche94/auspex/issues/68)，以
+ADR 為閘）；源自研究的預測升級
+（[#65](https://github.com/huaiche94/auspex/issues/65)、[#66](https://github.com/huaiche94/auspex/issues/66)
+的預測那一半、[#42](https://github.com/huaiche94/auspex/issues/42)、
+[#20](https://github.com/huaiche94/auspex/issues/20)——以資料為閘）；以及受管
+runner 的訊號處理（signal-handling）修正
+（[#88](https://github.com/huaiche94/auspex/issues/88)）。
 [issue tracker](https://github.com/huaiche94/auspex/issues) 是即時更新的待辦清單。所有工作都受里程碑閘控（milestone-gated）：任何功能都不會在其里程碑之前被實作（`docs/design/Auspex_ADD.md` §31）。
 
-從上述 Bai 等論文提煉出、以研究為依據的新增項目——cache-aware 四類成本模型、以*觀測*而非預測抓出原地打轉 turn 的重複檔案操作 risk 訊號，以及 phase-aware 條件式預測——已作為路線圖筆記（僅為外部先驗，絕非擬合數字）記錄於
+從上述 Bai 等論文提煉出、以研究為依據的新增項目——cache-aware 四類成本模型（其擷取那一半已落地；預測那一半仍開放於 #66）、以*觀測*而非預測抓出原地打轉 turn 的重複檔案操作 risk 訊號，以及 phase-aware 條件式預測——已作為路線圖筆記（僅為外部先驗，絕非擬合數字）記錄於
 [`docs/backlog/token-cost-prediction-research.md`](docs/backlog/token-cost-prediction-research.md)。
 
 ## 驗證一項變更
@@ -152,6 +186,7 @@ cmd/auspex/           CLI entrypoint (thin main; wiring in internal/app)
 internal/             application core, domain model, adapters (Go)
 pkg/protocol/v1/      public wire protocol types
 integrations/claude/  Claude Code hook wiring (hooks.json / plugin.json)
+integrations/codex/   Codex CLI hook wiring (hooks.json)
 vscode/               VS Code companion extension (TypeScript)
 schemas/              JSON Schemas for the frozen wire shapes
 research/             offline Python analysis — never a runtime dependency

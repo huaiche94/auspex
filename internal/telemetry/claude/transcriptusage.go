@@ -123,21 +123,36 @@ func ReadTurnUsage(path string) (TurnUsage, bool) {
 // exercise the tail-window and oversized-line branches without
 // multi-megabyte fixtures.
 func readTurnUsage(path string, tailWindow int64, maxLine int) (TurnUsage, bool) {
+	acc := turnAccumulator{calls: map[string]transcriptAPIUsage{}}
+	if !scanTranscriptTail(path, tailWindow, maxLine, acc.consume) {
+		return TurnUsage{}, false
+	}
+	return acc.result()
+}
+
+// scanTranscriptTail streams the transcript's tail-window lines into
+// consume — the shared I/O scaffolding behind readTurnUsage and issue
+// #67's readTurnToolOps (toolops.go), factored out so the two extractors
+// cannot drift on bounds or fragment handling. Returns false when the
+// file could not be scanned at all (missing, unreadable, not a regular
+// file, a mid-scan read error); consume sees only complete,
+// non-oversized lines.
+func scanTranscriptTail(path string, tailWindow int64, maxLine int, consume func(line []byte)) bool {
 	f, err := os.Open(path)
 	if err != nil {
-		return TurnUsage{}, false
+		return false
 	}
 	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() {
-		return TurnUsage{}, false
+		return false
 	}
 
 	skipFirstLine := false
 	if size := info.Size(); size > tailWindow {
 		if _, err := f.Seek(size-tailWindow, io.SeekStart); err != nil {
-			return TurnUsage{}, false
+			return false
 		}
 		// The seek almost certainly landed mid-line; the first "line" read
 		// is a fragment and must not be parsed.
@@ -145,28 +160,26 @@ func readTurnUsage(path string, tailWindow int64, maxLine int) (TurnUsage, bool)
 	}
 
 	r := bufio.NewReaderSize(f, 64<<10)
-	acc := turnAccumulator{calls: map[string]transcriptAPIUsage{}}
 	for {
 		line, tooLong, err := nextTranscriptLine(r, maxLine)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return TurnUsage{}, false
+			return false
 		}
 		if skipFirstLine {
 			skipFirstLine = false
 		} else if !tooLong && len(line) > 0 {
 			// An oversized line is skipped whole rather than truncated-
 			// parsed. Failure direction is disclosed and fail-open: a
-			// skipped assistant line undercounts one API call; a skipped
-			// prompt boundary merges this turn with the previous one only
-			// if no later boundary exists — both degrade capture, never
-			// the hook.
-			acc.consume(line)
+			// skipped assistant line undercounts one API call/tool op; a
+			// skipped prompt boundary merges this turn with the previous
+			// one only if no later boundary exists — both degrade capture,
+			// never the hook.
+			consume(line)
 		}
 		if errors.Is(err, io.EOF) {
-			break
+			return true
 		}
 	}
-	return acc.result()
 }
 
 // nextTranscriptLine reads one newline-delimited line, capping retained

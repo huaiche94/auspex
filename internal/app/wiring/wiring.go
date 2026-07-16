@@ -160,6 +160,17 @@ type HookSupport struct {
 	// compositions without an events store to resolve against.
 	OpenTurns orchestrator.OpenTurnResolver
 
+	// ToolOps optionally enables the issue-#67 slice-3a per-turn
+	// file-operation capture (ADR-052, orchestrator.HookDeps.ToolOps):
+	// when non-nil, `hook claude post-tool-use` accumulates the per-turn
+	// scratch counter and Stop stamps the five aggregate payload fields
+	// on provider.turn.completed. The real value is cmd/auspex's
+	// orchestrator.ToolOpScratchStore over the same *sqlite.DB; nil
+	// disables capture — post-tool-use parses and acknowledges only, Stop
+	// stamps no aggregates — the right degrade for compositions without
+	// the scratch table's DB.
+	ToolOps orchestrator.ToolOpScratch
+
 	// Bootstrapper optionally enables the issue-#17 lazy session
 	// bootstrap (internal/orchestrator/sessionbootstrap.go): when
 	// non-nil, every hook handler registers the session's repositories/
@@ -320,6 +331,10 @@ func (a *App) RootCmd() *cobra.Command {
 		CodexStatus:  a.services.Hooks.CodexStatus,
 		Runway:       a.services.Hooks.Runway,
 		Pace:         a.services.Hooks.Pace,
+		// FLAG (composition-root reconciliation): appended field only —
+		// pass-through of the optional #67 ToolOps scratch (ADR-052);
+		// merges cleanly with any other agent's additive edit here.
+		ToolOps: a.services.Hooks.ToolOps,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()

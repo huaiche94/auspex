@@ -153,6 +153,19 @@ type HookDeps struct {
 	// follows, and the honest render for a composition with no events
 	// store to aggregate over.
 	Pace PaceReader
+
+	// ToolOps optionally enables the issue-#67 slice-3a per-turn
+	// file-operation capture (ADR-052; toolops.go): when non-nil, each
+	// `hook claude post-tool-use` invocation accumulates one counter
+	// increment into the toolop_scratch table, and HandleStop folds that
+	// scratch (plus the transcript replay's path-identity resolution)
+	// into the five aggregate payload fields on provider.turn.completed,
+	// clearing the scratch at turn close. nil disables capture entirely —
+	// post-tool-use becomes a parse-and-acknowledge no-op and Stop stamps
+	// no aggregate fields, exactly the pre-#67 behavior — the same
+	// nil-is-a-documented-degrade convention every optional field here
+	// follows.
+	ToolOps ToolOpScratch
 }
 
 // OpenTurnResolver resolves a session's latest started turn. ok=false
@@ -613,8 +626,14 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 			usage = &u
 		}
 	}
+	// Issue #67 slice 3a (ADR-052): fold the PostToolUse scratch counter +
+	// transcript path-identity replay into the five per-turn file-operation
+	// aggregates, and clear the scratch (turn close). Fail-open enrichment
+	// exactly like usage above: nil stamps nothing and the payload stays
+	// byte-identical to the pre-#67 shape.
+	toolOps := deps.foldTurnToolOps(ctx, parsed)
 	observedAt := deps.Clock.Now()
-	event := deps.normalizer().NormalizeStop(parsed, observedAt, usage)
+	event := deps.normalizer().NormalizeStop(parsed, observedAt, usage, toolOps)
 	events := []v1.Event{event}
 	deps.stampOpenTurn(ctx, parsed.SessionID, events)
 	persisted := deps.persist(ctx, events)
@@ -690,6 +709,12 @@ func HandleStopFailure(ctx context.Context, deps HookDeps, stdin []byte) (StopFa
 	// Issue #17: StopFailure payloads carry a cwd too — same reasoning as
 	// HandleStop above.
 	deps.bootstrapSession(ctx, parsed.SessionID, parsed.CWD, nil, nil)
+	// Issue #67: a failed turn is still a closed turn — clear its
+	// PostToolUse scratch. No aggregate is stamped here: ADR-052 approves
+	// the five fields on provider.turn.completed only.
+	if deps.ToolOps != nil {
+		deps.ToolOps.Clear(ctx, parsed.SessionID)
+	}
 	observedAt := deps.Clock.Now()
 	events := deps.normalizer().NormalizeStopFailure(parsed, observedAt)
 	// Turn correlation covers the failure path too: both the turn.failed

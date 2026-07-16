@@ -161,7 +161,7 @@ func TestFixtureSuite(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ParseStop: %v", err)
 				}
-				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil)}
+				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil, nil)}
 			},
 			wantEventCount: 1,
 			wantEventTypes: []v1.EventType{v1.EventProviderTurnCompleted},
@@ -290,7 +290,7 @@ func TestFixtureSuite(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ParseStop (must tolerate unknown fields): %v", err)
 				}
-				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil)}
+				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil, nil)}
 			},
 			wantEventCount: 1,
 			wantEventTypes: []v1.EventType{v1.EventProviderTurnCompleted},
@@ -316,7 +316,7 @@ func TestFixtureSuite(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ParseStop: %v", err)
 				}
-				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil)}
+				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil, nil)}
 			},
 			wantEventCount: 1,
 			wantEventTypes: []v1.EventType{v1.EventProviderTurnCompleted},
@@ -457,7 +457,7 @@ func TestFixture_DuplicateEvents_Idempotent(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ParseStop: %v", err)
 				}
-				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil)}
+				return []v1.Event{n.NormalizeStop(parsed, clock.Now(), nil, nil)}
 			},
 		},
 		{

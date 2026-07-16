@@ -278,7 +278,11 @@ func (n *Normalizer) NormalizeUserPromptSubmit(ev claudehooks.UserPromptSubmitEv
 // from the session transcript (issue #72 item 4 — transcriptusage.go); nil
 // means no usage was extractable and the payload stays byte-identical to
 // the pre-#72 shape (fail-open enrichment, never a new failure mode).
-func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Time, usage *TurnUsage) v1.Event {
+// toolOps, when non-nil, is the turn's file-operation aggregate (issue
+// #67 slice 3a, ADR-052 — toolops.go), riding the same fail-open
+// enrichment pattern: nil (capture inactive or nothing measured) stamps
+// nothing.
+func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Time, usage *TurnUsage, toolOps *TurnToolOps) v1.Event {
 	out := n.envelope(v1.EventProviderTurnCompleted, observedAt, ev.SessionID)
 	out.Source = string(domain.SourceHook)
 	out.IdempotencyKey = digestKey("stop", string(ev.SessionID), observedAt.UTC().Format(time.RFC3339Nano))
@@ -322,6 +326,31 @@ func (n *Normalizer) NormalizeStop(ev claudehooks.StopEvent, observedAt time.Tim
 		}
 		if usage.ModelID != "" {
 			payload["model_id"] = usage.ModelID
+		}
+	}
+	// #67 slice 3a (ADR-052 approval touch 2): the five per-turn
+	// file-operation aggregates, additive numbers-only payload keys.
+	// Every field stamps only when measured (unknown is not zero): the
+	// full-replay path carries all five, the hook-count degrade carries
+	// total_file_ops alone, and repeat_rate is omitted on an op-less turn
+	// (§7.3: a rate over zero ops is not a measurement). No path — raw or
+	// hashed — can pass through here: TurnToolOps carries counts only by
+	// construction (toolops.go's privacy doc).
+	if toolOps != nil {
+		if toolOps.DistinctFilesTouched != nil {
+			payload["distinct_files_touched"] = *toolOps.DistinctFilesTouched
+		}
+		if toolOps.TotalFileOps != nil {
+			payload["total_file_ops"] = *toolOps.TotalFileOps
+		}
+		if toolOps.RepeatedOps != nil {
+			payload["repeated_ops"] = *toolOps.RepeatedOps
+		}
+		if rate, ok := toolOps.RepeatRate(); ok {
+			payload["repeat_rate"] = rate
+		}
+		if toolOps.MaxOpsOnOneFile != nil {
+			payload["max_ops_on_one_file"] = *toolOps.MaxOpsOnOneFile
 		}
 	}
 	out.Payload = payload

@@ -12,8 +12,9 @@ import (
 )
 
 // newHookCmd builds the standalone-stub `auspex hook claude
-// {statusline,user-prompt-submit,stop,stop-failure}` subtree
-// (agents/runtime.md Part B P0 command list). Every leaf here is a stub,
+// {statusline,user-prompt-submit,post-tool-use,stop,stop-failure}` subtree
+// (agents/runtime.md Part B P0 command list, plus issue #67's ADR-052
+// post-tool-use leaf). Every leaf here is a stub,
 // used only by the bare NewRootCmd() tree (no wired services — see
 // doc.go's package comment): a caller with no orchestrator.HookDeps to
 // inject gets an honest "not yet available" rather than a silently
@@ -102,6 +103,14 @@ func newHookClaudeStubCmd() *cobra.Command {
 			},
 		},
 		&cobra.Command{
+			Use:   "post-tool-use",
+			Short: "Handle a Claude Code PostToolUse hook event",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("hook claude post-tool-use")
+			},
+		},
+		&cobra.Command{
 			Use:   "stop",
 			Short: "Handle a Claude Code Stop hook event",
 			Args:  cobra.NoArgs,
@@ -146,10 +155,42 @@ func NewHookClaudeCmd(deps orchestrator.HookDeps) *cobra.Command {
 	cmd.AddCommand(
 		newRealStatusLineCmd(deps),
 		newRealUserPromptSubmitCmd(deps),
+		newRealPostToolUseCmd(deps),
 		newRealStopCmd(deps),
 		newRealStopFailureCmd(deps),
 	)
 	return cmd
+}
+
+// newRealPostToolUseCmd builds `auspex hook claude post-tool-use` (issue
+// #67 slice 3a, ADR-052 approval touch 1; kebab-case per ADR-050's
+// convention, like every sibling leaf). It follows the same "JSON and
+// errors" contract as the rest of this file: read the full raw payload
+// from stdin, never log or echo it, always answer a syntactically valid
+// response on stdout, exit 0 for everything except a genuine
+// command-usage error. This hook never has an opinion — PostToolUse fires
+// AFTER the tool already ran, and Auspex only counts — so the response is
+// always the empty-object no-op `{}` (the same no-decision body the
+// UserPromptSubmit allow golden and the codex leaves use), including on
+// internal failure: HandlePostToolUse is fail-open by design (toolops.go).
+func newRealPostToolUseCmd(deps orchestrator.HookDeps) *cobra.Command {
+	return &cobra.Command{
+		Use:   "post-tool-use",
+		Short: "Handle a Claude Code PostToolUse hook event",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stdin, err := readAllStdin(cmd)
+			if err != nil {
+				return err
+			}
+			if _, err := orchestrator.HandlePostToolUse(cmd.Context(), deps, stdin); err != nil {
+				// Framework-level fault: the response must still be
+				// syntactically valid JSON, so answer the no-op body.
+				return writeJSON(cmd, []byte(`{}`))
+			}
+			return writeJSON(cmd, []byte(`{}`))
+		},
+	}
 }
 
 func newRealStatusLineCmd(deps orchestrator.HookDeps) *cobra.Command {

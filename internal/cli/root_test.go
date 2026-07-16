@@ -15,6 +15,7 @@ func TestRootCommandTreeHasP0Surface(t *testing.T) {
 		{"init"},
 		{"hook", "claude", "statusline"},
 		{"hook", "claude", "user-prompt-submit"},
+		{"hook", "claude", "post-tool-use"},
 		{"hook", "claude", "stop"},
 		{"hook", "claude", "stop-failure"},
 		{"evaluate"},

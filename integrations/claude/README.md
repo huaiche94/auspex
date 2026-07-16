@@ -2,9 +2,10 @@
 
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
-Status: **live.** The `auspex` binary ships all four
-`auspex hook claude ...` subcommands (`user-prompt-submit`, `stop`,
-`stop-failure`, `statusline`), and this wiring runs end-to-end in real
+Status: **live.** The `auspex` binary ships all five
+`auspex hook claude ...` subcommands (`user-prompt-submit`,
+`post-tool-use`, `stop`, `stop-failure`, `statusline`), and this wiring
+runs end-to-end in real
 sessions — this repository's own Claude Code sessions use it daily
 (issue #12 dogfooding). The files here are the reference configuration
 to copy into your Claude Code setup. Hooks fail open: an Auspex-side
@@ -27,7 +28,10 @@ from that era because it is still unresolved.)
   `docs/design/Auspex_ADD.md` Appendix E.2 (this role's documented ownership:
   "Appendix E.2/E.3").
 - `hooks.json` — Claude Code hook + status-line configuration wiring
-  `UserPromptSubmit`, `Stop`, `StopFailure`, and the status line to
+  `UserPromptSubmit`, `PostToolUse` (issue #67 slice 3a, ADR-052; the
+  matcher limits invocations to the file-touching tools
+  `Read|Edit|Write|MultiEdit|NotebookEdit`), `Stop`, `StopFailure`, and
+  the status line to
   `auspex hook claude ...` subcommands, per `docs/design/Auspex_ADD.md` §22.3/
   §22.4/§22.5 and Appendix E.3's shape (`{"hooks": {"<HookEventName>":
   [{"hooks": [{"type": "command", "command": "..."}]}]}}`).
@@ -66,8 +70,8 @@ hook-matcher keys stay PascalCase — a different namespace, unaffected.
 
 Claude Code's own wire-level `hook_event_name` field (inside the JSON
 payload piped to stdin) is unaffected by this either way — it stays
-PascalCase (`UserPromptSubmit`, `Stop`, `StopFailure`) per the provider's
-own convention and per every fixture under
+PascalCase (`UserPromptSubmit`, `PostToolUse`, `Stop`, `StopFailure`) per
+the provider's own convention and per every fixture under
 `testdata/provider-events/claude/**`; only the `auspex` CLI's own
 argv subcommand spelling is in question.
 

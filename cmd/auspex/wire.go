@@ -282,6 +282,17 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// reuses already-constructed db/clk instances; merges cleanly
 			// with any other agent's additive edit to this literal.
 			Pace: &pace.Store{DB: db, Clock: clk},
+			// #67 slice 3a (ADR-052): the PostToolUse per-turn scratch
+			// counter, over the SAME db + injected clock. `hook claude
+			// post-tool-use` accumulates into toolop_scratch (migration
+			// 0011 — counters/ids only, never a path, raw or hashed) and
+			// the Stop hook folds + clears it into provider.turn.completed's
+			// five aggregate fields.
+			//
+			// FLAG (composition-root reconciliation): appended line only —
+			// reuses already-constructed db/clk instances; merges cleanly
+			// with any other agent's additive edit to this literal.
+			ToolOps: &orchestrator.ToolOpScratchStore{DB: db, Clock: clk},
 			// The REAL evaluation.Service doubles as the issue-#14
 			// forecast-card source (it satisfies orchestrator.
 			// ForecastCardSource — ForecastCard/LatestForecastCard read

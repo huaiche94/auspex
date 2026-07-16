@@ -315,7 +315,7 @@ func TestNormalizeStop(t *testing.T) {
 		t.Fatalf("ParseStop: %v", err)
 	}
 
-	ev := n.NormalizeStop(parsed, clock.Now(), nil)
+	ev := n.NormalizeStop(parsed, clock.Now(), nil, nil)
 	requireEnvelope(t, ev, v1.EventProviderTurnCompleted, parsed.SessionID)
 
 	// nil usage (no transcript, or extraction failed open) must keep the
@@ -345,7 +345,7 @@ func TestNormalizeStop_WithTranscriptUsage(t *testing.T) {
 		APICallCount:             2,
 		ModelID:                  "claude-fable-5",
 	}
-	ev := n.NormalizeStop(parsed, clock.Now(), usage)
+	ev := n.NormalizeStop(parsed, clock.Now(), usage, nil)
 	requireEnvelope(t, ev, v1.EventProviderTurnCompleted, parsed.SessionID)
 
 	want := map[string]any{
@@ -368,7 +368,7 @@ func TestNormalizeStop_WithTranscriptUsage(t *testing.T) {
 	// Partial usage: an unknown counter stamps nothing, and total_tokens
 	// requires both halves.
 	partial := &TurnUsage{OutputTokens: &out, APICallCount: 1}
-	ev = n.NormalizeStop(parsed, clock.Now(), partial)
+	ev = n.NormalizeStop(parsed, clock.Now(), partial, nil)
 	if got := ev.Payload["output_tokens"]; got != int64(30) {
 		t.Errorf("partial: output_tokens = %v, want 30", got)
 	}

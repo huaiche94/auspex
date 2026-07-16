@@ -31,6 +31,7 @@ import (
 
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/sessionstatus"
 	protocol "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
@@ -61,15 +62,26 @@ type EventSource interface {
 	Subscribe() (<-chan protocol.Event, func())
 }
 
+// SessionStatusReader is the narrow slice the FR-162 session-status endpoints
+// read (issue #10): the assembled per-session risk/runway/quota/progress/
+// checkpoint/pause view. An empty sessionID means "most recent session"; the
+// implementation returns a domain not-found error when the (resolved)
+// session does not exist. Consumer-defined here — like JobLister/EventSource
+// — so a read-only composition can wire it without any wider contract.
+type SessionStatusReader interface {
+	Snapshot(ctx context.Context, sessionID domain.SessionID, now time.Time) (*sessionstatus.Snapshot, error)
+}
+
 // Deps bundles the sources the handlers serve from. All fields except
 // Cancel are read-only; Cancel is the FR-163 mutation (see JobCanceller).
 type Deps struct {
-	Version   string
-	StartedAt time.Time
-	Clock     domain.Clock
-	Jobs      JobLister
-	Cancel    JobCanceller
-	Events    EventSource
+	Version       string
+	StartedAt     time.Time
+	Clock         domain.Clock
+	Jobs          JobLister
+	Cancel        JobCanceller
+	Events        EventSource
+	SessionStatus SessionStatusReader
 }
 
 // NewHandler builds the authenticated API around bearerToken (minted per
@@ -80,6 +92,13 @@ func NewHandler(deps Deps, bearerToken string) http.Handler {
 	mux.HandleFunc("GET /v1/version", deps.handleVersion)
 	mux.HandleFunc("GET /v1/capabilities", deps.handleCapabilities)
 	mux.HandleFunc("GET /v1/status", deps.handleStatus)
+	// FR-162 per-session read-model (issue #10). Two routes onto one
+	// handler: the no-id form serves the most recent session (the extension's
+	// default view, which need not know a session id), the {id} form a
+	// specific one. Distinct segment counts, so the ServeMux never confuses
+	// "status" for an {id}.
+	mux.HandleFunc("GET /v1/session/status", deps.handleSessionStatus)
+	mux.HandleFunc("GET /v1/session/{id}/status", deps.handleSessionStatus)
 	mux.HandleFunc("GET /v1/scheduler/jobs", deps.handleJobs)
 	mux.HandleFunc("POST /v1/scheduler/jobs/{id}/cancel", deps.handleJobCancel)
 	mux.HandleFunc("GET /v1/events/stream", deps.handleEvents)
@@ -212,7 +231,8 @@ func (d Deps) handleCapabilities(w http.ResponseWriter, _ *http.Request) {
 		SchemaVersion: "auspex.daemon.capabilities.v1",
 		Endpoints: []string{
 			"/v1/health", "/v1/version", "/v1/capabilities",
-			"/v1/status", "/v1/scheduler/jobs", "/v1/scheduler/jobs/{id}/cancel",
+			"/v1/status", "/v1/session/status", "/v1/session/{id}/status",
+			"/v1/scheduler/jobs", "/v1/scheduler/jobs/{id}/cancel",
 			"/v1/events/stream",
 		},
 		SSE: true,
@@ -249,6 +269,45 @@ func (d Deps) handleStatus(w http.ResponseWriter, r *http.Request) {
 		StartedAt:     d.StartedAt,
 		UptimeSeconds: uptime,
 		Jobs:          counts,
+	})
+}
+
+// sessionStatusResponse is the FR-162 per-session envelope (issue #10): the
+// schema-versioned wrapper around the assembled read-model. The Snapshot is
+// embedded so its fields (session_id, risk, runway, quota, progress,
+// checkpoint, pause) promote inline alongside schema_version.
+type sessionStatusResponse struct {
+	SchemaVersion string `json:"schema_version"`
+	*sessionstatus.Snapshot
+}
+
+// handleSessionStatus serves the FR-162 read-model for one session (issue
+// #10). The {id} path value is empty for the /v1/session/status route, which
+// the reader treats as "most recent session." An unknown (or absent-latest)
+// session surfaces the reader's domain not-found error → 404, the same
+// mapping the cancel mutation uses. This is a purely read-only endpoint;
+// unlike /v1/status (daemon-global: version, uptime, wake-job counts) this is
+// session-scoped, so it carries its own schema identifier and lives under its
+// own resource rather than widening the frozen status payload.
+func (d Deps) handleSessionStatus(w http.ResponseWriter, r *http.Request) {
+	if d.SessionStatus == nil {
+		writeError(w, http.StatusServiceUnavailable, &domain.Error{
+			Code: domain.ErrCodeUnavailable, Message: "session status reader not wired", Retryable: true,
+		})
+		return
+	}
+	now := time.Now()
+	if d.Clock != nil {
+		now = d.Clock.Now()
+	}
+	snap, err := d.SessionStatus.Snapshot(r.Context(), domain.SessionID(r.PathValue("id")), now)
+	if err != nil {
+		writeError(w, statusForError(err), err)
+		return
+	}
+	writeJSON(w, sessionStatusResponse{
+		SchemaVersion: "auspex.daemon.session_status.v1",
+		Snapshot:      snap,
 	})
 }
 

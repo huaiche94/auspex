@@ -46,6 +46,7 @@ import (
 	"github.com/huaiche94/auspex/internal/repocheckpoint"
 	"github.com/huaiche94/auspex/internal/retention"
 	"github.com/huaiche94/auspex/internal/scheduler"
+	"github.com/huaiche94/auspex/internal/sessionstatus"
 	"github.com/huaiche94/auspex/internal/statecheckpoint"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
 	claudetelemetry "github.com/huaiche94/auspex/internal/telemetry/claude"
@@ -200,6 +201,26 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		Evaluations:     evaluationService,
 	})
 
+	// FR-162 daemon status surface (issue #10): a read-only assembler over
+	// the SAME stores composed above (dataSource for risk/runway/quota/
+	// resolve, the two progress stores, both checkpoint stores, the wake-job
+	// store, and db for its own latest-session/latest-pause SELECTs). Feeds
+	// the /v1/session/status endpoints below.
+	//
+	// FLAG (composition-root reconciliation): this block and the
+	// composeDaemon signature/call gain one appended argument; another agent
+	// may also touch this file — the change is additive and reuses only
+	// already-constructed instances, so it should merge cleanly.
+	sessionStatusReader := sessionstatus.NewReader(sessionstatus.Deps{
+		DB:               db,
+		Evaluation:       dataSource,
+		Nodes:            nodeStore,
+		Edges:            edgeStore,
+		StateCheckpoints: checkpointStore,
+		RepoCheckpoints:  repoCheckpointStore,
+		Jobs:             wakeJobStore,
+	})
+
 	services := wiring.Services{
 		Evaluation:           evaluationService,
 		ProgressTree:         progressTreeService,
@@ -274,7 +295,7 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		// SAME wakeJobStore/pauseStore/gracefulPauseService composed above
 		// — the whole point is that a pause created by a short-lived hook
 		// process resumes from the daemon against the same SQLite file.
-		Daemon: composeDaemon(dirs, clk, ids, wakeJobStore, pauseStore, gracefulPauseService),
+		Daemon: composeDaemon(dirs, clk, ids, wakeJobStore, pauseStore, gracefulPauseService, sessionStatusReader),
 	}
 
 	app, err := wiring.New(services)
@@ -297,6 +318,7 @@ func composeDaemon(
 	wakeJobStore *scheduler.Store,
 	pauseStore pause.PauseStore,
 	gracefulPauseService app.GracefulPauseService,
+	sessionStatusReader httpapi.SessionStatusReader,
 ) orchestrator.DaemonDeps {
 	eventBroker := daemon.NewBroker()
 	worker := daemon.NewWorker(daemon.WorkerDeps{
@@ -325,6 +347,10 @@ func composeDaemon(
 				// UPDATE in scheduler.Cancel is what arbitrates the race.
 				Cancel: wakeJobStore,
 				Events: eventBroker,
+				// SessionStatus is the FR-162 read-model (#10): the same
+				// endpoints the extension renders risk/runway/quota/progress/
+				// checkpoint/pause from.
+				SessionStatus: sessionStatusReader,
 			}, token)
 		},
 	})

@@ -55,6 +55,20 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **Daemon session-status API for FR-162 (#10)**: new
+  `GET /v1/session/status` (most-recent session) and
+  `GET /v1/session/{id}/status` (schema `auspex.daemon.session_status.v1`)
+  assemble a read-only per-session view — risk (overall + sub-scores +
+  calibrated/confidence), runway, quota freshness (per-window
+  used_percent/resets_at + age), progress tree, checkpoint (state +
+  repository refs), and pause state (+ scheduled wake jobs) — so the
+  VS Code companion can replace its "not exposed by the daemon API yet"
+  placeholders. A new session-scoped resource (not a breaking change to
+  the global `auspex.daemon.status.v1`). Assembled entirely from existing
+  stores; unknown/absent fields serialize as `null`/`[]` (never a
+  substituted zero, ADD §8.8); numbers/ids/hashes/enums/timestamps only —
+  no titles, manifests, or filesystem paths (FR-171 / §7). No migration.
+
 - **Codex native-hook provider adapter, Phase 1 (#9)**: new
   `internal/hooks/codex` / `internal/telemetry/codex` /
   `internal/providers/codex` packages behind the existing provider

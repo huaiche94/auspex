@@ -46,6 +46,19 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **Daemon session-status API，實作 FR-162（#10）**：新增
+  `GET /v1/session/status`（最近的 session）與
+  `GET /v1/session/{id}/status`（schema `auspex.daemon.session_status.v1`），
+  組出唯讀的單一 session 視圖 —— risk（總分 + 子分數 +
+  calibrated/confidence）、runway、配額新鮮度（各窗
+  used_percent/resets_at + age）、progress tree、checkpoint（state +
+  repository refs）、pause 狀態（+ 排程的 wake job）—— 讓 VS Code
+  companion 得以取代其「daemon API 尚未暴露」的佔位。這是新的
+  session 範疇資源（不破壞全域的 `auspex.daemon.status.v1`）。全部由既有
+  store 組裝；未知/缺漏欄位序列化為 `null`/`[]`（絕不以零替代，ADD §8.8）；
+  僅數字/id/雜湊/enum/時間戳 —— 無標題、manifest 或檔案系統路徑
+  （FR-171 / §7）。無 migration。
+
 - **Codex native-hook provider adapter，Phase 1（#9）**：新增
   `internal/hooks/codex` / `internal/telemetry/codex` /
   `internal/providers/codex` 三個 package，藏在既有 provider 介面之後 ——

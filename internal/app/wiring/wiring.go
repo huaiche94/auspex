@@ -35,6 +35,7 @@ import (
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/idgen"
 	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/report"
 )
 
 // Services carries one implementation of each frozen service interface.
@@ -114,6 +115,14 @@ type Services struct {
 	// RuntimeDir (every subcommand needs it) rather than Daemon (only
 	// `run` does).
 	Daemon orchestrator.DaemonDeps
+
+	// Report configures `auspex report` (issue #91, the read-only
+	// personal usage report). Not required, same reasoning as GC: the
+	// report engine needs a real *sqlite.DB (no fake-able frozen
+	// interface stands in for it — reporting is a local read-only
+	// concern, deliberately NOT a frozen app.* port), so a caller that
+	// hasn't wired one keeps RootCmd's original `report` stub.
+	Report *report.Engine
 }
 
 // HookSupport bundles the optional collaborators
@@ -412,6 +421,16 @@ func (a *App) RootCmd() *cobra.Command {
 	if exporter, ok := a.services.GC.Runner.(cli.Exporter); ok && a.services.GC.Runner != nil {
 		replaceSubcommand(root, "export", func(_ string) *cobra.Command {
 			return cli.NewExportCmd(exporter)
+		})
+	}
+
+	// report (issue #91) rides the same real-database gating gc/export
+	// do, via its own engine: nil keeps RootCmd's original `report` stub
+	// (see Services.Report's own doc comment).
+	if a.services.Report != nil {
+		reportEngine := a.services.Report
+		replaceSubcommand(root, "report", func(_ string) *cobra.Command {
+			return cli.NewReportCmd(reportEngine)
 		})
 	}
 

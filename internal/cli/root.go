@@ -64,6 +64,7 @@ func NewRootCmd() *cobra.Command {
 		newGCCmd(),
 		newExportCmd(),
 		newRunCmd(),
+		newReportCmd(),
 	)
 
 	return WithJSONErrorRendering(root)
@@ -391,6 +392,24 @@ func newRunCmd() *cobra.Command {
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return notImplemented("run")
+		},
+	}
+}
+
+// newReportCmd builds the standalone-stub `auspex report` leaf (issue
+// #91, personal usage report). A stub ONLY on this bare tree —
+// internal/app/wiring.App.RootCmd() replaces it with NewReportCmd's real
+// handler (report.go) once a report engine is wired, the same
+// stub-then-swap pattern `gc`/`export` follow: a caller with no wired
+// database still gets an honest "not yet available" instead of a handler
+// that would immediately fail on a nil engine.
+func newReportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "report",
+		Short: "Show a personal usage report (cost, tokens, model mix, cache hygiene, quota) for a recent window",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("report")
 		},
 	}
 }

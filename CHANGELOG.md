@@ -55,6 +55,16 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **`auspex report [--window 7d] [--json]` — personal usage report (#91)**:
+  read-only report over the local store — totals (turns/sessions/cost/
+  tokens by class/API time), provider × model × effort breakdown,
+  right-sizing hints (cohort medians, shown only at n≥8, phrased as
+  observations), cache-hygiene section (read-vs-fresh ratio +
+  cache-creation churn flag), quota incidents + closest approach, and
+  top-5 costliest turns. Cost attribution mirrors the calibration
+  bracketing (no baseline → no delta, never a fabricated zero);
+  unknown ≠ zero throughout; `--json` = `auspex.report.v1`.
+
 - **Managed one-shot mode for Codex (#9, M7 Phase 1)**: `auspex run
   --provider codex -- "<prompt>"` spawns `codex exec --json`, parses the
   JSONL stream (fixtures pinned against the v0.144.4 binary's embedded

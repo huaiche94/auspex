@@ -44,6 +44,7 @@ import (
 	"github.com/huaiche94/auspex/internal/predictor/token"
 	"github.com/huaiche94/auspex/internal/progress"
 	"github.com/huaiche94/auspex/internal/repocheckpoint"
+	"github.com/huaiche94/auspex/internal/report"
 	"github.com/huaiche94/auspex/internal/retention"
 	"github.com/huaiche94/auspex/internal/scheduler"
 	"github.com/huaiche94/auspex/internal/sessionstatus"
@@ -299,6 +300,11 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		GC: orchestrator.GCDeps{
 			Runner: &retention.Engine{DB: db, Clock: clk, IDs: ids, DataDir: dirs.Data},
 		},
+		// `auspex report` (issue #91): the read-only personal usage
+		// report over the same db. Location nil -> time.Local (the
+		// report is personal; the user's own wall clock frames "active
+		// days" and the window).
+		Report: &report.Engine{DB: db, Clock: clk},
 		// `auspex daemon` (issue #7, M6): the resident worker drives the
 		// SAME wakeJobStore/pauseStore/gracefulPauseService composed above
 		// — the whole point is that a pause created by a short-lived hook

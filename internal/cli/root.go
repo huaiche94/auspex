@@ -65,6 +65,7 @@ func NewRootCmd() *cobra.Command {
 		newExportCmd(),
 		newRunCmd(),
 		newReportCmd(),
+		newWatchCmd(),
 	)
 
 	return WithJSONErrorRendering(root)
@@ -412,6 +413,29 @@ func newReportCmd() *cobra.Command {
 			return notImplemented("report")
 		},
 	}
+}
+
+// newWatchCmd builds the standalone-stub `auspex watch codex` subtree
+// (issue #92, the rollout-tailing watcher). A stub ONLY on this bare tree
+// — internal/app/wiring.App.RootCmd() replaces it with NewWatchCmd's real
+// handlers (watch.go) once the event store is wired, the same
+// stub-then-swap pattern `gc`/`report` follow: a caller with no wired
+// database still gets an honest "not yet available" instead of a watcher
+// that would scan and then drop everything it found.
+func newWatchCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "watch",
+		Short: "Watch provider session logs and capture usage telemetry",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "codex",
+		Short: "Tail Codex session rollouts and capture usage from any surface (CLI, IDE, subagents)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return notImplemented("watch codex")
+		},
+	})
+	return cmd
 }
 
 // newDoctorCmd builds `auspex doctor`. Stub: environment/provider

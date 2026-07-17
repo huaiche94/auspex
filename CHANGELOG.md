@@ -61,6 +61,19 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **`auspex watch codex` — rollout-tailing watcher (#92)**: captures
+  Codex usage from ANY surface — CLI, VS Code plugin, and the
+  hook-invisible **subagent threads** — by polling the session rollout
+  JSONL files (no new dependencies, no migration: restarts re-scan and
+  the content-derived idempotency keys dedupe by construction;
+  hook+watcher double-capture proven a no-op in both orders).
+  Attribution rides each event: `originator`, derived `surface`
+  (cli/vscode/subagent), and `parent_session_id` for subagent threads.
+  Real-machine drain: 80 files / 116 MB in 1.3 s → 419 turns
+  (cli 29 / vscode 75 / subagent 315), zero content bytes persisted.
+  `--once` drains and exits (cron-friendly); daemon-resident mode is a
+  noted follow-up.
+
 - **Tool-op capture (#67 slice 3a, ADR-052)**: `auspex hook claude
   post-tool-use` counts per-turn file operations; at Stop, the turn's
   `tool_use` entries are replayed from the transcript in one process's

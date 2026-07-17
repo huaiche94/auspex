@@ -28,6 +28,20 @@ Always computed from the calibration export alone:
     on turn_id reports band containment (within/below/above), ns→ms
     reconciled here.
 
+Independently of the exports, the report appends the RUNWAY CALIBRATION
+BACKTEST (#90 Phase B / #11 — runway.py): every persisted runway
+forecast (runway_forecasts, migration 0042) scored against the realized
+quota trajectory reconstructed from provider.quota.observed /
+provider.rate_limit.hit events. The forecasts live in the local SQLite
+DB, not in either JSONL export, so this section reads the DB directly —
+strictly read-only (URI mode=ro) — from --db, or the standard local
+location when --db is omitted (which is how the weekly job picks it up
+automatically). No DB found, or a DB that cannot be opened, is a
+disclosed readiness gap, never a crash. All of its numbers stay
+descriptive: the model's risk_score is an uncalibrated score, and the
+per-bucket hit rates are OBSERVED frequencies over correlated samples
+(disclosed in runway.py), never the model's probability.
+
 With --observations, the report additionally folds in:
 
   * per-turn ACTUALS readiness derived from `auspex export observations`
@@ -54,12 +68,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import runway  # noqa: E402
 from load import Record, load  # noqa: E402
 from observations import derive_turn_actuals, parse_ts, summarize_turn_actuals  # noqa: E402
 from observations import load as load_observations  # noqa: E402
@@ -68,6 +84,39 @@ from observations import TurnActuals  # noqa: E402
 # ADD §15.2's "count(similar) >= 8" gate, the same constant the Go side
 # uses (RuleTokenForecaster.MinSimilarSamples, minSimilarTurnSamples).
 SAMPLE_GATE = 8
+
+
+def compute_runway(db_path: Path | None) -> tuple[dict | None, str | None]:
+    """Run the runway calibration backtest (runway.py) against the local
+    Auspex DB, strictly read-only, and degrade every failure to a
+    disclosed readiness gap — this report must never crash on a missing or
+    unreadable DB (the forecasts live only in SQLite, not in either JSONL
+    export). Returns (result, None) on success, or (None, gap) when there
+    is no DB to score or it cannot be opened read-only.
+
+    With no --db, the standard local location is probed (the same path the
+    weekly job resolves), so the section activates by itself once a DB
+    exists — mirroring how the coverage sections activate as capture fills
+    in."""
+    path = db_path if db_path is not None else runway.default_db_path()
+    if path is None:
+        return None, (
+            "runway calibration backtest skipped: no Auspex DB at the "
+            "standard local location and no --db given — pass --db to score "
+            "persisted runway forecasts against realized quota trajectories"
+        )
+    if not path.is_file():
+        return None, (
+            f"runway calibration backtest skipped: no DB at {path} — pass an "
+            "existing --db path (opened read-only) to score runway forecasts"
+        )
+    try:
+        return runway.run_backtest(path), None
+    except sqlite3.Error as exc:
+        return None, (
+            f"runway calibration backtest skipped: could not open {path} "
+            f"read-only ({exc}) — the DB is unreadable, disclosed as a gap"
+        )
 
 
 def token_coverage(records: list[Record], observations=()) -> dict:
@@ -353,6 +402,8 @@ def build_report(
     cost_cov: dict | None = None,
     cost_residual: dict | None = None,
     duration_cov: dict | None = None,
+    runway_cal: dict | None = None,
+    runway_gap: str | None = None,
 ) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
@@ -424,6 +475,16 @@ def build_report(
             "dogfood turns through `auspex run`, and check predictions "
             "carry the duration_p50/p90 forecast"
         )
+    if runway_gap is not None:
+        # No DB / unopenable DB: disclosed here so a report over the JSONL
+        # exports alone still names what the runway backtest could not read.
+        gaps.append(runway_gap)
+    elif runway_cal is not None and runway_cal["forecasts_total"] == 0:
+        gaps.append(
+            "no persisted runway forecasts yet (runway_forecasts, migration "
+            "0042 is empty) — the Stop-hook driver (#90/#10) fills it as "
+            "turns run; nothing to calibrate against realized quota yet"
+        )
 
     cohorts = [
         {
@@ -459,6 +520,12 @@ def build_report(
         "cost_coverage": cost_cov,
         "cost_residual": cost_residual,
         "duration_coverage": duration_cov,
+        # The runway backtest reads the SQLite DB directly (read-only), so
+        # unlike the coverage sections it can be a disclosed gap (no DB /
+        # unreadable) rather than a result — both are surfaced, never a
+        # crash. None/None means the report ran without a runway assessment.
+        "runway_calibration": runway_cal,
+        "runway_gap": runway_gap,
         "readiness_gaps": gaps,
     }
 
@@ -633,6 +700,21 @@ def render_text(report: dict) -> str:
         else:
             lines.append("  (no joined turns — containment not computable)")
 
+    runway_cal = report["runway_calibration"]
+    runway_gap = report["runway_gap"]
+    lines.append("")
+    if runway_cal is not None:
+        lines.extend(runway.render_section(runway_cal))
+        lines.append(
+            f"  (db: {runway_cal.get('db_path', '?')}, opened read-only)"
+        )
+    else:
+        lines.append(
+            "runway calibration backtest (persisted forecasts vs realized "
+            "quota trajectory, read-only DB):"
+        )
+        lines.append(f"  skipped — {runway_gap}")
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -649,6 +731,15 @@ def main() -> int:
         default=None,
         help="observations export JSONL path (auspex export observations) "
         "for the per-turn actuals readiness section",
+    )
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=None,
+        help="Auspex SQLite DB path for the runway calibration backtest "
+        "(#90 Phase B), opened strictly read-only; defaults to the standard "
+        "local location when omitted. A missing or unreadable DB is a "
+        "disclosed readiness gap, never a crash.",
     )
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args()
@@ -670,6 +761,10 @@ def main() -> int:
     # the token join when an observations export is supplied).
     token_cov = token_coverage(records, observations)
     duration_cov = duration_coverage(records)
+    # Read-only runway backtest over the SQLite DB (forecasts live there,
+    # not in the JSONL exports). Any missing/unreadable DB comes back as a
+    # disclosed gap, so the report never crashes on it.
+    runway_cal, runway_gap = compute_runway(args.db)
     report = build_report(
         records,
         turn_actuals,
@@ -677,6 +772,8 @@ def main() -> int:
         cost_cov,
         cost_residual=cost_residual,
         duration_cov=duration_cov,
+        runway_cal=runway_cal,
+        runway_gap=runway_gap,
     )
 
     if args.json:

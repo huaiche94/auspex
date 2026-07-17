@@ -51,6 +51,24 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **`auspex report` 可行動建議（#100）**：報表不再只停在「發生了
+  什麼」—— 結尾新增 **Actionable takeaways** 區塊，把五個每週自省
+  案例各自轉成 _分析 → 教訓 → 具體行動_（FIRED 的案例排前面，未觸發
+  的仍附前瞻指引）。五案例：**錢花去哪了**（最貴 turn vs 中位數）、
+  **模型右尺寸**（同任務類別下便宜 cohort 與較貴 cohort 並列）、**越跑
+  越貴的 session**（cache-creation 顛簸）、**被配額牆截斷**（rate-limit
+  命中／逼近）、**agent 鬼打牆**（每回合檔案操作 `repeat_rate`，
+  #67／ADR-052 —— 僅計數，路徑一律不落地）。完全 **rule-based**：每條
+  教訓／行動都是由觀察 pattern 對應的罐頭模板，故無 outbound-LLM 路徑、
+  **免 ADR**（issue 指定的確定性分支；LLM 合成則會如 #98 受 ADR 管制）。
+  觸發沿用他處已證成的門檻（cache-churn 十萬 token/turn、
+  `MinCohortTurns`、真實 rate-limit 命中）；兩條真正新增的線
+  （`QuotaNoticePercent` 80%、`HighRepeatRate` 0.6 且 ≥8 ops）為
+  **保守暫定啟發式，待真實 windowed 資料校準**（grounding discipline），
+  並如此註明。未觸發的案例會誠實說明為何沉默 —— 絕不捏造訊號。
+  對 `auspex.report.v1` 為加法式（新增 `takeaways` 陣列；不破 schema、
+  無 migration）。已對真實本機 DB 驗證：五案例皆在實測資料上觸發。
+
 - **`auspex watch codex` —— rollout 尾隨 watcher（#92）**：從**任何**
   表面捕捉 Codex 用量 —— CLI、VS Code plugin、以及 hook 看不見的
   **subagent 執行緒** —— 以輪詢 session rollout JSONL 檔實現（零新

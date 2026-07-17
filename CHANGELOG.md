@@ -61,6 +61,30 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Added
 
+- **`auspex report` actionable takeaways (#100)**: the report no longer
+  stops at "what happened" — it now closes with an **Actionable
+  takeaways** section that turns each of five weekly-reflection cases into
+  _analysis → lesson → concrete action_ (FIRED cases first, dormant ones
+  still carrying forward guidance). The five: **where the money went**
+  (costliest turn vs the median), **right-sizing your models** (a cheaper
+  cohort beside a pricier one for the same task class), **sessions that
+  get more expensive as they run** (cache-creation churn), **getting cut
+  off by a quota wall** (rate-limit hits / close approaches), and **when
+  the agent goes in circles** (per-turn file-op `repeat_rate`, #67/ADR-052
+  — counts only, paths never persist). Entirely **rule-based**: every
+  lesson/action is a canned template mapped from an observed pattern, so
+  no outbound-LLM path and **no ADR** (the deterministic fork the issue
+  specifies; LLM synthesis would be ADR-gated like #98). Firing reuses
+  cutoffs already justified elsewhere (cache-churn 100k tokens/turn,
+  `MinCohortTurns`, a real rate-limit hit); the two genuinely new lines
+  (`QuotaNoticePercent` 80%, `HighRepeatRate` 0.6 over ≥8 ops) are
+  **conservative provisional heuristics pending calibration** on real
+  windowed data (grounding discipline), documented as such. A non-fired
+  case states honestly why it stayed quiet — never a fabricated signal.
+  Additive to `auspex.report.v1` (new `takeaways` array; no schema break,
+  no migration). Verified against a real local DB: all five cases fired
+  on live telemetry.
+
 - **`auspex watch codex` — rollout-tailing watcher (#92)**: captures
   Codex usage from ANY surface — CLI, VS Code plugin, and the
   hook-invisible **subagent threads** — by polling the session rollout

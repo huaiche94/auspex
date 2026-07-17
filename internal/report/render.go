@@ -6,6 +6,7 @@ package report
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -25,6 +26,7 @@ func RenderText(rep Report) string {
 	renderCacheHygiene(&b, rep.CacheHygiene)
 	renderQuota(&b, rep.Quota)
 	renderTopTurns(&b, rep.TopTurns)
+	renderTakeaways(&b, rep.Takeaways)
 
 	if len(rep.Notes) > 0 {
 		b.WriteString("\nNotes\n")
@@ -204,6 +206,36 @@ func renderTopTurns(b *strings.Builder, turns []TopTurn) {
 			formatTimestamp(t.StartedAt), t.SessionID, turnID)
 	}
 	_ = w.Flush()
+}
+
+// renderTakeaways renders the actionable section (issue #100): every case
+// prints analysis -> lesson -> action, FIRED cases first so what triggered
+// this window leads. A non-fired case still prints its lesson/action as
+// forward guidance, with an honest "no signal" analysis.
+func renderTakeaways(b *strings.Builder, takeaways []Takeaway) {
+	b.WriteString("\nActionable takeaways (analysis -> lesson -> action)\n")
+	if len(takeaways) == 0 {
+		b.WriteString("  none\n")
+		return
+	}
+	// FIRED first, otherwise preserve the fixed case order (stable sort).
+	ordered := append([]Takeaway(nil), takeaways...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Fired && !ordered[j].Fired
+	})
+	for _, t := range ordered {
+		status := "no signal this window"
+		if t.Fired {
+			status = "FIRED"
+		}
+		fmt.Fprintf(b, "  %s — %s\n", t.Title, status)
+		fmt.Fprintf(b, "    analysis: %s\n", t.Analysis)
+		fmt.Fprintf(b, "    lesson:   %s\n", t.Lesson)
+		fmt.Fprintf(b, "    action:   %s\n", t.Action)
+		if len(t.Evidence) > 0 {
+			fmt.Fprintf(b, "    evidence: %s\n", strings.Join(t.Evidence, ", "))
+		}
+	}
 }
 
 // --- formatting helpers ---------------------------------------------------

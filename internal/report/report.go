@@ -83,10 +83,44 @@ type Report struct {
 	Quota        QuotaSection  `json:"quota"`
 	TopTurns     []TopTurn     `json:"top_turns"`
 
+	// Takeaways turns the descriptive sections above into action: one entry
+	// per weekly-reflection case (analysis -> lesson -> action), issue #100.
+	Takeaways []Takeaway `json:"takeaways"`
+
 	// Notes surfaces data-quality observations (e.g. a negative cost
 	// delta, which a cumulative series should never produce) instead of
 	// silently absorbing them.
 	Notes []string `json:"notes,omitempty"`
+}
+
+// TakeawayCase identifies one of the five weekly-reflection cases the
+// report turns into an action. Slugs are stable JSON wire values.
+type TakeawayCase string
+
+const (
+	CaseExpensiveTurns    TakeawayCase = "expensive_turns"
+	CaseModelRightSizing  TakeawayCase = "model_right_sizing"
+	CaseSessionCacheChurn TakeawayCase = "session_cache_churn"
+	CaseQuotaPressure     TakeawayCase = "quota_pressure"
+	CaseAgentThrash       TakeawayCase = "agent_thrash"
+)
+
+// Takeaway is one actionable case: what was observed (Analysis), the
+// lesson it teaches, and the concrete action to take. Fired distinguishes
+// "this pattern triggered in the window" from "no signal yet"; a non-fired
+// case still carries its Lesson/Action as forward guidance, and its
+// Analysis states honestly WHY it did not fire — never a fabricated 0 (the
+// report's unknown-is-not-zero rule applies to takeaways too).
+type Takeaway struct {
+	Case     TakeawayCase `json:"case"`
+	Title    string       `json:"title"`
+	Fired    bool         `json:"fired"`
+	Analysis string       `json:"analysis"`
+	Lesson   string       `json:"lesson"`
+	Action   string       `json:"action"`
+	// Evidence carries the ids/labels the analysis is grounded in
+	// (turn/session ids, cohorts); empty when the case did not fire.
+	Evidence []string `json:"evidence,omitempty"`
 }
 
 // TokenTotals is the by-class token accounting (ADR-051's four classes
@@ -287,6 +321,7 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 		TopTurns:      buildTopTurns(inWindow, labels),
 		Notes:         notes,
 	}
+	rep.Takeaways = buildTakeaways(inWindow, labels, rep)
 	return rep, nil
 }
 

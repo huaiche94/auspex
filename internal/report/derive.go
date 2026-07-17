@@ -54,7 +54,8 @@ type turnRecord struct {
 	costUSD       *float64
 	apiDurationMs *int64
 
-	tokens tokenSample
+	tokens  tokenSample
+	fileOps fileOpsSample
 
 	// Identity observed on the turn's own events (payload model_id /
 	// effort), used as fallback labels when no predictions row exists.
@@ -74,6 +75,25 @@ type tokenSample struct {
 func (t tokenSample) any() bool {
 	return t.freshInput != nil || t.output != nil || t.cacheRead != nil ||
 		t.cacheCreation != nil || t.reasoning != nil
+}
+
+// fileOpsSample is one turn's file-operation aggregate (counts only; paths
+// never persist — ADR-052). nil = that count was not measured.
+type fileOpsSample struct {
+	total    *int64
+	repeated *int64
+	distinct *int64
+	maxOps   *int64
+}
+
+// repeatRate mirrors telemetry/claude toolops.RepeatRate: repeated/total,
+// omitted (ok=false) when either is unknown or total is 0 — a rate over no
+// operations is not a measurement, never a fabricated 0.
+func (f fileOpsSample) repeatRate() (float64, bool) {
+	if f.repeated == nil || f.total == nil || *f.total <= 0 {
+		return 0, false
+	}
+	return float64(*f.repeated) / float64(*f.total), true
 }
 
 // loadTurnRecords loads the event series and derives one turnRecord per
@@ -196,6 +216,7 @@ func deriveSessionTurns(sessionID string, series []seriesEvent, negativeCostDelt
 		if terminal != nil {
 			rec.outcome = terminalOutcome(terminal.eventType)
 			rec.tokens = tokensFromEvent(*terminal)
+			rec.fileOps = fileOpsFromEvent(*terminal)
 			if terminal.modelID != "" {
 				rec.eventModelID = terminal.modelID
 			}
@@ -235,6 +256,7 @@ func deriveSessionTurns(sessionID string, series []seriesEvent, negativeCostDelt
 			anchor:       ev.occurredAt,
 			outcome:      terminalOutcome(ev.eventType),
 			tokens:       tokensFromEvent(ev),
+			fileOps:      fileOpsFromEvent(ev),
 			eventModelID: ev.modelID,
 			eventEffort:  ev.effort,
 		}
@@ -302,6 +324,15 @@ func tokensFromEvent(ev seriesEvent) tokenSample {
 		cacheRead:     ev.cacheReadInputTokens,
 		cacheCreation: ev.cacheCreationInputTokens,
 		reasoning:     ev.reasoningOutputTokens,
+	}
+}
+
+func fileOpsFromEvent(ev seriesEvent) fileOpsSample {
+	return fileOpsSample{
+		total:    ev.totalFileOps,
+		repeated: ev.repeatedOps,
+		distinct: ev.distinctFiles,
+		maxOps:   ev.maxOpsOnOneFile,
 	}
 }
 

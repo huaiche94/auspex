@@ -48,6 +48,14 @@ func cannedReport() report.Report {
 			MinCohortTurns: report.MinCohortTurns,
 			Note:           "not enough data yet (need >=8 cost-attributed turns per task-class x model/effort cohort)",
 		},
+		Takeaways: []report.Takeaway{{
+			Case:     report.CaseExpensiveTurns,
+			Title:    "Where the money went",
+			Fired:    true,
+			Analysis: "Costliest turn was $43.94.",
+			Lesson:   "Plan first.",
+			Action:   "Scope the task.",
+		}},
 	}
 }
 
@@ -71,7 +79,7 @@ func TestReportCmd_DefaultWindowAndTextOutput(t *testing.T) {
 	if gen.window != 7*24*time.Hour {
 		t.Errorf("window = %v, want the 7d default", gen.window)
 	}
-	for _, want := range []string{"Auspex usage report", "Totals", "not enough data yet", "$2.15"} {
+	for _, want := range []string{"Auspex usage report", "Totals", "not enough data yet", "$2.15", "Actionable takeaways", "Where the money went", "action:"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("text output missing %q:\n%s", want, out)
 		}
@@ -133,6 +141,14 @@ func TestReportCmd_JSONOutputIsSchemaVersioned(t *testing.T) {
 	}
 	if totals["cost_usd"] != 2.15 {
 		t.Errorf("totals.cost_usd = %v, want 2.15", totals["cost_usd"])
+	}
+	takeaways, ok := decoded["takeaways"].([]any)
+	if !ok || len(takeaways) == 0 {
+		t.Fatalf("takeaways missing from JSON output: %s", out)
+	}
+	first, _ := takeaways[0].(map[string]any)
+	if first["case"] != "expensive_turns" || first["action"] == "" {
+		t.Errorf("takeaway[0] = %v, want the expensive_turns case with an action", first)
 	}
 }
 

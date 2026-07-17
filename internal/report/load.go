@@ -56,6 +56,16 @@ type seriesEvent struct {
 	cacheCreationInputTokens *int64
 	reasoningOutputTokens    *int64
 
+	// Per-turn file-operation aggregate (issue #67 slice 3a / ADR-052),
+	// stamped on provider.turn.completed alongside the token accounting.
+	// Counts only — raw paths never persist (ADR-052 privacy invariant),
+	// so these are the sole basis for the agent-thrash takeaway. nil = not
+	// measured (unknown is not zero).
+	totalFileOps    *int64
+	repeatedOps     *int64
+	distinctFiles   *int64
+	maxOpsOnOneFile *int64
+
 	// Identity labels riding the events themselves (#20 Phase 0).
 	modelID string
 	effort  string
@@ -130,6 +140,15 @@ func decodeSeriesPayload(ev *seriesEvent, body string) {
 	ev.cacheReadInputTokens = payloadInt(payload, "cache_read_input_tokens")
 	ev.cacheCreationInputTokens = payloadInt(payload, "cache_creation_input_tokens")
 	ev.reasoningOutputTokens = payloadInt(payload, "reasoning_output_tokens")
+	// File-op aggregate (issue #67 slice 3a): counts only, keyed exactly as
+	// internal/telemetry/claude/toolops.go stamps them. repeat_rate is
+	// derived from repeated/total (see fileOpsSample.repeatRate), not read,
+	// so it stays consistent with the counts even when the stamped rate is
+	// absent (omitted on op-less turns).
+	ev.totalFileOps = payloadInt(payload, "total_file_ops")
+	ev.repeatedOps = payloadInt(payload, "repeated_ops")
+	ev.distinctFiles = payloadInt(payload, "distinct_files_touched")
+	ev.maxOpsOnOneFile = payloadInt(payload, "max_ops_on_one_file")
 	if s := payloadString(payload, "model_id"); s != nil {
 		ev.modelID = *s
 	}

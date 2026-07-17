@@ -36,6 +36,7 @@ import (
 	"github.com/huaiche94/auspex/internal/idgen"
 	"github.com/huaiche94/auspex/internal/orchestrator"
 	"github.com/huaiche94/auspex/internal/report"
+	"github.com/huaiche94/auspex/internal/rolloutwatch"
 )
 
 // Services carries one implementation of each frozen service interface.
@@ -123,6 +124,16 @@ type Services struct {
 	// concern, deliberately NOT a frozen app.* port), so a caller that
 	// hasn't wired one keeps RootCmd's original `report` stub.
 	Report *report.Engine
+
+	// Watch configures `auspex watch codex` (issue #92, the rollout-
+	// tailing watcher). Not required, same reasoning as Report: the
+	// watcher persists through the real event store + TxRunner (no
+	// fake-able frozen interface stands in for them here), so a caller
+	// that hasn't wired them keeps RootCmd's original `watch` stub.
+	//
+	// FLAG (composition-root reconciliation, #92): appended field —
+	// additive only, no existing field moved or retyped.
+	Watch *rolloutwatch.Deps
 }
 
 // HookSupport bundles the optional collaborators
@@ -459,6 +470,20 @@ func (a *App) RootCmd() *cobra.Command {
 		reportEngine := a.services.Report
 		replaceSubcommand(root, "report", func(_ string) *cobra.Command {
 			return cli.NewReportCmd(reportEngine)
+		})
+	}
+
+	// watch (issue #92) rides the same real-database gating gc/report do:
+	// nil keeps RootCmd's original `watch` stub (see Services.Watch's own
+	// doc comment).
+	//
+	// FLAG (composition-root reconciliation, #92): appended block only —
+	// additive, follows the existing replaceSubcommand convention; merges
+	// cleanly with any other agent's additive edit here.
+	if a.services.Watch != nil {
+		watchDeps := *a.services.Watch
+		replaceSubcommand(root, "watch", func(_ string) *cobra.Command {
+			return cli.NewWatchCmd(watchDeps)
 		})
 	}
 

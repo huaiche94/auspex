@@ -47,6 +47,7 @@ import (
 	"github.com/huaiche94/auspex/internal/repocheckpoint"
 	"github.com/huaiche94/auspex/internal/report"
 	"github.com/huaiche94/auspex/internal/retention"
+	"github.com/huaiche94/auspex/internal/rolloutwatch"
 	"github.com/huaiche94/auspex/internal/scheduler"
 	"github.com/huaiche94/auspex/internal/sessionstatus"
 	"github.com/huaiche94/auspex/internal/statecheckpoint"
@@ -330,6 +331,20 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		// — the whole point is that a pause created by a short-lived hook
 		// process resumes from the daemon against the same SQLite file.
 		Daemon: composeDaemon(dirs, clk, ids, wakeJobStore, pauseStore, gracefulPauseService, sessionStatusReader),
+		// `auspex watch codex` (issue #92): the rollout-tailing watcher
+		// persists through the SAME provider-agnostic EventStore + db the
+		// hook subtree writes into — shared UNIQUE idempotency keys are
+		// what make hook+watcher double-capture dedupe by construction.
+		//
+		// FLAG (composition-root reconciliation, #92): appended field only
+		// — reuses already-constructed clk/ids/db instances; merges cleanly
+		// with any other agent's additive edit to this literal.
+		Watch: &rolloutwatch.Deps{
+			Clock:     clk,
+			IDs:       ids,
+			Persister: claudetelemetry.NewEventStore(db),
+			TxRunner:  db,
+		},
 	}
 
 	app, err := wiring.New(services)

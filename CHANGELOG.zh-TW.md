@@ -51,6 +51,16 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Added（新增）
 
+- **`auspex watch codex` —— rollout 尾隨 watcher（#92）**：從**任何**
+  表面捕捉 Codex 用量 —— CLI、VS Code plugin、以及 hook 看不見的
+  **subagent 執行緒** —— 以輪詢 session rollout JSONL 檔實現（零新
+  依賴、零 migration：重啟後重掃，內容衍生的冪等鍵天然去重;
+  hook+watcher 雙重捕捉經雙向順序證明為 no-op）。歸因隨事件攜帶：
+  `originator`、推導的 `surface`（cli/vscode/subagent）、subagent
+  執行緒的 `parent_session_id`。真機 drain：80 檔 / 116 MB 於 1.3 秒
+  → 419 回合（cli 29 / vscode 75 / subagent 315），零內容位元組落地。
+  `--once` 吸完即退（適合 cron）；daemon 常駐模式列為後續。
+
 - **工具操作捕捉（#67 slice 3a，ADR-052）**：`auspex hook claude
   post-tool-use` 計數每回合檔案操作；Stop 時在單一行程記憶體內重放
   transcript 的 `tool_use` 條目（路徑轉序號後即丟棄 —— **任何形式

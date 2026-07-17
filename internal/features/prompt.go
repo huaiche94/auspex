@@ -136,10 +136,24 @@ func ExtractPromptFeatures(raw string) PromptFeatures {
 	// signal). The word lists live in package-level slices (fixVerbWords
 	// etc.) so ExtractPromptFeatures and promptVocab share one definition:
 	// the #51 fused scan cannot drift from the signals it feeds.
-	pf.HasFixVerb = has(fixVerbWords...)
-	pf.HasImplementVerb = has(implementVerbWords...)
-	pf.HasRefactorVerb = has(refactorVerbWords...)
-	pf.HasInvestigateVerb = has(investigateVerbWords...)
+	//
+	// Second #42 widening round (7-day telemetry after PR #64 still showed
+	// task class "unknown" as the dominant cost cohort): adds everyday
+	// bug-report forms ("fails", "doesn't work"), feature forms ("extend",
+	// "wire up"), refactor forms ("tidy", "clean up") and indirect
+	// question/inspection phrases ("show me", "how does" mid-prompt). Still
+	// deliberately unmapped, same ungrounded-choice reasoning: "error" ("add
+	// error handling" is hardening/feature work that fix-beats-implement
+	// precedence would misroute to bugfix), "support" (noun collisions:
+	// "customer support", "supported platforms"), "move" (file moves, UI
+	// moves and "move to Postgres" span at least three classes), "hook up"
+	// (the Contains scan would match "webhook update/upload"), "cover"
+	// ("coverage" already maps; bare "cover" is polysemous), and
+	// "regression" (stays out per #49).
+	pf.HasFixVerb = has(fixVerbWords...) || phrase(fixVerbPhrases...)
+	pf.HasImplementVerb = has(implementVerbWords...) || phrase(implementVerbPhrases...)
+	pf.HasRefactorVerb = has(refactorVerbWords...) || phrase(refactorVerbPhrases...)
+	pf.HasInvestigateVerb = has(investigateVerbWords...) || phrase(investigateVerbPhrases...)
 	pf.HasMigrateVerb = has(migrateVerbWords...)
 
 	pf.MentionsTests = has(testsWords...) || phrase("unit test", "integration test")
@@ -150,7 +164,8 @@ func ExtractPromptFeatures(raw string) PromptFeatures {
 	pf.LongDocumentIndicator = has(longDocPrimaryWords...) ||
 		(has(longDocSectionWords...) && pf.MentionsDocumentation) ||
 		phrase("design document", "architecture document", "design doc")
-	pf.QuestionIndicator = strings.Contains(raw, "?") || firstWordIn(lowered, "what", "why", "how", "where", "when", "which", "who", "does", "is", "are", "can", "should")
+	pf.QuestionIndicator = strings.Contains(raw, "?") || firstWordIn(lowered, "what", "why", "how", "where", "when", "which", "who", "does", "is", "are", "can", "should") ||
+		phrase(questionPhrases...)
 	pf.OpenEndedIndicator = has(openEndedWords...) || phrase("clean up", "make it better")
 	pf.CrossLayerIndicator = phrase("cross-layer", "end-to-end", "e2e", "full-stack", "frontend and backend") || has(crossLayerWords...)
 	pf.RepositoryWideIndicator = has(repoWideWords...) || phrase("repository-wide", "repo-wide", "entire repo", "whole repo", "all files", "every file")
@@ -167,13 +182,19 @@ func ExtractPromptFeatures(raw string) PromptFeatures {
 // BUG far more often than a performance drop, and the classifier's verb-less
 // rescue rule would misroute those bug reports to performance-investigation;
 // genuine perf regressions still match via "performance"/"slow"/"latency".
+// "fails"/"failing" are fix words but bare "fail"/"failure" are not (second
+// #42 round): the finite forms are bug-report shaped ("the build fails"),
+// while the bare forms dominate design/feature language ("fail fast",
+// "failure mode") where mapping them to bugfix would be a guess.
 var (
 	fixVerbWords = []string{"fix", "fixes", "fixing", "bug", "bugfix", "repair", "resolve",
-		"typo", "typos", "broken", "crash", "crashes", "patch", "hotfix"}
+		"typo", "typos", "broken", "crash", "crashes", "crashed", "crashing", "patch", "hotfix",
+		"fails", "failing"}
 	implementVerbWords = []string{"implement", "implements", "implementing", "add", "adds", "create", "creates", "build", "builds", "write", "introduce",
-		"develop", "generate", "scaffold"}
+		"develop", "generate", "scaffold", "extend", "extends", "extending"}
 	refactorVerbWords = []string{"refactor", "refactors", "refactoring", "restructure", "rename", "extract", "simplify",
-		"reorganize", "reorganise", "consolidate", "decouple", "deduplicate", "dedupe", "modularize", "modularise"}
+		"reorganize", "reorganise", "consolidate", "decouple", "deduplicate", "dedupe", "modularize", "modularise",
+		"tidy", "cleanup"}
 	investigateVerbWords = []string{"investigate", "investigating", "debug", "diagnose", "why", "analyze", "analyse", "inspect", "explain",
 		"troubleshoot", "understand", "review", "audit"}
 	migrateVerbWords = []string{"migrate", "migrates", "migrating", "migration", "upgrade", "port"}
@@ -190,6 +211,26 @@ var (
 	openEndedWords      = []string{"improve", "better", "cleanup", "explore", "somehow", "etc"}
 	crossLayerWords     = []string{"across", "layers"}
 	repoWideWords       = []string{"codebase", "everywhere", "monorepo"}
+)
+
+// Phrase vocabulary (second #42 widening round): multi-word indicators the
+// single-token scan cannot express, matched with the same phrase() Contains
+// scan as the existing hyphenated/spaced indicators. Like the word lists,
+// these slices are shared with prompt_test.go's #51 reference oracle, so the
+// mechanism test can never drift from the vocabulary.
+//
+// The leading space on each questionPhrases entry is a word-boundary guard,
+// not an accident: the unspaced phrases are CONTAINED in ordinary statements
+// ("somehow does(n't)" ⊃ "how does", "somewhat happens" ⊃ "what happens",
+// "everywhere is" ⊃ "where is") and would misroute them to question.
+// Prompt-initial interrogatives ("how does X work") are already caught by
+// the firstWordIn check on QuestionIndicator, so the space costs nothing.
+var (
+	fixVerbPhrases         = []string{"doesn't work", "does not work", "not working", "stopped working", "no longer works"}
+	implementVerbPhrases   = []string{"wire up"}
+	refactorVerbPhrases    = []string{"clean up"}
+	investigateVerbPhrases = []string{"show me", "walk me through", "look into", "looking into"}
+	questionPhrases        = []string{" how does", " what happens", " where is"}
 )
 
 // promptVocab is the union of every has() word list — the ONLY words

@@ -169,8 +169,9 @@ func TestPromptFeaturesStructureSignals(t *testing.T) {
 // verbatim as a behavioral oracle: the full-rune-slice RuneCount, the
 // strings.Split line pass, the strings.Fields path pass, the wordSet map of
 // EVERY distinct word, and the strings.Fields(lowered) first-word check. It
-// shares the production word-list slices (fixVerbWords etc.) so the ONLY
-// thing under test is the scan MECHANISM, not the vocabulary content.
+// shares the production word-list and phrase slices (fixVerbWords,
+// fixVerbPhrases etc.) so the ONLY thing under test is the scan MECHANISM,
+// not the vocabulary content.
 // TestExtractPromptFeatures_MatchesReference asserts the fused
 // ExtractPromptFeatures produces byte-identical output to this for a corpus
 // of edge cases (BINDING: #51 must be behavior-preserving).
@@ -235,10 +236,10 @@ func referenceExtractPromptFeatures(raw string) PromptFeatures {
 		}
 		return false
 	}
-	pf.HasFixVerb = has(fixVerbWords)
-	pf.HasImplementVerb = has(implementVerbWords)
-	pf.HasRefactorVerb = has(refactorVerbWords)
-	pf.HasInvestigateVerb = has(investigateVerbWords)
+	pf.HasFixVerb = has(fixVerbWords) || phrase(fixVerbPhrases...)
+	pf.HasImplementVerb = has(implementVerbWords) || phrase(implementVerbPhrases...)
+	pf.HasRefactorVerb = has(refactorVerbWords) || phrase(refactorVerbPhrases...)
+	pf.HasInvestigateVerb = has(investigateVerbWords) || phrase(investigateVerbPhrases...)
 	pf.HasMigrateVerb = has(migrateVerbWords)
 	pf.MentionsTests = has(testsWords) || phrase("unit test", "integration test")
 	pf.MentionsSchemaOrAPI = has(schemaAPIWords)
@@ -248,7 +249,8 @@ func referenceExtractPromptFeatures(raw string) PromptFeatures {
 	pf.LongDocumentIndicator = has(longDocPrimaryWords) ||
 		(has(longDocSectionWords) && pf.MentionsDocumentation) ||
 		phrase("design document", "architecture document", "design doc")
-	pf.QuestionIndicator = strings.Contains(raw, "?") || firstWord("what", "why", "how", "where", "when", "which", "who", "does", "is", "are", "can", "should")
+	pf.QuestionIndicator = strings.Contains(raw, "?") || firstWord("what", "why", "how", "where", "when", "which", "who", "does", "is", "are", "can", "should") ||
+		phrase(questionPhrases...)
 	pf.OpenEndedIndicator = has(openEndedWords) || phrase("clean up", "make it better")
 	pf.CrossLayerIndicator = phrase("cross-layer", "end-to-end", "e2e", "full-stack", "frontend and backend") || has(crossLayerWords)
 	pf.RepositoryWideIndicator = has(repoWideWords) || phrase("repository-wide", "repo-wide", "entire repo", "whole repo", "all files", "every file")
@@ -284,6 +286,13 @@ func TestExtractPromptFeatures_MatchesReference(t *testing.T) {
 		"See the design document and the architecture document for the whole repo audit",
 		"CLEAN UP and MAKE IT BETTER across frontend and backend end-to-end", // uppercase + phrases
 		"please review and understand the codebase everywhere",
+		// Second #42 round: exercise the new shared phrase slices through
+		// both the fused scan and this reference oracle.
+		"the export button doesn't work anymore",
+		"wire up the billing endpoint and clean up the helpers",
+		"tell me what happens when the quota runs out",
+		"show me where the session token gets validated",
+		"logging everywhere is inconsistent",         // "everywhere is" must NOT match " where is"
 		"a\r\nfix the bug\r\n- [ ] windows line\r\n", // CRLF (windows-portable)
 		"valid \xff\xfe invalid utf8 bytes fix",      // invalid UTF-8
 		benchLogPrompt[:50000],                       // a slice of the multi-MB log prompt

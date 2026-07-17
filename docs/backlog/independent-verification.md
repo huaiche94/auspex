@@ -1,6 +1,6 @@
 # Backlog — Independent Adversarial Verification
 
-> 🌐 English | 繁體中文 (pair `independent-verification.zh-TW.md` — TODO)
+> 🌐 English | [繁體中文](independent-verification.zh-TW.md)
 
 | Field | Value |
 |---|---|

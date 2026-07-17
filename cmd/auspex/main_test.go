@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -53,6 +54,14 @@ func TestRootCommandHasVersionSubcommand(t *testing.T) {
 // subscription is live, SIGTERM is relayed to the context instead of
 // terminating the process.
 func TestRootContext_CancelledOnSIGTERM(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows has no SIGTERM: os.Process.Signal only supports Kill, so
+		// a process cannot self-deliver SIGTERM to exercise this path. The
+		// production signal set (os.Interrupt + syscall.SIGTERM) still
+		// compiles and registers there; SIGTERM is simply never OS-delivered.
+		t.Skip("SIGTERM is not deliverable via os.Process.Signal on windows")
+	}
+
 	ctx, stop := rootContext()
 	defer stop()
 

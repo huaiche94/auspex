@@ -267,9 +267,19 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 	exitCode := 0
 	if waitErr := cmd.Wait(); waitErr != nil {
 		var exitErr *exec.ExitError
-		if errors.As(waitErr, &exitErr) {
+		switch {
+		case ctx.Err() != nil:
+			// We killed the provider via context cancellation (SIGINT/
+			// SIGTERM shutdown, deadline). The resulting exit code is
+			// ours, not the provider's: unix SIGKILL already yields -1,
+			// but windows' exec.CommandContext uses TerminateProcess(h, 1),
+			// fabricating a 1 that would otherwise leak into the terminal
+			// turn.failed payload. Normalise both to the honest "-1, no
+			// exit code observed" so the contract holds on every OS.
+			exitCode = -1
+		case errors.As(waitErr, &exitErr):
 			exitCode = exitErr.ExitCode()
-		} else {
+		default:
 			// Started but could not be waited to completion (I/O fault,
 			// kill without status): -1 per gitx.ExecRunner's convention —
 			// an honest "no exit code observed", never a fabricated 0.

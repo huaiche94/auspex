@@ -25,22 +25,40 @@ Auspex 不做壓縮，它監督壓縮。
 
 agent 負責翻頁（page-turn）；Auspex 負責確保翻頁之前狀態已經固化（`CHECKPOINT_AND_RUN`）、翻頁之後的輸出仍然通得過證據閘門，以及讓配額中斷變成暫停、而不是死掉的 session。這讓 Auspex 與各家 vendor 的路線圖互補、而非與之競速：原生壓縮做得愈好，人們愈敢放手讓它無人值守（unattended）跑更長的任務——而一層監督（supervision）機制也就愈重要。
 
-**Auspex 是為 AI 編碼代理（AI coding agents）打造的本地優先（local-first）預測式執行期守門系統（predictive runtime guard）。**
-在每次與 Claude Code、Codex CLI 這類 provider（供應商）互動的回合（turn）開始前及進行中，它會估算這個回合的成本——範疇（scope）、token／配額消耗、完成可能性、爆炸半徑（blast-radius）風險——然後套用政策（policy），決定放行、警告、要求先建立檢查點、拆分、優雅暫停（gracefully pause），或直接阻擋這個回合。
+**Auspex 是為 AI 編碼代理（AI coding agents）打造的本地優先（local-first）飛行記錄器（flight recorder）兼執行期守門系統（runtime guard）。**
+它精確量測你的 agent 花掉的一切——每一類 token、每一塊錢、每一個配額視窗，逐回合、也逐日——盯著你朝配額牆逼近的燃燒速率（burn rate），並在高風險的時刻把關：大變更之前先建立檢查點、撞牆之前先暫停、阻擋政策所禁止的事、帶著完好無缺的證據恢復執行。
 
-它回答的問題與 checkpoint／resume／memory 類工具不同：不是「我們該如何繼續？」，而是「這個回合我們一開始就該執行嗎？」（拉丁文 *auspex* 指的是在一件事展開之前解讀徵兆、裁定是否可以進行的占卜官。）
+它也做預測——但很謹慎，而且只在預測真正行得通的地方。我們先把預測堆疊（prediction stack）建了起來，然後拿真實用量去量測它；資料毫不含糊（見下方[誠實的數字](#what-auspex-measures-vs-what-it-predicts)）。單一回合會花多少，事前幾乎不可知；而一個 *session* 朝它的配額牆燒得多快，卻是可知的，因為彙總（aggregation）會把雜訊平均掉。所以 Auspex 以它能量測、能外推（extrapolate）的東西打頭陣，逐回合估計則只以寬幅、有標示的參考區間（reference band）印出。
+
+（拉丁文 *auspex* 指的是在一件事展開之前解讀徵兆的占卜官。我們這位占卜官已經從自己的遙測資料中學會了哪些徵兆真正可讀——而且會照實說。）
 
 ## 一次 session 就能看到的效果
 
-一旦接上 Claude Code 或 Codex CLI（見〔快速開始〕(#快速開始)），你送出的每一個 prompt 在執行前都會先被評估。以下是本專案自身某次真實開發 session 的實際輸出——Auspex 每天都在對自己做 dogfooding：
+一旦接上 Claude Code 或 Codex CLI（見[快速開始](#quick-start)），你每天盯著看的那些呈現介面，都以**量測到的現實**（measured reality）打頭陣——以下都是本 repository 自身真實開發 session 的實際輸出；Auspex 每天都在對自己做 dogfooding：
+
+**狀態列（status line）**（Claude Code statusline，或供 tmux 使用的 `auspex hook codex status`）——最吃緊的配額視窗、距牆的剩餘跑道（runway）、今日花費與步調（pace）：
+
+```text
+ax» Opus 4.1 │ ◷ 5h ~62% (resets 18:00) │ ⏳ runway ~38m │ today $62.19 · pace → ~$312 by 24:00 │ context [████··] 21.9% │ ✓ RUN
+```
+
+**每週之鏡（weekly mirror）**——`auspex report --window 7d`：各類 token 的精確總量、按模型 × effort 拆分的花費、cache 衛生（cache hygiene）、配額事故（quota incidents），以及你最貴的五個回合。這正是週五五分鐘自我檢視（self-review）的工具：*那五個回合值得它們的價錢嗎？例行工作是不是跑在昂貴的模型上？哪些 session 在折騰（thrash）cache？*
+
+```text
+turns 228 · sessions 22 · cost $1,189.66 (205/228 attributed; the rest say unknown, not $0)
+tokens: fresh 158k / cache read 167.5M / cache creation 4.1M / output 746k
+claude opus/xhigh 141 turns $648.53 · fable/xhigh 71 turns $528.42
+cache read/fresh ratio 1057.9× · 2 sessions flagged for creation churn
+top turn: $43.94
+```
+
+**回合前閘門（pre-turn gate）**——每一個 prompt 在執行前仍然會先被評估，而估計值會以它誠實的本來面目印出：一條餵給政策決策的寬幅、未校準參考區間，而不是一個承諾：
 
 ```text
 Auspex forecast (uncalibrated estimate — scores are not probabilities):
-  scope: ~1–4 files changed, ~30–180 lines, ~2–6 files read (P50–P90)
-  tokens: P50 3782 / P80 5732 / P90 7564
-  cost: ~$0.04–$0.38 USD (estimate)
-  context: P90 ~3% of window (projected)
-  risk: 0.50/1.00 overall — QUOTA_UNKNOWN, PREDICTION_COLD_START
+  scope: ~1–4 files changed, ~30–180 lines (P50–P90)
+  tokens: P50 3782 / P90 7564 · cost: ~$0.04–$0.38 (reference band)
+  risk: 0.50/1.00 — QUOTA_UNKNOWN, PREDICTION_COLD_START
   policy: WARN
 ```
 
@@ -50,7 +68,25 @@ Auspex forecast (uncalibrated estimate — scores are not probabilities):
 - **State（狀態）＋ repository（儲存庫）checkpoint**——每次節點完成都會原子性（atomically）地建立一個 State Checkpoint；repository checkpoint 則會擷取 worktree 的內容（並做過機密資訊遮蔽／redaction），但絕不會提交（commit）你的分支。
 - **Graceful Pause（優雅暫停）**——當配額視窗（quota window）即將用盡時，Auspex 會建立檢查點、在安全點（safe point）中斷，並在 SQLite 中持久化一個到期喚醒工作（wake job）。daemon（`auspex daemon`）會在無人值守（unattended）的情況下執行到期的 wake job；恢復（resume）前會重新驗證 repository、配額、session 與授權（authorization）。
 
-一切都在本機執行：一個靜態 Go 二進位檔、一個位於你作業系統使用者資料目錄下的 SQLite 資料庫，沒有任何雲端服務。原始的 prompt 文字與工具輸出預設永遠不會被持久化——只有萃取出的特徵（extracted features）會被保存。
+一切都在本機執行：一個靜態 Go 二進位檔、一個位於你作業系統使用者資料目錄下的 SQLite 資料庫，沒有任何雲端服務。原始的 prompt 文字與工具輸出預設永遠不會被持久化——只有萃取出的特徵（extracted features）與計數（counts）會被保存；檔案路徑則無論任何形式——包括雜湊（hash）在內——都絕不保存（ADR-051／052）。
+
+<a id="what-auspex-measures-vs-what-it-predicts"></a>
+## Auspex 量測什麼 vs. 預測什麼
+
+這份誠實的切分來自我們自己的實地資料，也與外部研究一致（Bai 等，
+[arXiv:2604.22750](https://arxiv.org/abs/2604.22750)：同一任務的不同執行 token 用量可差到 30×；模型對自身成本的預測相關性 ≤ 0.39）：
+
+| 呈現介面 | 性質 | 可信度 |
+|---|---|---|
+| 逐回合 token（四類）、成本、時長 | 於 Stop 時**量測**（transcript／rollout） | 精確——可放心引用 |
+| 配額視窗（5h／每週）、context % | 逐回合**量測** | 精確 |
+| 今日花費與步調（pace） | 由量測值**彙總**（aggregated）而來 | 是算術，不是建模 |
+| 檔案操作彙總（重複率——「是否在原地打轉？」） | 逐回合**觀測** | 是關於該回合的事實，不是猜測 |
+| session 距配額牆的剩餘跑道（runway） | 由燃燒速率**外推** | 唯一可駕馭（tractable）的預測——彙總會把逐回合的雜訊平均掉；校準（M13）首先瞄準這裡 |
+| 逐回合 scope／token／成本估計 | **預測** | 一條寬幅參考區間，且標示為未校準——我們的第一批實地資料顯示 cold-start 成本在中位數偏差約 7–9×（[#90](https://github.com/huaiche94/auspex/issues/90)）；把它當作脈絡（context）看待，永遠不要當作可以據以規劃的數字 |
+
+這樣的排序是一個產品決策，不是偶然
+（[#90](https://github.com/huaiche94/auspex/issues/90)）：Auspex 把電錶、油量表與原地打轉偵測器放在最前面；水晶球放在後排，並清楚標示。
 
 <a id="quick-start"></a>
 ## 快速開始（Quick start）
@@ -63,12 +99,12 @@ go build -o auspex ./cmd/auspex
 ./auspex doctor      # creates + migrates the SQLite DB, then verifies it
 ```
 
-建置完成後立即執行 `doctor` 就有意義：第一次執行會在作業系統使用者資料目錄下建立資料庫（macOS：`~/Library/Application Support/auspex/`；Linux：`$XDG_DATA_HOME/auspex/`），並針對每一項檢查（`database`、`config`……）回報個別的檢查狀態。
+建置完成後立即執行 `doctor` 就有意義：第一次執行會在作業系統使用者資料目錄下建立資料庫（macOS：`~/Library/Application Support/auspex/`；Linux：`$XDG_DATA_HOME/auspex/`），並針對每一項檢查（`database`、`config`、擷取健康狀態……）回報個別的檢查狀態——其中包括 **token 擷取覆蓋率（token-capture coverage）**，讓悄悄壞掉的擷取大聲失敗，而不是讓你的資料默默斷炊。
 
 若要把它接上 Claude Code，請依照
 [`integrations/claude/`](integrations/claude/README.md) 的說明操作：裡面提供了
 `hooks.json`／`plugin.json` 範例，會將 Claude Code 的
-UserPromptSubmit / Stop / StopFailure / statusline 事件導向
+UserPromptSubmit / Stop / StopFailure / PostToolUse / statusline 事件導向
 `auspex hook claude <event>`，另外還有 `auspex init` 可以註冊目前的
 repository。Codex CLI 也以同樣的方式接上：
 [`integrations/codex/hooks.json`](integrations/codex/hooks.json) 會將它的
@@ -83,6 +119,9 @@ session；直接執行 `auspex evaluate` 即可看到真正的錯誤訊息。
 ### 指令樹（The command tree）
 
 ```text
+auspex report                 your usage, mirrored back: spend, tokens by class,
+                              model×effort split, cache hygiene, quota incidents,
+                              costliest turns (--window 7d, --json)
 auspex evaluate               estimate a prompt before running it (--json)
 auspex decision allow|deny    consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
@@ -93,10 +132,10 @@ auspex scheduler run-once     execute due wake jobs without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
 auspex run ...                one-shot prompt under the managed gate (claude|codex)
 auspex init                   register the current repository/session
-auspex status | doctor        session/checkpoint/pause state; environment health
+auspex status | doctor        session/checkpoint/pause state; capture health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis
-auspex hook claude <event>    the four hook entrypoints Claude Code calls
+auspex hook claude <event>    the hook entrypoints Claude Code calls
 auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
 auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
 ```
@@ -134,37 +173,33 @@ provider（[#9](https://github.com/huaiche94/auspex/issues/9)）：native
 hook（`auspex hook codex <event>`）與受管
 one-shot（`auspex run --provider codex`，經由 `codex exec --json`）皆已出貨；#9
 剩下的是 M7 Phase 2 的尾巴——app-server 訂閱、graceful
-interrupt、`codex exec resume`。native-hook session 現在能為兩個
-provider 擷取精確的逐回合（per-turn）token 用量——Claude 來自 Stop
-transcript（ADR-051）、Codex 來自 session
-rollout JSONL——而由這些真實配額遙測算出的即時剩餘跑道（runway）預測，會觸發
-policy 的 runway reason code，並在視野內（in-horizon）時於 statusline
-顯示提示（`⏳ runway ~Ns`）。本 repository 自身的 session 每天都會把遙測資料餵給本機的一個 Auspex。
+interrupt、`codex exec resume`。native-hook session 能為兩個
+provider 擷取精確的逐回合（per-turn）token 用量；由這些真實配額遙測算出的即時剩餘跑道（runway）預測，會觸發
+policy 的 runway reason code 並顯示於 statusline（`⏳ runway ~Ns`、今日花費與步調）；而逐回合的檔案操作彙總（ADR-052，
+[#67](https://github.com/huaiche94/auspex/issues/67)）也正持續累積，朝原地打轉（spin）偵測閘門邁進。本 repository 自身的 session 每天都會把遙測資料餵給本機的一個 Auspex。
 
-**誠實的但書：**每一個預測目前仍然是由 cold-start（冷啟動）規則產生，而非經過校準（calibrated）的模型。分數不是機率，並且在每一個呈現介面上都明確標示為如此（Constitution §7 第 7 條）。token 預測目前尤其幾乎不隨 prompt 內容而變動
-（[#42](https://github.com/huaiche94/auspex/issues/42)）。校準的*軌道*（rails）已全部到位——成本、時長與精確
-token 的「預測 vs 實際」配對會在日常使用中持續累積，而第一批實地資料已經量化了差距：cold-start
+**誠實的但書——如今是一個產品決策。**每一個逐回合預測目前仍然是由 cold-start（冷啟動）規則產生，而非經過校準（calibrated）的模型。分數不是機率，並且在每一個呈現介面上都明確標示為如此（Constitution §7 第 7 條）。我們的第一批實地資料已經量化了差距——cold-start
 成本預測在中位數低估了實際成本約 7–9×，主因是對 cache-read 視而不見的計價
-（[#66](https://github.com/huaiche94/auspex/issues/66)）。把這些配對轉化為經校準預測的擬合與回饋（fit-and-feed-back）步驟，是仍待完成的
-M13 里程碑（[#11](https://github.com/huaiche94/auspex/issues/11)）。外部研究是支撐而非推翻這個立場：一份對八個 frontier agent 在 SWE-bench 上的研究（Bai 等，[arXiv:2604.22750](https://arxiv.org/abs/2604.22750)，2026）發現，同一任務的不同執行 token 用量可差到 30×，而且模型對自身成本的預測只有弱相關（correlation ≤ 0.39、且系統性偏低）——因此粗略、未校準的區間是誠實的上限，而非暫時的權宜。所以 Auspex 的價值在於它所把關的**決策**——checkpoint、pause、resume、block——而不在於它印出那個數字的精確度。
+（[#66](https://github.com/huaiche94/auspex/issues/66)）——而外部研究（前述 Bai 等）指出這個上限是結構性的，不是暫時的缺口：同一任務的不同執行 token 用量可差到 30×。我們的回應是把整個產品繞著它重新排序
+（[#90](https://github.com/huaiche94/auspex/issues/90)）：量測與彙總的呈現介面（精確用量、花費步調、配額剩餘跑道、原地打轉觀測）在每個地方都居於首位；逐回合的點估計被降格為有標示的參考區間；而校準里程碑（M13，
+[#11](https://github.com/huaiche94/auspex/issues/11)）會先瞄準那個*確實*可駕馭的預測——session 層級的剩餘跑道命中機率（hit-probability）——之後才會回頭處理逐回合 token。Auspex 的價值在於它所把關的**決策與它映照回來的現實**——checkpoint、pause、resume、block，以及一份你實際花費的精確帳目——而不在於逐回合猜測的精確度。
 
 尚待完成的路線圖里程碑：Codex M7 Phase 2 的尾巴——app-server 訂閱、graceful
 interrupt、`codex exec resume`
 （[#9](https://github.com/huaiche94/auspex/issues/9)）；受管 shell
-模式（M11，[#8](https://github.com/huaiche94/auspex/issues/8)）；校準（calibration）的擬合與回饋（fit-and-feed-back）pipeline（M13，
+模式（M11，[#8](https://github.com/huaiche94/auspex/issues/8)）；校準（calibration）的擬合與回饋（fit-and-feed-back）pipeline，剩餘跑道優先（runway-first）（M13，
 [#11](https://github.com/huaiche94/auspex/issues/11)）；發布前的命名空間（namespace）認領
-（[#18](https://github.com/huaiche94/auspex/issues/18)）；工具操作（tool-operation）擷取，含原地打轉（spin）偵測與
-phase-aware 把關
-（[#67](https://github.com/huaiche94/auspex/issues/67)／[#68](https://github.com/huaiche94/auspex/issues/68)，以
-ADR 為閘）；源自研究的預測升級
+（[#18](https://github.com/huaiche94/auspex/issues/18)）；建立在如今持續累積之檔案操作彙總上的原地打轉（spin）偵測閘門
+（[#68](https://github.com/huaiche94/auspex/issues/68)，以資料為閘）；源自研究的預測升級
 （[#65](https://github.com/huaiche94/auspex/issues/65)、[#66](https://github.com/huaiche94/auspex/issues/66)
 的預測那一半、[#42](https://github.com/huaiche94/auspex/issues/42)、
-[#20](https://github.com/huaiche94/auspex/issues/20)——以資料為閘）；以及受管
-runner 的訊號處理（signal-handling）修正
-（[#88](https://github.com/huaiche94/auspex/issues/88)）。
+[#20](https://github.com/huaiche94/auspex/issues/20)——以資料為閘）；尾隨（tail）rollout、能捕捉
+IDE 外掛與 subagent 執行緒的監看器（watcher）
+（[#92](https://github.com/huaiche94/auspex/issues/92)）；以及團隊用量彙整（team usage rollup，
+[#91](https://github.com/huaiche94/auspex/issues/91)）。
 [issue tracker](https://github.com/huaiche94/auspex/issues) 是即時更新的待辦清單。所有工作都受里程碑閘控（milestone-gated）：任何功能都不會在其里程碑之前被實作（`docs/design/Auspex_ADD.md` §31）。
 
-從上述 Bai 等論文提煉出、以研究為依據的新增項目——cache-aware 四類成本模型（其擷取那一半已落地；預測那一半仍開放於 #66）、以*觀測*而非預測抓出原地打轉 turn 的重複檔案操作 risk 訊號，以及 phase-aware 條件式預測——已作為路線圖筆記（僅為外部先驗，絕非擬合數字）記錄於
+從上述 Bai 等論文提煉出、以研究為依據的新增項目——cache-aware 四類成本模型（其擷取那一半已落地；預測那一半仍開放於 #66）、以*觀測*而非預測抓出原地打轉 turn 的重複檔案操作 risk 訊號（其擷取那一半已透過 ADR-052／#67 落地），以及 phase-aware 條件式預測——已作為路線圖筆記（僅為外部先驗，絕非擬合數字）記錄於
 [`docs/backlog/token-cost-prediction-research.md`](docs/backlog/token-cost-prediction-research.md)。
 
 ## 驗證一項變更

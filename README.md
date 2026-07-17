@@ -56,32 +56,66 @@ vendors' roadmaps, not a race against them: the better native compaction
 gets, the longer the tasks people dare to run unattended — and the more a
 supervision layer matters.
 
-**Auspex is a local-first predictive runtime guard for AI coding agents.**
-Before each turn with a provider like Claude Code or Codex CLI, it
-estimates what the turn will cost — scope, tokens, quota fit,
-blast-radius risk — and applies policy: run it, warn, require a
-checkpoint first, split it, pause gracefully, or block it.
+**Auspex is a local-first flight recorder and runtime guard for AI
+coding agents.** It measures exactly what your agent spends — every
+token class, every dollar, every quota window, per turn and per day —
+watches your burn rate toward the quota wall, and gates the risky
+moments: checkpoint before the big change, pause before the wall, block
+what policy forbids, resume with evidence intact.
 
-Checkpoint/resume/memory tools answer *"how do we continue?"*. Auspex
-answers the question that comes first: **"should we even start this
-turn?"** (The Latin *auspex* is the diviner who reads the omens before an
-undertaking begins and rules whether it may proceed.)
+It also forecasts — carefully, and only where forecasting actually
+works. We built the prediction stack first and then measured it against
+real usage; the data was unambiguous (see
+[the honest numbers](#what-auspex-measures-vs-what-it-predicts) below).
+What one turn will cost is close to unknowable in advance. How fast a
+*session* is burning toward its quota wall is knowable, because
+aggregation averages the noise out. So Auspex leads with what it can
+measure and extrapolate, and prints per-turn estimates only as wide,
+labeled reference bands.
+
+(The Latin *auspex* is the diviner who reads the omens before an
+undertaking. Ours has learned, from its own telemetry, which omens are
+actually readable — and says so.)
 
 ## What it does, in one session
 
 Once wired into Claude Code or Codex CLI (see
-[Quick start](#quick-start)), every prompt you submit is evaluated
-before it runs. This is real output from
-one of this repository's own development sessions — Auspex dogfoods
-itself daily:
+[Quick start](#quick-start)), the surfaces you look at every day lead
+with **measured reality** — real output from this repository's own
+development sessions; Auspex dogfoods itself daily:
+
+**The status line** (Claude Code statusline, or `auspex hook codex
+status` for tmux) — worst quota window, runway to the wall, today's
+spend and pace:
+
+```text
+ax» Opus 4.1 │ ◷ 5h ~62% (resets 18:00) │ ⏳ runway ~38m │ today $62.19 · pace → ~$312 by 24:00 │ context [████··] 21.9% │ ✓ RUN
+```
+
+**The weekly mirror** — `auspex report --window 7d`: exact totals by
+token class, spend by model × effort, cache hygiene, quota incidents,
+and your five costliest turns. This is the tool for the Friday
+five-minute self-review: *were those five turns worth their price? is
+routine work running on the expensive model? which sessions thrash the
+cache?*
+
+```text
+turns 228 · sessions 22 · cost $1,189.66 (205/228 attributed; the rest say unknown, not $0)
+tokens: fresh 158k / cache read 167.5M / cache creation 4.1M / output 746k
+claude opus/xhigh 141 turns $648.53 · fable/xhigh 71 turns $528.42
+cache read/fresh ratio 1057.9× · 2 sessions flagged for creation churn
+top turn: $43.94
+```
+
+**The pre-turn gate** — every prompt is still evaluated before it runs,
+and the estimate is printed as what it honestly is: a wide, uncalibrated
+reference band feeding a policy decision, not a promise:
 
 ```text
 Auspex forecast (uncalibrated estimate — scores are not probabilities):
-  scope: ~1–4 files changed, ~30–180 lines, ~2–6 files read (P50–P90)
-  tokens: P50 3782 / P80 5732 / P90 7564
-  cost: ~$0.04–$0.38 USD (estimate)
-  context: P90 ~3% of window (projected)
-  risk: 0.50/1.00 overall — QUOTA_UNKNOWN, PREDICTION_COLD_START
+  scope: ~1–4 files changed, ~30–180 lines (P50–P90)
+  tokens: P50 3782 / P90 7564 · cost: ~$0.04–$0.38 (reference band)
+  risk: 0.50/1.00 — QUOTA_UNKNOWN, PREDICTION_COLD_START
   policy: WARN
 ```
 
@@ -107,7 +141,30 @@ on. Alongside the per-prompt gate, Auspex maintains:
 
 Everything is local: one static Go binary, one SQLite database under
 your OS user-data directory, no cloud services. Raw prompt text and tool
-output are never persisted by default — only extracted features.
+output are never persisted by default — only extracted features and
+counts; file paths never in any form, hashes included (ADR-051/052).
+
+## What Auspex measures vs. what it predicts
+
+The honest split, learned from our own field data and consistent with
+external research (Bai et al.,
+[arXiv:2604.22750](https://arxiv.org/abs/2604.22750): token use varies
+up to 30× across identical runs; models predict their own cost with
+correlation ≤ 0.39):
+
+| Surface | Nature | Trustworthiness |
+|---|---|---|
+| Per-turn tokens (4 classes), cost, duration | **Measured** at Stop (transcript / rollout) | Exact — cite it freely |
+| Quota windows (5h / weekly), context % | **Measured** per turn | Exact |
+| Today's spend and pace | **Aggregated** from measurements | Arithmetic, not modeling |
+| File-op aggregates (repeat rate — "is it spinning?") | **Observed** per turn | Fact about the turn, not a guess |
+| Session runway to the quota wall | **Extrapolated** burn rate | The tractable prediction — aggregation averages out per-turn noise; calibration (M13) targets this first |
+| Per-turn scope/token/cost estimate | **Predicted** | A wide reference band, labeled uncalibrated — our first field dataset showed cold-start cost off ~7–9× at the median ([#90](https://github.com/huaiche94/auspex/issues/90)); treat it as context, never as a number to plan around |
+
+This ordering is a product decision, not an accident
+([#90](https://github.com/huaiche94/auspex/issues/90)): Auspex leads
+with the meter, the fuel gauge, and the spin detector; the crystal ball
+is in the back, clearly labeled.
 
 ## Quick start
 
@@ -122,14 +179,16 @@ go build -o auspex ./cmd/auspex
 `doctor` is meaningful immediately after building: the first run creates
 the database under the OS user-data directory (macOS:
 `~/Library/Application Support/auspex/`, Linux: `$XDG_DATA_HOME/auspex/`)
-and reports each check (`database`, `config`, …) with a per-check status.
+and reports each check (`database`, `config`, capture health, …) with a
+per-check status — including **token-capture coverage**, so a silently
+broken capture fails loudly instead of starving your data.
 
 To wire it into Claude Code, follow
 [`integrations/claude/`](integrations/claude/README.md): it ships the
 `hooks.json`/`plugin.json` examples that route Claude Code's
-UserPromptSubmit / Stop / StopFailure / statusline events through
-`auspex hook claude <event>`, plus `auspex init` to register the current
-repository. Codex CLI is wired the same way:
+UserPromptSubmit / Stop / StopFailure / PostToolUse / statusline events
+through `auspex hook claude <event>`, plus `auspex init` to register the
+current repository. Codex CLI is wired the same way:
 [`integrations/codex/hooks.json`](integrations/codex/hooks.json) routes
 its SessionStart / UserPromptSubmit / Stop events through
 `auspex hook codex <event>` (hook argv is kebab-case, ADR-050). In both
@@ -142,6 +201,9 @@ session; run `auspex evaluate` directly to surface real errors.
 ### The command tree
 
 ```text
+auspex report                 your usage, mirrored back: spend, tokens by class,
+                              model×effort split, cache hygiene, quota incidents,
+                              costliest turns (--window 7d, --json)
 auspex evaluate               estimate a prompt before running it (--json)
 auspex decision allow|deny    consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
@@ -152,10 +214,10 @@ auspex scheduler run-once     execute due wake jobs without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
 auspex run ...                one-shot prompt under the managed gate (claude|codex)
 auspex init                   register the current repository/session
-auspex status | doctor        session/checkpoint/pause state; environment health
+auspex status | doctor        session/checkpoint/pause state; capture health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis
-auspex hook claude <event>    the four hook entrypoints Claude Code calls
+auspex hook claude <event>    the hook entrypoints Claude Code calls
 auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
 auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
 ```
@@ -197,52 +259,52 @@ native hooks (`auspex hook codex <event>`) and the managed one-shot
 (`auspex run --provider codex`, over `codex exec --json`) ship; what
 remains in #9 is the M7 Phase-2 tail — app-server subscription,
 graceful interrupt, `codex exec resume`. Native-hook sessions capture
-exact per-turn token usage for both providers — Claude from the Stop
-transcript (ADR-051), Codex from the session rollout JSONL — and live
-runway forecasts computed from that real quota telemetry feed the
-policy's runway reason codes plus an in-horizon statusline hint
-(`⏳ runway ~Ns`). This repository's own sessions feed telemetry into a
-local Auspex daily.
+exact per-turn token usage for both providers, live runway forecasts
+computed from that real quota telemetry feed the policy's runway reason
+codes plus the statusline (`⏳ runway ~Ns`, today's spend and pace), and
+per-turn file-operation aggregates (ADR-052,
+[#67](https://github.com/huaiche94/auspex/issues/67)) accumulate toward
+the spin-detection gate. This repository's own sessions feed telemetry
+into a local Auspex daily.
 
-**The honest caveat:** every forecast is still produced by cold-start
-rules, not calibrated models. Scores are not probabilities and are
-labeled that way on every surface (Constitution §7 rule 7). The token
-forecast in particular barely responds to the prompt yet
-([#42](https://github.com/huaiche94/auspex/issues/42)). The calibration
-*rails* are all in place — predicted-vs-actual pairs for cost, duration,
-and exact tokens accumulate from normal use, and the first field
-dataset already quantifies the gap: the cold-start cost forecast
-under-forecasts real cost roughly 7–9× at the median, driven by
-cache-read-blind pricing
-([#66](https://github.com/huaiche94/auspex/issues/66)). The
-fit-and-feed-back step that turns those pairs into calibrated forecasts
-is the open M13 milestone
-([#11](https://github.com/huaiche94/auspex/issues/11)). External research
-backs this stance rather than undercutting it: a study of eight frontier
-agents on SWE-bench (Bai et al.,
-[arXiv:2604.22750](https://arxiv.org/abs/2604.22750), 2026) finds token
-use can vary up to 30× across identical runs and that models predict
-their own cost only weakly (correlation ≤ 0.39, systematically low) — so
-a coarse, uncalibrated range is the honest ceiling, not a temporary one.
-Auspex's value is therefore in the **decision it gates** — checkpoint,
-pause, resume, block — not in the precision of the number it prints.
+**The honest caveat — now a product decision.** Every per-turn forecast
+is still produced by cold-start rules, not calibrated models. Scores are
+not probabilities and are labeled that way on every surface
+(Constitution §7 rule 7). Our first field dataset quantified the gap —
+the cold-start cost forecast under-forecasts real cost roughly 7–9× at
+the median, driven by cache-read-blind pricing
+([#66](https://github.com/huaiche94/auspex/issues/66)) — and external
+research (Bai et al., above) indicates that ceiling is structural, not a
+temporary shortfall: identical runs vary up to 30× in token use. We
+responded by reordering the product around it
+([#90](https://github.com/huaiche94/auspex/issues/90)): measured and
+aggregated surfaces (exact usage, spend pacing, quota runway, spin
+observation) lead everywhere; per-turn point estimates are demoted to
+labeled reference bands; and the calibration milestone (M13,
+[#11](https://github.com/huaiche94/auspex/issues/11)) targets the
+prediction that *is* tractable — session-level runway hit-probability —
+before it ever revisits per-turn tokens. Auspex's value is in the
+**decisions it gates and the reality it mirrors** — checkpoint, pause,
+resume, block, and an exact account of what you spent — not in the
+precision of a per-turn guess.
 
 Open roadmap milestones: the Codex M7 Phase-2 tail — app-server
 subscription, graceful interrupt, `codex exec resume`
 ([#9](https://github.com/huaiche94/auspex/issues/9)); the managed shell
 mode (M11, [#8](https://github.com/huaiche94/auspex/issues/8)); the
-calibration fit-and-feed-back pipeline (M13,
+calibration fit-and-feed-back pipeline, runway-first (M13,
 [#11](https://github.com/huaiche94/auspex/issues/11)); pre-release
 namespace claims ([#18](https://github.com/huaiche94/auspex/issues/18));
-tool-operation capture with spin detection and phase-aware gating
-([#67](https://github.com/huaiche94/auspex/issues/67)/[#68](https://github.com/huaiche94/auspex/issues/68),
-ADR-gated); research-derived forecast upgrades
+the spin-detection gate on the now-accumulating file-op aggregates
+([#68](https://github.com/huaiche94/auspex/issues/68), data-gated);
+research-derived forecast upgrades
 ([#65](https://github.com/huaiche94/auspex/issues/65), the forecast half
 of [#66](https://github.com/huaiche94/auspex/issues/66),
 [#42](https://github.com/huaiche94/auspex/issues/42),
-[#20](https://github.com/huaiche94/auspex/issues/20) — data-gated); and
-a signal-handling fix for the managed runner
-([#88](https://github.com/huaiche94/auspex/issues/88)). The
+[#20](https://github.com/huaiche94/auspex/issues/20) — data-gated); the
+rollout-tailing watcher that captures IDE-plugin and subagent threads
+([#92](https://github.com/huaiche94/auspex/issues/92)); and the team
+usage rollup ([#91](https://github.com/huaiche94/auspex/issues/91)). The
 [issue tracker](https://github.com/huaiche94/auspex/issues) is the live
 backlog. Work is milestone-gated: nothing is implemented ahead of its
 milestone (`docs/design/Auspex_ADD.md` §31).
@@ -250,9 +312,10 @@ milestone (`docs/design/Auspex_ADD.md` §31).
 Research-grounded additions distilled from Bai et al. (above) — a
 cache-aware four-class cost model (its capture half has landed; the
 forecast half is open in #66), a repeated-file-operation risk signal
-that catches a spinning turn by *observation* instead of prediction, and
-phase-aware conditional forecasting — are captured as roadmap notes (as
-external priors, never as fitted numbers) in
+that catches a spinning turn by *observation* instead of prediction
+(its capture half landed via ADR-052/#67), and phase-aware conditional
+forecasting — are captured as roadmap notes (as external priors, never
+as fitted numbers) in
 [`docs/backlog/token-cost-prediction-research.md`](docs/backlog/token-cost-prediction-research.md).
 
 ## Validate a change

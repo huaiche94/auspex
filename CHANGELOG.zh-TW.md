@@ -11,6 +11,14 @@ Auspex 所有重大變更都記錄在此檔案中。格式遵循
 
 ### Fixed（修正）
 
+- **`windows-latest` CI 恢復綠燈**（[#102](https://github.com/huaiche94/auspex/issues/102)）：
+  兩個既有的僅限 Windows 測試失敗一直硬性阻擋所有 merge。
+  `TestRootContext_CancelledOnSIGTERM` 現在於 Windows 上跳過（該平台無法
+  對行程投遞 SIGTERM；#88 的訊號路徑本質上僅限 Unix），而 managed 的
+  context-cancel kill 測試改為追蹤各平台的 kill exit code（Unix 經
+  SIGKILL 為 `-1`，Windows 經 `TerminateProcess` 為 `1`），不再硬寫
+  Unix 值。僅測試變更；無執行期行為改變。
+
 - **SIGTERM 現在會取消根 context**
   （[#88](https://github.com/huaiche94/auspex/issues/88)）：CLI context
   以 `signal.NotifyContext(os.Interrupt, SIGTERM)` 包裹，kill auspex

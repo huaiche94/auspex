@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -53,6 +54,14 @@ func TestRootCommandHasVersionSubcommand(t *testing.T) {
 // subscription is live, SIGTERM is relayed to the context instead of
 // terminating the process.
 func TestRootContext_CancelledOnSIGTERM(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// SIGTERM cannot be delivered to a process on Windows —
+		// os.Process.Signal there only honors os.Kill, and signal.Notify
+		// never relays SIGTERM. The #88 SIGTERM path is Unix-only by
+		// construction (on Windows the daemon still cancels on os.Interrupt),
+		// so there is nothing to exercise here.
+		t.Skip("SIGTERM delivery is unsupported on Windows; #88 covers the Unix signal set")
+	}
 	ctx, stop := rootContext()
 	defer stop()
 

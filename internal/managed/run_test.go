@@ -512,6 +512,21 @@ func TestRunner_Run_Codex_TurnFailed_PersistsFailureNoUsage(t *testing.T) {
 	}
 }
 
+// killedExitCode is the exit code a context-killed provider child reports,
+// which is platform-specific: on Unix exec.CommandContext SIGKILLs it and
+// ProcessState.ExitCode() is -1 (terminated by signal, no wait status); on
+// Windows the child is TerminateProcess'd and exits with code 1. The
+// runtime contract this test pins ("the run failed because we killed it,
+// no graceful exit code") is identical across platforms — only the
+// OS-reported number differs, so the assertion tracks it per-OS rather
+// than hardcoding the Unix value (which reddened windows-latest, #102).
+func killedExitCode() int {
+	if runtime.GOOS == "windows" {
+		return 1
+	}
+	return -1
+}
+
 // TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly pins the
 // process-hygiene contract for the codex spec: cancelling the run's
 // context kills the provider (exec.CommandContext), Run returns instead
@@ -537,15 +552,15 @@ func TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v — a cancelled provider is a failed run result, never a Run error or a hang", err)
 	}
-	if outcome.ExitCode != -1 {
-		t.Errorf("ExitCode = %d, want -1 (killed; no exit code observed)", outcome.ExitCode)
+	if outcome.ExitCode != killedExitCode() {
+		t.Errorf("ExitCode = %d, want %d (killed; no exit code observed)", outcome.ExitCode, killedExitCode())
 	}
 	if len(persister.calls) != 2 {
 		t.Fatalf("persister.calls = %d batches, want 2 (gate, terminal)", len(persister.calls))
 	}
 	failed := eventOfType(t, persister.calls[1], v1.EventProviderTurnFailed)
-	if failed.Payload["exit_code"] != -1 {
-		t.Errorf("turn.failed payload = %+v, want exit_code -1", failed.Payload)
+	if failed.Payload["exit_code"] != killedExitCode() {
+		t.Errorf("turn.failed payload = %+v, want exit_code %d", failed.Payload, killedExitCode())
 	}
 	// The stream written BEFORE the kill was already parsed — captured
 	// attribution survives the interruption.

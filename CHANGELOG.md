@@ -10,6 +10,15 @@ follow [SemVer](https://semver.org/) once releases begin.
 
 ### Fixed
 
+- **`windows-latest` CI restored to green** ([#102](https://github.com/huaiche94/auspex/issues/102)):
+  two pre-existing Windows-only test failures were hard-blocking every
+  merge. `TestRootContext_CancelledOnSIGTERM` now skips on Windows
+  (SIGTERM cannot be delivered to a process there; the #88 signal path is
+  Unix-only by construction), and the managed context-cancel kill test
+  now tracks the platform's kill exit code (`-1` on Unix via SIGKILL, `1`
+  on Windows via `TerminateProcess`) instead of hardcoding the Unix
+  value. Test-only; no runtime behavior change.
+
 - **SIGTERM now cancels the root context**
   ([#88](https://github.com/huaiche94/auspex/issues/88)):
   `signal.NotifyContext(os.Interrupt, SIGTERM)` wraps the CLI context, so

@@ -7,6 +7,11 @@ __pycache__/
 # Local build output (e.g. `go build -o bin/auspex`)
 /bin/
 
+# Root-level binary from `go build -o auspex ./cmd/auspex` (README quick
+# start) or a bare `go build ./cmd/auspex`
+/auspex
+/auspex.exe
+
 # VS Code extension build outputs (issue #10)
 vscode/node_modules/
 vscode/out/

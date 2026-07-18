@@ -84,12 +84,10 @@ either.
 ## Scope: what native compaction handles, and what Auspex adds
 
 Agents already manage their own context, and the mechanisms are good.
-Claude Code runs layered compaction: bulky tool outputs offload to disk
-early, the conversation auto-summarizes near the context limit, recent
-files and todos rehydrate afterward. Codex CLI compacts server-side
-through a dedicated endpoint and re-reads recently edited files each
-pass. Both vendors expose compaction in their APIs. Recycling a context
-window is solved and commoditizing.
+Claude Code runs layered compaction: it clears older tool outputs first,
+then auto-summarizes the conversation near the context limit. Codex CLI
+compacts server-side. Both vendors are moving compaction into their
+platforms. Recycling a context window is solved and commoditizing.
 
 Auspex does not compete with that. It covers three things compaction
 does not.
@@ -112,22 +110,30 @@ inherent to compression, not a bug. The native mechanisms trust their own
 summaries; no independent check verifies the agent stayed on course
 afterward. Auspex does not try to make the summary perfect. State
 Checkpointing requires verifiable evidence — test artifacts, checksums,
-Git snapshots — before a work unit can be marked complete. An agent that
-drifts after a compaction fails the evidence gate instead of shipping a
-regression silently. The gate lives outside the context window, so it
-does not forget.
+Git snapshots — before a work unit can be marked complete. A work unit
+that can't produce that evidence fails the gate instead of being marked
+done on the agent's say-so. The gate lives outside the context window, so
+it does not forget.
 
 **3. Sessions end; work should not.** Native context management dies with
 the process. Auspex persists progress trees, wake tasks, and decisions in
 SQLite. An interrupted run — quota exhaustion, crash, reboot — resumes
 where it stopped instead of restarting.
 
-Auspex does not do compaction. It supervises it. The agent turns the
-page; Auspex solidifies state before the turn (`CHECKPOINT_AND_RUN`),
-checks that output after the turn still clears the evidence gate, and
-converts quota interruptions into pauses instead of dead sessions. The
-better native compaction gets, the longer the tasks people run
-unattended — and the more a supervision layer matters.
+Auspex does not do compaction; it sits beside it. Its decision surface
+and evidence gate are real and persisted today: the policy engine emits
+and records `CHECKPOINT_AND_RUN` when a change is risky enough to
+checkpoint first, and no work unit is marked complete without verified
+evidence. Wiring those into automatic hooks — a pre-turn checkpoint on
+that decision ([#116](https://github.com/huaiche94/auspex/issues/116)), a
+post-turn evidence-gate reconciliation on Stop
+([#115](https://github.com/huaiche94/auspex/issues/115)), and a PreCompact
+checkpoint that makes "supervises compaction" literal
+([#114](https://github.com/huaiche94/auspex/issues/114)) — is designed
+(ADD §13.6 / §18.9) and on the M4/M10 roadmap, not yet wired end-to-end;
+converting quota interruptions into pauses is the same slice. The better
+native compaction gets, the longer the tasks people run unattended — and
+the more a supervision layer matters.
 
 ## What it measures, and what it only estimates
 
@@ -274,8 +280,8 @@ auspex evaluate               estimate a prompt before running it (--json)
 auspex decision allow|deny    consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
 auspex progress ...           inspect the Progress Tree; evidence-gated completion
-auspex pause request|cancel   safe-point pause with a durable wake job
-auspex resume                 re-verified resume
+auspex pause request|cancel   request or cancel a pause (records intent)
+auspex resume                 resume a paused run (verdict via flags)
 auspex scheduler run-once     execute due wake jobs without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
 auspex run ...                one-shot prompt under the managed gate (claude|codex)

@@ -90,6 +90,45 @@ const multiplierCap = 3.0
 // multipliers combined could still compound past any single one).
 const combinedCap = 6.0
 
+// --- Input/output split structural defaults (#65 Phase 1, ADR-0053) -----
+//
+// These two constants shape domain.TokenForecast's input/output
+// decomposition. BOTH are UNCALIBRATED STRUCTURAL DEFAULTS in the exact
+// sense baseTurnTokens and the cold-start "P90 = 2x P50" spread already
+// are: bootstrap placeholders, documented as such, expected to be
+// replaced by #11-fitted values. NEITHER is derived from Bai et al.
+// 2026's measured numbers — those (Pearson <= 0.39, the ~153:1
+// input:output ratio) are external SWE-bench evidence and are never
+// imported as Auspex coefficients (grounding discipline,
+// docs/backlog/token-cost-prediction-research.md §5). The paper supplies
+// only the DIRECTION.
+
+// defaultInputTokenShare partitions the total P50 central estimate into
+// its input and output halves. It is deliberately NEUTRAL (0.5): this
+// slice does NOT bake in an input-vs-output MAGNITUDE ratio, because that
+// ratio is a fitted number gated on #11 (and the paper's ~153:1 is never
+// imported). 0.5 is not a claim that a turn's input and output token
+// counts are actually equal — everyone knows input dominates in agentic
+// coding — it is a refusal to invent the dominance magnitude here. The
+// only asymmetry this slice introduces is the interval WIDTH below, which
+// is the one thing the paper's direction (and issue #65) actually
+// sanction. When #11 lands, this share is replaced by a fitted per-cohort
+// value.
+const defaultInputTokenShare = 0.5
+
+// inputIntervalWideningFactor is THE uncalibrated structural default this
+// slice introduces: how much wider the input interval's P90 tail is than
+// the output interval's. 1.5 is a deliberately round, conservative
+// placeholder — the input band's upper bound sits 50% further above its
+// P50 than the output band's does — expressing ONLY the paper's direction
+// (models predict input tokens worse, so the input axis is less
+// predictable and its honest interval must be wider). It is not fitted and
+// not derived from any of the paper's coefficients; #11 replaces it with a
+// data-fitted widening. The output interval keeps the total's own base
+// spread unwidened, so nothing is artificially narrowed — the harder axis
+// widens, the more-predictable axis is left as-is.
+const inputIntervalWideningFactor = 1.5
+
 // ForecastTokens implements app.TokenForecaster.
 func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.ForecastTokensRequest) (domain.TokenForecast, error) {
 	class, promptFeat, err := f.Source.Classification(ctx, req.SessionID)
@@ -194,14 +233,68 @@ func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.Foreca
 		reasons = append(reasons, domain.ReasonCrossLayerChange)
 	}
 
+	// Input/output decomposition (#65 Phase 1, ADR-0053): split the total
+	// P50/P90 band into distinct input and output intervals, the input
+	// interval structurally wider (the harder-to-predict axis). Uncalibrated
+	// structural defaults only — see the constants above; this never flips
+	// calibrated to true.
+	inP50, inP90, outP50, outP90 := splitInputOutput(p50, p90)
+
 	return domain.TokenForecast{
-		TokensP50:   round(p50),
-		TokensP80:   round(p80),
-		TokensP90:   round(p90),
-		Calibrated:  calibrated, // always false this wave — see doc.go / package comment
-		Confidence:  confidence,
-		ReasonCodes: dedupeReasons(reasons),
+		TokensP50:       round(p50),
+		TokensP80:       round(p80),
+		TokensP90:       round(p90),
+		InputTokensP50:  &inP50,
+		InputTokensP90:  &inP90,
+		OutputTokensP50: &outP50,
+		OutputTokensP90: &outP90,
+		Calibrated:      calibrated, // always false this wave — see doc.go / package comment
+		Confidence:      confidence,
+		ReasonCodes:     dedupeReasons(reasons),
 	}, nil
+}
+
+// splitInputOutput decomposes a total [P50, P90] token band into distinct
+// input and output intervals (#65 Phase 1, ADR-0053), returning each
+// axis's rounded P50 and P90. The central estimate is partitioned by the
+// neutral defaultInputTokenShare (input P50 + output P50 == total P50, so
+// the decomposition never loses or invents central mass); the OUTPUT
+// interval carries the total band's own base relative spread while the
+// INPUT interval widens it by inputIntervalWideningFactor, making the
+// input interval structurally wider — the only asymmetry the paper's
+// direction sanctions.
+//
+// Note the two axes' P90s do NOT sum to the total P90, by design and
+// correctly: the P90 of a sum is not the sum of the parts' P90s, and the
+// authoritative combined figure stays on TokensP90. All four returned
+// values are >= 0 and each axis satisfies P50 <= P90 (share and spread are
+// non-negative and the widening factor is >= 1); guarded regardless so a
+// future edit to the base band cannot silently invert an axis.
+func splitInputOutput(totalP50, totalP90 float64) (inputP50, inputP90, outputP50, outputP90 int64) {
+	inputCenter := totalP50 * defaultInputTokenShare
+	outputCenter := totalP50 * (1 - defaultInputTokenShare)
+
+	// Base relative spread of the total band (P90 as a multiple of P50).
+	// Defaults to 1.0 (no spread) when P50 is non-positive, so a degenerate
+	// zero-token band produces a coherent zero split rather than a NaN.
+	spread := 1.0
+	if totalP50 > 0 {
+		spread = totalP90 / totalP50
+	}
+	if spread < 1 {
+		spread = 1
+	}
+
+	inputHigh := inputCenter * spread * inputIntervalWideningFactor
+	outputHigh := outputCenter * spread
+	if inputHigh < inputCenter {
+		inputHigh = inputCenter
+	}
+	if outputHigh < outputCenter {
+		outputHigh = outputCenter
+	}
+
+	return round(inputCenter), round(inputHigh), round(outputCenter), round(outputHigh)
 }
 
 // base returns (p50, p90, isEmpirical, cohortReason, error): the empirical

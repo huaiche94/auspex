@@ -84,6 +84,58 @@ func assertForecastSane(t *testing.T, label string, tf domain.TokenForecast) {
 	if tf.TokensP80 > tf.TokensP90 {
 		t.Fatalf("%s: monotonicity violated: P80=%d > P90=%d", label, tf.TokensP80, tf.TokensP90)
 	}
+	assertSplitSane(t, label, tf)
+}
+
+// assertSplitSane checks the #65 input/output decomposition invariants that
+// must hold whenever the split is populated: all four bounds present and
+// non-negative, each axis monotonic (P50 <= P90), the two P50s partition the
+// total P50 (no central mass lost or invented), and the INPUT interval
+// structurally WIDER than the output interval (ADR-0053).
+func assertSplitSane(t *testing.T, label string, tf domain.TokenForecast) {
+	t.Helper()
+	present := []*int64{tf.InputTokensP50, tf.InputTokensP90, tf.OutputTokensP50, tf.OutputTokensP90}
+	anyNil := false
+	for _, p := range present {
+		if p == nil {
+			anyNil = true
+		}
+	}
+	if anyNil {
+		// A forecaster that does not split leaves ALL four nil; a partial
+		// split would be a bug (a fabricated half-axis). Enforce all-or-none.
+		for _, p := range present {
+			if p != nil {
+				t.Fatalf("%s: partial input/output split (some axes nil, some set)", label)
+			}
+		}
+		return
+	}
+	inP50, inP90 := *tf.InputTokensP50, *tf.InputTokensP90
+	outP50, outP90 := *tf.OutputTokensP50, *tf.OutputTokensP90
+	for name, v := range map[string]int64{"inputP50": inP50, "inputP90": inP90, "outputP50": outP50, "outputP90": outP90} {
+		if v < 0 {
+			t.Fatalf("%s: split %s is negative: %d", label, name, v)
+		}
+	}
+	if inP50 > inP90 {
+		t.Fatalf("%s: input monotonicity violated: P50=%d > P90=%d", label, inP50, inP90)
+	}
+	if outP50 > outP90 {
+		t.Fatalf("%s: output monotonicity violated: P50=%d > P90=%d", label, outP50, outP90)
+	}
+	// Central mass partitions the total P50 (allow +-1 for independent
+	// rounding of each half).
+	if sum := inP50 + outP50; sum < tf.TokensP50-1 || sum > tf.TokensP50+1 {
+		t.Fatalf("%s: input P50 + output P50 = %d does not partition total P50 = %d", label, sum, tf.TokensP50)
+	}
+	// The whole point of the split: the input interval must be wider than
+	// the output interval. Compare absolute widths (equal centers this wave)
+	// so the check holds even if a future share makes the centers differ.
+	inWidth, outWidth := inP90-inP50, outP90-outP50
+	if tf.TokensP50 > 0 && inWidth <= outWidth {
+		t.Fatalf("%s: input interval (width %d) is not wider than output interval (width %d)", label, inWidth, outWidth)
+	}
 }
 
 func TestTokenForecastMonotonicity(t *testing.T) {
@@ -438,6 +490,57 @@ func TestTokenForecastZeroAndNegativeSimilarSamplesNeverPanic(t *testing.T) {
 			t.Fatalf("case %d: unexpected error: %v", i, err)
 		}
 		assertForecastSane(t, "degenerate samples", got)
+	}
+}
+
+// TestTokenForecastInputOutputSplit pins the #65 Phase-1 decomposition
+// (ADR-0053): every forecast carries a populated input/output split, the
+// input interval is structurally wider than the output interval, and the
+// split never flips the forecast to calibrated.
+func TestTokenForecastInputOutputSplit(t *testing.T) {
+	cases := []struct {
+		name   string
+		source fakeSource
+		scope  domain.ScopeEstimate
+	}{
+		{
+			name:   "cold start bugfix-local",
+			source: fakeSource{class: features.Classification{Class: features.TaskClassBugfixLocal, Confidence: domain.ConfidenceLow}},
+			scope:  minimalScope(),
+		},
+		{
+			name:   "empirical base (>=8 samples)",
+			source: fakeSource{class: features.Classification{Class: features.TaskClassFeatureLocal, Confidence: domain.ConfidenceLow}, similar: []float64{1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000}, similarRung: features.CohortRungModelEffort},
+			scope:  minimalScope(),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := NewRuleTokenForecaster(tc.source)
+			got, err := f.ForecastTokens(context.Background(), baseReq(tc.scope))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			// The split must be populated (all four bounds present) whenever
+			// the total is meaningful.
+			if got.InputTokensP50 == nil || got.InputTokensP90 == nil ||
+				got.OutputTokensP50 == nil || got.OutputTokensP90 == nil {
+				t.Fatalf("expected populated input/output split, got %+v", got)
+			}
+			// assertForecastSane already enforces the width/partition
+			// invariants; assert the direction explicitly here too so the
+			// intent (input strictly wider) is pinned by name.
+			assertForecastSane(t, tc.name, got)
+			inWidth := *got.InputTokensP90 - *got.InputTokensP50
+			outWidth := *got.OutputTokensP90 - *got.OutputTokensP50
+			if inWidth <= outWidth {
+				t.Fatalf("input interval width %d must exceed output interval width %d", inWidth, outWidth)
+			}
+			// The split is uncalibrated: it must never claim calibration.
+			if got.Calibrated {
+				t.Fatalf("split forecast must not be calibrated this wave")
+			}
+		})
 	}
 }
 

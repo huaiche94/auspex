@@ -138,9 +138,39 @@ type ScopeEstimate struct {
 // rather than the cost of a single upcoming turn, and remains independent
 // of this forecast (ADR-041).
 type TokenForecast struct {
-	TokensP50   int64
-	TokensP80   int64
-	TokensP90   int64
+	TokensP50 int64
+	TokensP80 int64
+	TokensP90 int64
+
+	// Input/output decomposition (#65 Phase 1, ADR-0053). The frozen total
+	// (TokensP50/P80/P90) is UNCHANGED and stays authoritative; these four
+	// pointer-typed fields are an ADDITIVE split of the upcoming turn's
+	// tokens into its input and output axes as two distinct intervals.
+	// nil means the forecaster does not distinguish the axes — the pre-#65
+	// behavior, and "unknown is not zero": a forecaster that cannot split
+	// leaves them nil rather than fabricating a 0-token axis.
+	//
+	// The interval shape encodes Bai et al. 2026's DIRECTION only: models
+	// predict their INPUT tokens worse than their output tokens, so the
+	// INPUT interval is structurally WIDER than the output interval
+	// (Input P90/P50 spread exceeds Output P90/P50). The relative widening
+	// is an UNCALIBRATED STRUCTURAL DEFAULT (internal/predictor/token's
+	// inputIntervalWideningFactor), never a fitted coefficient — the
+	// fitted magnitude is gated on #11 calibration data, and the paper's
+	// ~153:1 input:output MAGNITUDE is external SWE-bench evidence that is
+	// NEVER imported as an Auspex coefficient. Because this split is
+	// uncalibrated, Calibrated stays false whenever it is populated this
+	// wave (Constitution principle #2: score is not probability).
+	//
+	// Only P50/P90 per axis (no P80): the decomposition is rendered and
+	// consumed as a P50-P90 range, matching the scope and duration bands
+	// (migrations 0041/0047) which also persist P50/P90 only; P80 remains
+	// on the authoritative total alone.
+	InputTokensP50  *int64
+	InputTokensP90  *int64
+	OutputTokensP50 *int64
+	OutputTokensP90 *int64
+
 	Calibrated  bool
 	Confidence  Confidence
 	ReasonCodes []ReasonCode

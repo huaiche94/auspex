@@ -17,6 +17,14 @@ progress, ambiguity) are combined by geometric mean, each capped at 3.0 and the 
 6.0. P80 is a documented assumption: a log-space interpolation between P50 and P90, since ADD
 §15.2 names no base P80.
 
+Input/output split (#65 Phase 1, ADR-0053): alongside the authoritative total, every forecast
+carries distinct input and output P50/P90 intervals (`Input/OutputTokensP50/P90`), the **input
+interval structurally wider** than the output interval — Bai et al. 2026's finding that models
+predict input tokens worse than output. The widening (`inputIntervalWideningFactor`, 1.5) and the
+neutral central split (`defaultInputTokenShare`, 0.5) are uncalibrated structural defaults gated
+on #11, never fitted coefficients; the paper's ~153:1 input:output magnitude is never imported.
+The split never flips `Calibrated` to true.
+
 Cold-start honesty note (issue #42, still open): the cold-start numbers are bootstrap constants,
 not measurements. Before the #42 fix path the forecast was effectively prompt-blind — persisted
 turn payloads carried only hash/length/approx-tokens, read-back collapsed every class to

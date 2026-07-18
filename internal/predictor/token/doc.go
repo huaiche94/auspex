@@ -24,4 +24,16 @@
 // forecaster.go), rather than inventing an unrelated third empirical
 // quantile — this is an explicit assumption, recorded in this role's
 // progress artifact.
+//
+// #65 Phase 1 (ADR-0053) adds an input/output decomposition: alongside the
+// authoritative total, every forecast now carries distinct input and output
+// P50/P90 intervals (domain.TokenForecast.Input/OutputTokensP50/P90), with
+// the INPUT interval structurally WIDER than the output interval — Bai et
+// al. 2026's finding that models predict input tokens worse than output.
+// The widening (inputIntervalWideningFactor) and the central split
+// (defaultInputTokenShare) are UNCALIBRATED STRUCTURAL DEFAULTS, not fitted
+// coefficients: the fitted magnitude is gated on #11, and the paper's
+// measured numbers are never imported as Auspex coefficients (grounding
+// discipline). The split is uncalibrated, so it never flips Calibrated to
+// true.
 package token

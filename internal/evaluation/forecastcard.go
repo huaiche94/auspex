@@ -75,6 +75,20 @@ type ForecastCard struct {
 	TokensP80 *int64
 	TokensP90 *int64
 
+	// Input/output token decomposition (#65 Phase 1, ADR-0053; migration
+	// 0063): the split of the total token forecast into distinct input and
+	// output P50-P90 ranges, the INPUT range structurally WIDER than the
+	// output range (models predict input tokens worse — Bai et al. 2026
+	// direction only). nil means the persisted prediction carried no split
+	// (cold-start forecaster that did not populate it, or a pre-#65 row) —
+	// rendered as an explicit absence, never 0. Uncalibrated like every
+	// other number on this card; the widening is a structural default, not
+	// a fitted coefficient.
+	InputTokensP50  *int64
+	InputTokensP90  *int64
+	OutputTokensP50 *int64
+	OutputTokensP90 *int64
+
 	// DurationP50/P90 are the #62 Phase-1 wall-clock duration forecast in
 	// nanoseconds (predictions.duration_p50/p90, migration 0047). nil means
 	// the scope estimator left duration unknown — rendered as an explicit
@@ -201,6 +215,10 @@ func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (For
 		TokensP50:           row.TokenP50,
 		TokensP80:           row.TokenP80,
 		TokensP90:           row.TokenP90,
+		InputTokensP50:      row.TokenInputP50,
+		InputTokensP90:      row.TokenInputP90,
+		OutputTokensP50:     row.TokenOutputP50,
+		OutputTokensP90:     row.TokenOutputP90,
 		DurationP50:         row.DurationP50,
 		DurationP90:         row.DurationP90,
 		ContextProjectedP90: row.ProjectedContextUsedP90,
@@ -639,7 +657,33 @@ func (c ForecastCard) tokensText() string {
 	if c.TokensP90 != nil {
 		segs = append(segs, fmt.Sprintf("P90 %d", *c.TokensP90))
 	}
-	return strings.Join(segs, " / ")
+	total := strings.Join(segs, " / ")
+	if io := c.tokenSplitText(); io != "" {
+		return total + " " + io
+	}
+	return total
+}
+
+// tokenSplitText renders the #65 Phase-1 input/output decomposition as two
+// P50-P90 ranges (input first — the dominant, harder-to-predict axis),
+// e.g. "(input ~1500-4500 / output ~1500-3000, input wider — uncalibrated)".
+// The parenthetical makes the input range's greater width visible, which is
+// the whole point of the split (ADR-0053). Empty when neither axis has a
+// usable range, so a cold-start row that carried no split renders the total
+// alone rather than an empty "()". Each axis needs both bounds to render as
+// a range; a half-populated axis is omitted rather than fabricating a bound.
+func (c ForecastCard) tokenSplitText() string {
+	var parts []string
+	if c.InputTokensP50 != nil && c.InputTokensP90 != nil {
+		parts = append(parts, fmt.Sprintf("input ~%d-%d", *c.InputTokensP50, *c.InputTokensP90))
+	}
+	if c.OutputTokensP50 != nil && c.OutputTokensP90 != nil {
+		parts = append(parts, fmt.Sprintf("output ~%d-%d", *c.OutputTokensP50, *c.OutputTokensP90))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "(" + strings.Join(parts, " / ") + ", input wider — uncalibrated)"
 }
 
 // durationText renders the #62 Phase-1 wall-clock estimate as a rounded

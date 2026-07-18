@@ -27,6 +27,7 @@ ADRs whose full text is here.
 | [`0048`](0048-repository-checkpoint-restore.md) | Real repository checkpoint restore (issue #6), ending the vertical slice's capture-only deferral. |
 | [`0049`](0049-docs-reorg-bilingual.md) | Documentation reorganization: design docs under `docs/design/`, per-folder READMEs, Traditional Chinese translations. |
 | [`0050`](0050-hook-subcommand-kebab-case.md) | Hook subcommand argv is kebab-case (ratifies the shipped CLI over ADD Appendix E.3's PascalCase); the provider's `hook_event_name` and settings.json matcher keys stay PascalCase (issue #61, REC-03). |
+| [`0053`](0053-token-forecast-input-output-split.md) | Token forecast gains an additive input/output split on frozen `domain.TokenForecast`, the input interval structurally wider (models predict input worse — Bai et al. 2026 direction); widening is an uncalibrated structural default gated on #11 (issue #65 Phase 1). |
 
 Neighbors: ADRs amend [`../design/Auspex_ADD.md`](../design/Auspex_ADD.md)
 (what an ADR must state is defined in Constitution §3.4); owner-level

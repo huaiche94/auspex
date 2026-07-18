@@ -15,6 +15,70 @@ output are never persisted by default — only extracted features and
 counts. File paths are never stored in any form, hashes included
 (ADR-051/052).
 
+## Not a harness — a layer around one
+
+"Agent harness" and "loop engineering" usually name the code that *runs*
+the agentic loop: dispatch a tool, read the result, decide the next step,
+repeat until done — plus the context work that keeps that loop alive
+(compaction, sub-agents, stop conditions). Claude Code, the Claude Agent
+SDK, and frameworks like LangGraph are this. They own the loop.
+
+Auspex is the other layer, and the distinction is deliberate. It does not
+dispatch tools or decide the agent's next step, and it is not bound to one
+loop implementation. It runs outside whatever harness you already have and
+governs it: forecast the spend before a turn, gate the risky ones,
+checkpoint state, require evidence before a unit counts as done, and turn
+a quota wall into a pause instead of a dead session.
+
+The shape — Auspex (B) wraps the run-loop (A) and touches it only at the
+boundary:
+
+```mermaid
+flowchart TB
+  subgraph B["B · Auspex — governance / continuity layer (outside the loop)"]
+    PRE["Before the turn<br/>forecast the spend · policy RUN / BLOCK<br/>CHECKPOINT_AND_RUN solidifies state"]
+    subgraph A["A · Harness — runs the agentic loop (Claude Code · Agent SDK · LangGraph)"]
+      direction LR
+      MODEL["model<br/>decide next step"] --> TOOL["dispatch tool<br/>edit · test"] --> OBS["read result<br/>self-correct"] --> MODEL
+    end
+    POST["After the turn<br/>evidence gate: test artifacts · checksums · git snapshot<br/>no evidence → blocked, not done"]
+    QUOTA["Quota wall<br/>Graceful Pause: safe point → checkpoint<br/>→ wake task → daemon resumes"]
+    PRE --> A --> POST
+    POST -. quota runs dry .-> QUOTA
+    QUOTA -. resumes at .-> PRE
+  end
+  classDef gate fill:#3a2f12,stroke:#d4a017,color:#f5e6c0,stroke-width:1px;
+  classDef loop fill:#102a3a,stroke:#3aa0d4,color:#cfe9f5,stroke-width:1px;
+  class PRE,POST,QUOTA gate;
+  class MODEL,TOOL,OBS loop;
+```
+
+The same task, walked through — *add a rate limiter to `/login`*. A owns
+the inner loop; Auspex acts only at the edges, and never decides A's next
+step:
+
+| When | A · harness runs the loop (owns it) | B · Auspex governs from outside |
+| --- | --- | --- |
+| **Before the turn** | — (the loop hasn't started) | forecast: ~4.8k tokens, quota is fine → policy **RUN**; `CHECKPOINT_AND_RUN` solidifies the repo so a bad turn can roll back |
+| **Loop, rounds 1–4** | read the `login` handler → insert rate-limit middleware → run tests 🔴 → fix → rerun 🟢 — the inner micro-loop, A converges on its own | does not enter the loop; only watches the token / quota burn from outside |
+| **After the turn** | claims "rate limiter done" | **evidence gate**: demands test artifacts + a git snapshot; no evidence → **blocked, not marked done**, so a post-compaction regression can't ship silently |
+| **2 a.m., quota runs dry** | if it kept going the loop dies mid-task and burns the night | **Graceful Pause**: safe point → checkpoint → wake task in SQLite; when quota returns the daemon revalidates and **resumes** instead of restarting |
+
+Side by side:
+
+| | A · harness / loop engineering | B · Auspex |
+| --- | --- | --- |
+| **What it does** | runs the agentic loop — dispatch tool → read result → decide next step → repeat until done — plus the context work that keeps it alive (compaction, sub-agents, stop conditions) | governs a loop from outside: forecast → policy gate → checkpoint → evidence gate → turn a quota wall into a pause |
+| **Examples** | Claude Code, Claude Agent SDK, LangGraph | Auspex — one Go binary, local, SQLite, no cloud |
+| **Relationship to the loop** | **owns** it — it *is* the loop | **does not own** it — wraps it; provider-agnostic (Claude Code or Codex CLI) |
+| **In one line** | makes a loop *run* | makes a loop it does not own *accountable* |
+
+The vocabulary overlaps — harness, loop, checkpoint, verify — but the axis
+is different. Loop engineering makes a loop *run*; Auspex makes a loop it
+does not own *accountable*. That is why it is provider-agnostic: point it
+at Claude Code or Codex CLI and it governs either without replacing
+either.
+
 ## Scope: what native compaction handles, and what Auspex adds
 
 Agents already manage their own context, and the mechanisms are good.

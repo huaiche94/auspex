@@ -47,7 +47,30 @@
   cohort，擬合出「forecast 的 high bound 相對於真實成本低估了幾倍」的經驗
   倍率（`actual/high` 的中位數與 P90）；門檻以下或有未標記軸的 cohort 只回
   報、絕不擬合。Go forecast 不受影響——這些倍率是未來階段（#66 的 cache-aware
-  成本模型）會取用的輸入。
+  成本模型）會取用的輸入，而該階段的描述性半部現以 `cost_classes.py`（見下）
+  上線。
+- `runway.py` —— runway 校準回測（#90 Phase B）：把每一筆持久化的
+  `runway_forecasts` 資料列（migration 0042）對照由
+  `provider.quota.observed`／`provider.rate_limit.hit` 事件重建的實際配額
+  軌跡進行評分。直接讀取本機 SQLite DB（這些 forecast 只存在該處，不在任
+  一 JSONL 匯出中），一律以**唯讀**方式開啟（URI `mode=ro`）；找不到或無法
+  讀取的 DB 會被揭露為缺口（gap），絕不崩潰。`report.py` 會自動併入其區
+  段。所有數字皆維持描述性——模型的 `risk_score` 是未校準分數，各桶的命中
+  率是相關樣本上的**觀測**頻率，絕不當作模型的機率。
+- `cost_classes.py` —— 四類別成本**分解**（#66 item a，cache-aware 成本模
+  型的描述性／研究側）。把已擷取的每回合四類別 token 實際值（
+  `provider.turn.completed` 與 managed `provider.usage.observed` 上的
+  fresh／cache-creation／cache-read／output）以**顯式快取**（explicit-cache）
+  的 `FourClassCost` 公式定價（對齊 `internal/pricing`），並回報各類別的
+  **金額占比**以及「忽略快取」的低估倍率——以經驗量化：cache-read 雖是單價
+  最便宜的類別，卻主導了整份帳單，正是 `report.py` 成本殘差量到的 ~7–9×
+  成本低估背後的機制。像 `runway.py` 一樣直接以**唯讀**讀取 DB；找不到或無
+  法讀取的 DB 皆為揭露的缺口，絕不崩潰。Codex／GPT 的**隱式快取**
+  （implicit-cache）回合（顯式公式並不適用）與 ADR-051 之前未擷取四類別的
+  回合，皆予以揭露並略過，絕不硬性定價（unknown is not zero）。它僅為描述
+  性——是以定價表占位值（list-price placeholders）計價之**過往**帳單的占
+  比，絕非預測（Constitution §7）；四類別的*預測*成本屬 #66 item b，須待
+  #11 資料。
 
 這些報告最終要餵給的 predictor 位於 `internal/predictor/`；匯出器則位
 於 `internal/retention/`（`export.go`、`observations.go`）。

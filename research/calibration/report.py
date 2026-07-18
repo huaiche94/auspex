@@ -42,6 +42,20 @@ descriptive: the model's risk_score is an uncalibrated score, and the
 per-bucket hit rates are OBSERVED frequencies over correlated samples
 (disclosed in runway.py), never the model's probability.
 
+It also appends the FOUR-CLASS COST DECOMPOSITION (#66 item a —
+cost_classes.py): the captured per-turn four-class token actuals
+(fresh/cache-creation/cache-read/output on provider.turn.completed and
+managed provider.usage.observed) priced with the explicit-cache
+FourClassCost formula, decomposed into per-class dollar shares. Like the
+runway backtest it reads the SQLite DB directly (read-only), so no DB /
+an unreadable DB is a disclosed gap, never a crash. It is DESCRIPTIVE,
+not a forecast: the shares describe where a PAST bill went on this
+dataset (priced with list-price placeholders), quantifying empirically
+that cache-read dominates the bill though its unit price is the cheapest
+class — the mechanism behind the ~7–9× cost under-forecast the per-cohort
+cost residual measures. It does NOT build the four-class PREDICTED cost
+(that is #66 item b, gated on #11 data).
+
 With --observations, the report additionally folds in:
 
   * per-turn ACTUALS readiness derived from `auspex export observations`
@@ -75,6 +89,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import cost_classes  # noqa: E402
 import runway  # noqa: E402
 from load import Record, load  # noqa: E402
 from observations import derive_turn_actuals, parse_ts, summarize_turn_actuals  # noqa: E402
@@ -115,6 +130,41 @@ def compute_runway(db_path: Path | None) -> tuple[dict | None, str | None]:
     except sqlite3.Error as exc:
         return None, (
             f"runway calibration backtest skipped: could not open {path} "
+            f"read-only ({exc}) — the DB is unreadable, disclosed as a gap"
+        )
+
+
+def compute_cost_classes(db_path: Path | None) -> tuple[dict | None, str | None]:
+    """Run the four-class cost decomposition (cost_classes.py) against the
+    local Auspex DB, strictly read-only, and degrade every failure to a
+    disclosed readiness gap — the per-turn four-class actuals live only in
+    SQLite (provider.turn.completed / managed provider.usage.observed), not
+    in either JSONL export, so this section reads the DB directly like the
+    runway backtest. Returns (result, None) on success, or (None, gap) when
+    there is no DB to price or it cannot be opened read-only.
+
+    DESCRIPTIVE, not calibrated: the returned per-class shares describe
+    where a PAST bill went on this dataset (priced with list-price
+    placeholders), never a forecast — the same posture as the runway
+    section's uncalibrated scores (Constitution §7)."""
+    path = db_path if db_path is not None else cost_classes.default_db_path()
+    if path is None:
+        return None, (
+            "four-class cost decomposition skipped: no Auspex DB at the "
+            "standard local location and no --db given — pass --db to price "
+            "captured per-turn four-class actuals"
+        )
+    if not path.is_file():
+        return None, (
+            f"four-class cost decomposition skipped: no DB at {path} — pass "
+            "an existing --db path (opened read-only) to price captured "
+            "four-class actuals"
+        )
+    try:
+        return cost_classes.run_decomposition(path), None
+    except sqlite3.Error as exc:
+        return None, (
+            f"four-class cost decomposition skipped: could not open {path} "
             f"read-only ({exc}) — the DB is unreadable, disclosed as a gap"
         )
 
@@ -404,6 +454,8 @@ def build_report(
     duration_cov: dict | None = None,
     runway_cal: dict | None = None,
     runway_gap: str | None = None,
+    cost_classes_result: dict | None = None,
+    cost_classes_gap: str | None = None,
 ) -> dict:
     total = len(records)
     labeled = sum(1 for r in records if r.model_family is not None)
@@ -485,6 +537,21 @@ def build_report(
             "0042 is empty) — the Stop-hook driver (#90/#10) fills it as "
             "turns run; nothing to calibrate against realized quota yet"
         )
+    if cost_classes_gap is not None:
+        # No DB / unopenable DB: disclosed here so a report over the JSONL
+        # exports alone still names what the four-class decomposition could
+        # not read (the per-turn four-class actuals live only in SQLite).
+        gaps.append(cost_classes_gap)
+    elif (
+        cost_classes_result is not None
+        and cost_classes_result["priced"]["turns"] == 0
+    ):
+        gaps.append(
+            "no explicit-cache turns to price for the four-class cost "
+            "decomposition (#66 item a): captured turns are implicit-cache "
+            "(codex/gpt) or predate four-class capture (ADR-051) — dogfood "
+            "Claude-family turns; nothing to decompose yet"
+        )
 
     cohorts = [
         {
@@ -526,6 +593,13 @@ def build_report(
         # crash. None/None means the report ran without a runway assessment.
         "runway_calibration": runway_cal,
         "runway_gap": runway_gap,
+        # The four-class cost decomposition (#66 item a) also reads the
+        # SQLite DB directly (read-only), so like the runway backtest it can
+        # be a disclosed gap (no DB / unreadable) rather than a result —
+        # both are surfaced, never a crash. None/None means the report ran
+        # without a four-class assessment.
+        "cost_classes": cost_classes_result,
+        "cost_classes_gap": cost_classes_gap,
         "readiness_gaps": gaps,
     }
 
@@ -715,6 +789,20 @@ def render_text(report: dict) -> str:
         )
         lines.append(f"  skipped — {runway_gap}")
 
+    cost_cls = report["cost_classes"]
+    cost_cls_gap = report["cost_classes_gap"]
+    lines.append("")
+    if cost_cls is not None:
+        lines.extend(cost_classes.render_section(cost_cls))
+        lines.append(f"  (db: {cost_cls.get('db_path', '?')}, opened read-only)")
+    else:
+        lines.append(
+            "four-class cost decomposition (captured per-turn actuals priced "
+            "with the explicit-cache formula, read-only DB — DESCRIPTIVE, not "
+            "a forecast):"
+        )
+        lines.append(f"  skipped — {cost_cls_gap}")
+
     lines.append("")
     lines.append("readiness gaps (calibration blocked until closed):")
     for gap in report["readiness_gaps"]:
@@ -765,6 +853,11 @@ def main() -> int:
     # not in the JSONL exports). Any missing/unreadable DB comes back as a
     # disclosed gap, so the report never crashes on it.
     runway_cal, runway_gap = compute_runway(args.db)
+    # Read-only four-class cost decomposition over the SQLite DB (#66 item
+    # a): the per-turn four-class actuals live there, not in the JSONL
+    # exports. Any missing/unreadable DB comes back as a disclosed gap, so
+    # the report never crashes on it (same posture as the runway backtest).
+    cost_classes_result, cost_classes_gap = compute_cost_classes(args.db)
     report = build_report(
         records,
         turn_actuals,
@@ -774,6 +867,8 @@ def main() -> int:
         duration_cov=duration_cov,
         runway_cal=runway_cal,
         runway_gap=runway_gap,
+        cost_classes_result=cost_classes_result,
+        cost_classes_gap=cost_classes_gap,
     )
 
     if args.json:

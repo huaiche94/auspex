@@ -53,7 +53,36 @@ Go binary. Inputs are the de-identified `auspex export` datasets
   high bound under-forecasts real cost (median and P90 of `actual/high`);
   cohorts below the gate or with an unlabeled axis are reported, never
   fitted. The Go forecast is untouched — these factors are inputs a future
-  phase (#66's cache-aware cost model) would consume.
+  phase (#66's cache-aware cost model) would consume, and the descriptive
+  half of that phase now ships as `cost_classes.py` (below).
+- `runway.py` — the runway calibration backtest (#90 Phase B): every
+  persisted `runway_forecasts` row (migration 0042) scored against the
+  realized quota trajectory reconstructed from
+  `provider.quota.observed`/`provider.rate_limit.hit` events. Reads the
+  local SQLite DB directly (those forecasts live only there, not in either
+  JSONL export), strictly **read-only** (URI `mode=ro`); a missing or
+  unreadable DB is a disclosed gap, never a crash. `report.py` folds its
+  section in automatically. All numbers stay descriptive — the model's
+  `risk_score` is an uncalibrated score, and the per-bucket hit rates are
+  OBSERVED frequencies over correlated samples, never the model's
+  probability.
+- `cost_classes.py` — the four-class cost **decomposition** (#66 item a,
+  the descriptive/research side of the cache-aware cost model). Prices the
+  captured per-turn four-class token actuals
+  (fresh/cache-creation/cache-read/output on `provider.turn.completed` and
+  managed `provider.usage.observed`) with the **explicit-cache**
+  `FourClassCost` formula (mirroring `internal/pricing`), and reports the
+  per-class **dollar shares** plus the cache-blind under-count factor —
+  quantifying empirically that cache-read dominates the bill though its
+  unit price is the cheapest class, the mechanism behind the ~7–9× cost
+  under-forecast `report.py`'s cost residual measures. Reads the DB
+  directly, strictly **read-only**, like `runway.py`; a missing/unreadable
+  DB is a disclosed gap, never a crash. Codex/GPT **implicit-cache** turns
+  (which the explicit formula does not price) and pre-ADR-051 turns without
+  four-class capture are disclosed and skipped, never force-priced (unknown
+  is not zero). It is DESCRIPTIVE only — shares of a PAST bill priced with
+  list-price placeholders, never a forecast (Constitution §7); the
+  four-class *predicted* cost is #66 item b, gated on #11 data.
 
 The predictor these reports are meant to eventually feed lives in
 `internal/predictor/`; the exporters live in `internal/retention/`

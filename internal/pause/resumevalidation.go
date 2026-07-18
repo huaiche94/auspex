@@ -412,10 +412,10 @@ func CheckSessionCapability(ctx context.Context, reader SessionCapabilityReader,
 // CheckAuthorization implements deliverable 8's "authorization/consent
 // valid" check via the frozen app.EvaluationService.ConsumeAuthorization
 // (real port; predictor-09/10's Evaluation-persistence implementation is
-// FAKED for this specific call this wave — see this package's doc.go
-// addition / docs/implementation/vertical-slice/runtime.md's Wave 8 section for why:
+// FAKED for this specific call this phase — see this package's doc.go
+// addition / docs/implementation/vertical-slice/runtime.md's Phase 8 section for why:
 // predictor-10's authorization-hardening pass is a concurrent sibling this
-// same wave, not yet mergeable, per the task brief's explicit instruction
+// same phase, not yet mergeable, per the task brief's explicit instruction
 // to use a fake here consistent with the established fake-then-swap
 // pattern runtime-a05/b05 already used for checkpoint-a05/b04). A
 // non-nil error from ConsumeAuthorization is treated as "no valid,

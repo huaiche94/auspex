@@ -99,7 +99,7 @@ ladder.
   *deterministic structural transform* of the already-exported total, so
   exporting it adds no independent calibration signal and opens no
   unlabeled-history hole (#11 can reconstruct it from `token_p50/p90`). The
-  export extension is deferred to the wave where a calibrated forecaster
+  export extension is deferred to the phase where a calibrated forecaster
   estimates the axes **independently** — capture-before-model (D-10/D-12).
 - **A future calibrated forecaster estimates the axes independently.** The
   contract field is genuine axis room, not merely a render-time transform:
@@ -132,5 +132,5 @@ ladder.
   a range; P80 per axis adds storage and surface for no decision it drives.
   P80 stays on the authoritative total, matching the scope/duration bands.
 - **Extend the research export now.** Rejected as premature: the split is
-  reconstructible from the exported total this wave, so exporting it is
+  reconstructible from the exported total this phase, so exporting it is
   redundant until a calibrated forecaster makes the axes independent.

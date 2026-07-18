@@ -43,7 +43,7 @@
 | `agent-packets/README.md` | 標題雖為「README」，實際上是 `Auspex_Parallel_Execution_Plan.md` 第 1–363 行的完整副本（第 1–13 節，Agent Packets 附錄以外的所有內容） | 無（孤兒副本） | **duplicate（重複）**——與計畫本文逐位元組相同（已用 diff 驗證，exit 0） | **否** | `Auspex_Parallel_Execution_Plan.md` | 無——兩份治理文件皆未連結至此 |
 | `agent-packets/CONTRACT_FREEZE_TEMPLATE.md` | A00 實際交付物的佔位／鷹架文件，內含字面上的 `<sha>`、`<module>`、`<version>` 標記；標頭寫著 `Status: DRAFT` | A00（預定） | **supporting（輔助）**——尚未產出之權威產物（authoritative artifact）的範本 | 是，但需搬遷位置 | 一旦 A00 執行，將於 `docs/implementation/vertical-slice/CONTRACT_FREEZE.md` 成為實際內容 | 對應 vertical-slice plan §6 所要求的結構 |
 | `AgentGuard_Architecture.md` | 先前／不同命名產品（「AgentGuard」）的架構草稿：模組配置不同（`internal/telemetry`、`.agentguard/` 狀態目錄）、provider 組合不同（新增 Gemini/Cursor/OpenCode）、簡單的 Phase 1/2/3 路線圖。ADD 或 vertical-slice plan 皆未參照此文件。 | 無（目前無負責人） | **obsolete（過時）** | 封存（archive）（勿刪除） | `Auspex_ADD.md` | 無傳入參照；也無指向現行文件的傳出參照 |
-| `execution_prompt.md` | 一份原始的啟動提示（kickoff-prompt）草稿：「建立一個**恰好四名成員**的 agent 團隊」、2 個 wave、tmux split-pane。這與 vertical-slice plan 及 agent-packets 中正式的**九**-agent（A00–A08）拓撲直接牴觸，也與目前現行「不得建立 teammates」的指示相牴觸。 | 無（看似為工作草稿，非受治理文件） | **obsolete（過時）**（已被核准的 vertical-slice plan 取代／牴觸） | 封存（archive）（勿刪除） | `Auspex_Parallel_Execution_Plan.md` §3–§8 | 參照 `Auspex_ADD.md`、`Auspex_Parallel_Execution_Plan.md`、`docs/implementation/vertical-slice/CONTRACT_FREEZE.md`（缺失）、`AGENTS.md`（缺失） |
+| `execution_prompt.md` | 一份原始的啟動提示（kickoff-prompt）草稿：「建立一個**恰好四名成員**的 agent 團隊」、2 個 phase、tmux split-pane。這與 vertical-slice plan 及 agent-packets 中正式的**九**-agent（A00–A08）拓撲直接牴觸，也與目前現行「不得建立 teammates」的指示相牴觸。 | 無（看似為工作草稿，非受治理文件） | **obsolete（過時）**（已被核准的 vertical-slice plan 取代／牴觸） | 封存（archive）（勿刪除） | `Auspex_Parallel_Execution_Plan.md` §3–§8 | 參照 `Auspex_ADD.md`、`Auspex_Parallel_Execution_Plan.md`、`docs/implementation/vertical-slice/CONTRACT_FREEZE.md`（缺失）、`AGENTS.md`（缺失） |
 
 ---
 
@@ -140,7 +140,7 @@
 | `Auspex_Parallel_Execution_Plan.md` | 全篇改寫——§1 角色數量（8→6 個 bounded-context 角色 + 1 個 integrator）、§3 model 配置、§4 拓撲圖、§5 負責範圍地圖、§7 共用檔案／遷移分配政策、§8 worktree 設定、§9 協調產物路徑、§10 合併順序，以及末尾的角色索引——現在全部以 7 個角色名稱取代 `A00`–`A08`。第 1–2、6、11–13 節（範疇邊界、contract-freeze 關卡、demo script、切分順序、審查提示）內容維持不變；沒有任何產品決策改變，只改變了「誰做什麼」的標籤。 |
 | `CONSTITUTION.md`（新，位於儲存庫根目錄） | 最高流程權威文件：單一真實來源層級、文件優先順序、ADR 規則、路徑所有權規則、provider 新增準則、Progress Tree 不變量（invariants），以及 agent 開發規則——全部源自既有 `Auspex_ADD.md` 的規範性內容（§0、§6、§8、§9、FR-100–FR-110），並非另行編造。其權威層級高於 `README.md`／`AGENTS.md`，但與 `Auspex_ADD.md` 並列（而非高於後者），因為兩者治理不同領域（流程 vs. 架構——見 `CONSTITUTION.md` §8）。 |
 | `README.md`、`AGENTS.md` | 更新為優先指向 `CONSTITUTION.md`，並改為參照 `agents/` 而非 `agent-packets/`。 |
-| `docs/implementation/vertical-slice/EXECUTION_DAG.md` | **目前已過時（stale）**——其中 83 個任務 ID（`A00-01`…`A08-09`）是依照舊有的 9 角色結構產生。此次未重新產生；標記為下一個明確步驟（在新的 7 角色邊界下進行一次「Dependency Review」，於任何團隊組建之前），依儲存庫負責人自訂的偏好流程順序：Inventory → Normalize → DAG → **Dependency Review** → Spawn Team → Wave 1 → Review → Wave 2。 |
+| `docs/implementation/vertical-slice/EXECUTION_DAG.md` | **目前已過時（stale）**——其中 83 個任務 ID（`A00-01`…`A08-09`）是依照舊有的 9 角色結構產生。此次未重新產生；標記為下一個明確步驟（在新的 7 角色邊界下進行一次「Dependency Review」，於任何團隊組建之前），依儲存庫負責人自訂的偏好流程順序：Inventory → Normalize → DAG → **Dependency Review** → Spawn Team → Phase 1 → Review → Phase 2。 |
 | 先前（未核准、未組建）的 4-teammate 對應提案 | 同樣因過時而被取代——Stage 2 原本分散為 4 條平行分支（`A02`/`A03`/`A04`/`A05`）；在新結構下分散為 3 條（`claude-provider`/`checkpoint`/`predictor`）。將在 DAG 重新產生之後才會重做，而非之前。由於從未真正組建任何 agent，因此不需要對執行中的 agent 進行重做。 |
 
 ### 最終狀態：每個主題恰有一個真實來源（已更新）
@@ -168,12 +168,12 @@
 | 動作 | 結果 |
 |---|---|
 | `Auspex_ADD.md`、`Auspex_Predictor_Design_Supplement.md`、`Auspex_Parallel_Execution_Plan.md` | 以 `git mv` 搬移至 `docs/design/`（檔名不變，讓依文件名稱的 `§` 引用仍可被 grep 到）。現行維護中的文件（`CONSTITUTION.md`、`CONTRIBUTING.md`、`GOVERNANCE.md`、`SECURITY.md`、`SUPPORT.md`、`AGENTS.md`、`agents/*.md`）現已引用新路徑。歷史紀錄（已接受的 ADR、`docs/archive/**`、`docs/implementation/**` 的進度日誌、Go 註解、JSON-schema 描述字串、已做過校驗碼的 `testdata/**` 固定測試資料）刻意維持不變。 |
-| 根目錄 `README.md` | 改寫為適合初次瀏覽者閱讀：真實的 forecast-card 輸出範例、目前的指令樹（含 `daemon`/`init`/`run`/`gc`/`export`）、誠實揭露冷啟動（cold-start）的注意事項（#42/#11）、文件地圖。逐 wave 的整合表已搬移至 `docs/implementation/vertical-slice/README.md`。 |
+| 根目錄 `README.md` | 改寫為適合初次瀏覽者閱讀：真實的 forecast-card 輸出範例、目前的指令樹（含 `daemon`/`init`/`run`/`gc`/`export`）、誠實揭露冷啟動（cold-start）的注意事項（#42/#11）、文件地圖。逐 phase 的整合表已搬移至 `docs/implementation/vertical-slice/README.md`。 |
 | `docs/adr/0049-docs-reorg-bilingual.md`（新） | 記錄此次重組及雙語文件政策。 |
 | 資料夾 `README.md` 檔案（新增約 68 個） | 現在每個資料夾都有一份——`docs/` 樹狀結構、`cmd/`、`pkg/` 樹狀結構、所有 `internal/` 套件、`schemas/`、`integrations/`、`research/calibration/`、`vscode/` 子資料夾、`testdata/` 根目錄。例外情形（ADR-049 §4）：其內容由測試逐一列舉或做校驗碼比對的固定測試資料目錄（`testdata/*` 葉層目錄、`internal/cli/testdata/`、`internal/managed/testdata/`）不建立 README；由最近的上層 README 記載說明。 |
 | 雙語對應檔 `<name>.zh-TW.md` | 每份文件用的 markdown 檔案都新增了一份繁體中文對應檔，並在兩份檔案的開頭互相交叉連結。**規範性文字＝該文件原始撰寫所用的語言**：除 `docs/design/Auspex_ADD.md` 與 `docs/DECISION_LOG.md` 外，其餘檔案皆以英文為規範版本；這兩份文件本就以繁體中文撰寫，其原文即為規範版本，因此不再產生對應副本。作為 markdown 測試固定資料的檔案（`testdata/checkpoints/state/add-section-18-*.md`）並非文件，故不進行翻譯。 |
 | `CHANGELOG.md` | 記錄了切片（slice）之後的工作進度（daemon #7、VS Code MVP #53、forecast surface #14、statusline v3 #41、session bootstrap #17、event correlation #1、real restore #6、turn correlation #54）；過時的「Known gaps」已替換為目前的項目（#42/#11、#9/#8、#50/#51）。 |
-| `integrations/claude/README.md` | 由 wave 時期「展望性佔位（forward-looking stub）」的標頭，更新為反映目前現況：CLI 已上線、hooks 已上線（dogfooding #12）、延遲 session bootstrap（D-07/#17）、`--emit-line` v3 statusline 格式、`auspex init`。尚未解決的 REC-03 命名歧異紀錄則予以保留。 |
+| `integrations/claude/README.md` | 由 phase 時期「展望性佔位（forward-looking stub）」的標頭，更新為反映目前現況：CLI 已上線、hooks 已上線（dogfooding #12）、延遲 session bootstrap（D-07/#17）、`--emit-line` v3 statusline 格式、`auspex init`。尚未解決的 REC-03 命名歧異紀錄則予以保留。 |
 | 本檔案 | 標頭狀態已更新；本 §8 已附加；新增 `repository_inventory.zh-TW.md` 對應檔。 |
 
 ### 最終狀態：每個主題恰有一個真實來源（目前現況）

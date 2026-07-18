@@ -134,7 +134,7 @@ func (a tokenFeatureSourceAdapter) RecentSimilarTurnTokens(ctx context.Context, 
 // evaluation.SQLDataSource.Resolve for the TaskID half. PausedWorkPaths is
 // left empty (nil): resumevalidation.go's own pathsOverlap treats an empty
 // slice as "never overlaps" — a documented, safe default, not a silent
-// failure, per that seam's own doc comment. A future wave that wants
+// failure, per that seam's own doc comment. A future phase that wants
 // path-scoped overlap detection would populate this from the Progress
 // Tree node's own recorded artifact paths.
 type sessionContextResolverAdapter struct {
@@ -266,7 +266,7 @@ func (a repoFingerprintReaderAdapter) ReadCurrentFingerprint(ctx context.Context
 // reports every session as NOT resumable, so ValidateResume's session
 // check fails closed (a real capability gate the product needs, reported
 // conservatively) rather than silently claiming a capability that does
-// not exist in this codebase yet. A future wave that builds the real
+// not exist in this codebase yet. A future phase that builds the real
 // managed-resume adapter replaces this stub with a real
 // SessionCapabilityReader; nothing else in this composition needs to
 // change (app.GracefulPauseService's own signature is unaffected).

@@ -43,7 +43,7 @@ type FeatureSource interface {
 	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error)
 }
 
-// RuleTokenForecaster is the Wave 3 (Version 1, rule-based/heuristic)
+// RuleTokenForecaster is the Phase 3 (Version 1, rule-based/heuristic)
 // Stage-2 implementation of app.TokenForecaster (ADR-041, predictor-05b).
 // It follows ADD §15.1's token decomposition and §15.2's initial token
 // predictor formula: empirical P50/P90 from local history once >=8 similar
@@ -52,14 +52,14 @@ type FeatureSource interface {
 // via geometric mean with caps (§15.2: "使用 geometric mean 避免乘數爆炸，
 // 並做 caps").
 //
-// No durable historical telemetry store exists yet this wave — the same
+// No durable historical telemetry store exists yet this phase — the same
 // gap already noted for predictor-05/predictor-06 (agents/predictor.md's
 // cold-start contract; CONTRACT_FREEZE.md's cold-start discipline for
 // QuotaForecaster applies here by the same reasoning). Every result this
-// implementation produces this wave is therefore Calibrated=false,
+// implementation produces this phase is therefore Calibrated=false,
 // Confidence<=ConfidenceLow: the >=8-sample empirical branch is
 // implemented (so a future FeatureSource backed by durable storage
-// activates it for free), but no caller wired up this wave supplies >=8
+// activates it for free), but no caller wired up this phase supplies >=8
 // samples, so it is cold-start-only in practice.
 type RuleTokenForecaster struct {
 	Source FeatureSource
@@ -248,7 +248,7 @@ func (f *RuleTokenForecaster) ForecastTokens(ctx context.Context, req app.Foreca
 		InputTokensP90:  &inP90,
 		OutputTokensP50: &outP50,
 		OutputTokensP90: &outP90,
-		Calibrated:      calibrated, // always false this wave — see doc.go / package comment
+		Calibrated:      calibrated, // always false this phase — see doc.go / package comment
 		Confidence:      confidence,
 		ReasonCodes:     dedupeReasons(reasons),
 	}, nil
@@ -367,7 +367,7 @@ func scopeMultiplier(scope domain.ScopeEstimate) float64 {
 
 // verificationMultiplier implements ADD §15.2's verification_multiplier.
 // build_required has no direct ScopeEstimate/PromptFeatures signal wired
-// up this wave, so it is treated as implied by RequiresIntegration (an
+// up this phase, so it is treated as implied by RequiresIntegration (an
 // integration-test-requiring turn is assumed to also require a build) —
 // documented assumption, not a silent omission.
 func verificationMultiplier(scope domain.ScopeEstimate) float64 {
@@ -441,7 +441,7 @@ func retryMultiplier(sess features.SessionFeatures, sessOK bool) (float64, domai
 // remaining_critical_path_cost/original_task_cost when no separate cost
 // model exists yet (documented assumption — ADD §15.2 does not specify how
 // "critical path cost" is measured, and ProgressFeatures.CompletedRatio is
-// the closest available signal this wave). No progress data (progOK=false)
+// the closest available signal this phase). No progress data (progOK=false)
 // or a nil CompletedRatio means "unknown", which returns the neutral
 // multiplier 1.0 with a cold-start reason code.
 func progressMultiplier(prog features.ProgressFeatures, progOK bool) (float64, domain.ReasonCode) {

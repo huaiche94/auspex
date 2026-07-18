@@ -24,7 +24,7 @@ Mechanics:
   (headroom-available, §15.8). `Reached` from the provider is an immediate 1.0.
 
 Cold-start contract (ADD §15.6–15.7): without a durable calibrated burn-rate history (>= 20
-valid samples, held-out evaluation, ECE <= 0.08 — never met this wave), `HitProbability` stays
+valid samples, held-out evaluation, ECE <= 0.08 — never met this phase), `HitProbability` stays
 nil and `Calibrated` stays false; `RiskScore` is a deterministic 0–1 score, never presented as a
 probability. ReasonCodes here are plain strings, matching the frozen (pre-ADR-041)
 `RunwayForecast` shape.

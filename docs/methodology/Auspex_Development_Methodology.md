@@ -36,15 +36,15 @@ Phase 1 — Architecture Freeze
         ↓
 Phase 2 — Bootstrap (lead-only, pre-team)
         ↓
-Phase 3 — Team Formation & Wave Execution
+Phase 3 — Team Formation & Phase Execution
         ↓
 Phase 4 — Review Gate
         ↓
 Phase 5 — Integration
         ↓
-Phase 6 — Post-Wave Analysis
+Phase 6 — Post-Phase Analysis
         ↓
-[loop back to Phase 3 for the next wave, or Phase 7 if analysis
+[loop back to Phase 3 for the next phase, or Phase 7 if analysis
  surfaces an architecture gap]
 ```
 
@@ -126,7 +126,7 @@ error source — see Auspex's `Prediction_Error_Report.md` §3):
   together, excluding progress-artifact/lessons docs.
 - **estimated files** = files created or modified by the node's own
   commits, split as `impl+test` (e.g. `3+2`) — conflating the two was the
-  single most-repeated estimation error across Auspex's waves
+  single most-repeated estimation error across Auspex's phases
   (`Wave2_Lessons.md` §1 issue #1).
 - **estimated duration** = wall-clock minutes for a single agent
   invocation, estimate-only precision (band, not point).
@@ -135,7 +135,7 @@ error source — see Auspex's `Prediction_Error_Report.md` §3):
   last two, but the cell must exist and say so.
 
 **History:** Auspex's own DAG never had duration or token-cost fields
-across 84+ nodes and twelve waves; 4 of 5 implementing roles
+across 84+ nodes and twelve phases; 4 of 5 implementing roles
 independently rediscovered the gap without cross-communication
 (`Wave2_Lessons.md` §1, `ADR_Recommendations.md` REC-02). The schema
 above resolves REC-02 for all planning after 2026-07-13 (issue #15); the
@@ -166,18 +166,18 @@ changes is stale on arrival.
 ## 4. Phase 2 — Bootstrap
 
 **This phase exists because of a specific, real deadlock, not as
-speculative process design.** In Auspex's execution, Wave 1 could not
+speculative process design.** In Auspex's execution, Phase 1 could not
 start: every root-node teammate's first task depended on frozen
 domain/contract types existing, but creating those types was itself a DAG
-role's job, and that role was never one of the named Wave 1 teammates, and
+role's job, and that role was never one of the named Phase 1 teammates, and
 the lead was (at that point) instructed not to implement any production
 code. Zero nodes were assignable under the rules as they stood.
 
 **The fix, now generalized as a rule:** treat contract-freezing
 (domain types, cross-component interfaces, event/protocol envelopes,
-storage transaction conventions) as a **named, lead-only, pre-Wave stage**,
+storage transaction conventions) as a **named, lead-only, pre-Phase stage**,
 executed directly by the lead, not delegated to a teammate and not folded
-into "Wave 1." This is not a workaround — it reflects that these
+into "Phase 1." This is not a workaround — it reflects that these
 artifacts have no meaningful owner *other than* the lead until they exist,
 since every other role's work is defined in terms of them.
 
@@ -203,10 +203,10 @@ to be resolved by the lead, with explicit human approval, before any
 teammate could be spawned. Treat "can every assignable node's tooling
 actually run" as part of Bootstrap's exit criteria, not an assumption.
 
-## 5. Phase 3 — Team Formation & Wave Execution
+## 5. Phase 3 — Team Formation & Phase Execution
 
 **Goal:** parallel, path-isolated implementation with per-node evidence,
-not batch work with a single end-of-wave report.
+not batch work with a single end-of-phase report.
 
 ### 5.1 Team formation rules
 
@@ -243,7 +243,7 @@ for each assigned node, in dependency order:
 ```
 
 **Why this matters, evidenced:** every session-interruption incident in
-Auspex's execution (3 occurrences across two waves) was recoverable
+Auspex's execution (3 occurrences across two phases) was recoverable
 with zero rework specifically because implementation artifacts were
 already durable on disk, and node-scoped commits meant "what was actually
 done" was independently verifiable rather than dependent on trusting an
@@ -291,7 +291,7 @@ For every node, before accepting it as Validated:
 
 **If a node fails review:** return it to the *original* teammate with the
 exact failed criterion and exact files in question. The lead does not fix
-teammate-owned code. Do not re-run the whole wave — only the failed
+teammate-owned code. Do not re-run the whole phase — only the failed
 node's owner re-executes, then re-enters the Review Gate.
 
 ## 7. Phase 5 — Integration
@@ -312,17 +312,17 @@ node's owner re-executes, then re-enters the Review Gate.
    detection where supported), every individual node's own validation
    command re-run, privacy/leak scanning if the project has a privacy
    invariant, and explicit checks for: no ownership artifacts lost, no
-   duplicate types introduced, no out-of-wave scope present.
+   duplicate types introduced, no out-of-phase scope present.
 6. Merge the integration branch into `main` as **one integration commit**,
    with a message that records the merge order and every branch/commit
-   SHA integrated — this commit is the durable record of the wave, not
+   SHA integrated — this commit is the durable record of the phase, not
    the individual node commits (which remain reachable in branch history,
    not deleted).
 7. Produce an Integration Report: order, SHAs, conflicts (if any) and
    their resolution, validation results, remaining risks, newly unlocked
-   DAG nodes. Stop and wait for approval before planning the next wave.
+   DAG nodes. Stop and wait for approval before planning the next phase.
 
-## 8. Phase 6 — Post-Wave Analysis
+## 8. Phase 6 — Post-Phase Analysis
 
 **Core rule: `Unknown` is a valid, required answer. Never fabricate a
 metric that was not actually observed.** Every reported value carries one
@@ -369,7 +369,7 @@ This phase produces (adapt names/scope per project, but keep the shape):
 8. **Feature Gap Report** — a companion to the registry: for every
    missing or partially-available feature, why it's missing, impact,
    suggested closing approach, complexity, and expected improvement —
-   ranked so the next wave can prioritize.
+   ranked so the next phase can prioritize.
 9. **Confidence Report** — a derived view over the registry (does not
    duplicate it), classifying features into high/medium/low/zero
    confidence and recommending which are suitable as future training
@@ -382,9 +382,9 @@ This phase produces (adapt names/scope per project, but keep the shape):
 10. **ADR Recommendations** — proposed, not approved, not implemented.
     Each states problem, evidence, affected packages, compatibility
     impact, and recommendation.
-11. **Next-Wave Recommendation** — newly unlocked nodes (checking real
+11. **Next-Phase Recommendation** — newly unlocked nodes (checking real
     dependency satisfaction, not assumption — Auspex's own analysis
-    found two nodes that had been unlocked since a *prior* wave and were
+    found two nodes that had been unlocked since a *prior* phase and were
     simply never assigned, because the team roster never covered their
     owning role), per-node estimates with full provenance/confidence/
     uncertainty, and a ranking by (a) dependency-unlock value, (b)
@@ -397,7 +397,7 @@ again.**
 
 ## 9. Phase 7 — Architecture Amendment (triggered by evidence, not scheduled)
 
-If Post-Wave Analysis (or any other phase) surfaces a genuine architecture
+If Post-Phase Analysis (or any other phase) surfaces a genuine architecture
 gap — evidenced, not speculative — do not silently patch around it and do
 not silently redesign it either:
 
@@ -415,9 +415,9 @@ not silently redesign it either:
 4. Cascade the change through every document that referenced the old
    shape (architecture doc, contract-freeze record, DAG — including
    correcting any DAG dependency edges that were themselves symptoms of
-   the same gap, not just adding new nodes) before resuming normal wave
+   the same gap, not just adding new nodes) before resuming normal phase
    execution.
-5. Regenerate any wave plan that was built against the now-stale DAG,
+5. Regenerate any phase plan that was built against the now-stale DAG,
    explicitly noting what changed and why the regenerated plan differs
    (or doesn't) from the one it replaces.
 

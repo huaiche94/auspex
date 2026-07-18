@@ -4,8 +4,8 @@
 // this repository": it exists now because the daemon does.
 //
 // Scope: the READ surface plus the live event stream (health / version /
-// capabilities / status / scheduler jobs / events/stream, the #7 wave) and
-// the ONE mutation the VS Code companion wave (#10, FR-163) needs: POST
+// capabilities / status / scheduler jobs / events/stream, the #7 phase) and
+// the ONE mutation the VS Code companion phase (#10, FR-163) needs: POST
 // /v1/scheduler/jobs/{id}/cancel. The remaining §23.4 pause-mutation
 // endpoints (POST /v1/pauses, :cancel, :resume) stay deferred per
 // Constitution §7 rule 10 (one milestone at a time); `auspex pause|resume`

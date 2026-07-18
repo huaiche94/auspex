@@ -22,7 +22,7 @@ var (
 )
 
 // TestProviderContract_FakeTurnInterrupter proves FakeTurnInterrupter
-// (provider.go, this wave) is contract-compliant NOW — the whole point of
+// (provider.go, this phase) is contract-compliant NOW — the whole point of
 // runtime-a10's deliverable: this fake, and any future real
 // implementation, run the exact same suite. The InterruptFunc supplied
 // here deliberately honors ctx (checks ctx.Err() before reporting success),

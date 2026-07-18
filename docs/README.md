@@ -26,7 +26,7 @@ record, or a working document.
 | [`design/`](design/README.md) | The three authoritative design documents: the ADD (architecture/requirements spec), the predictor design supplement, and the vertical-slice parallel execution plan. |
 | [`adr/`](adr/README.md) | Accepted Architecture Decision Records, numbered `NNNN-title.md`. Immutable once accepted; superseded by newer ADRs, never edited. |
 | [`DECISION_LOG.md`](DECISION_LOG.md) | Every owner-level decision as a `D-##` entry plus a decision tree: options considered, what was chosen, consequences, reversibility. Written in Traditional Chinese. |
-| [`implementation/`](implementation/README.md) | How the vertical slice was actually built: the execution DAG, per-role progress logs, contract freeze, lessons learned, and post-wave analyses. Historical record — useful for archaeology, not current guidance. |
+| [`implementation/`](implementation/README.md) | How the vertical slice was actually built: the execution DAG, per-role progress logs, contract freeze, lessons learned, and post-phase analyses. Historical record — useful for archaeology, not current guidance. |
 | [`methodology/`](methodology/README.md) | The multi-agent, evidence-based development methodology this repo was built with, distilled for reuse on other projects. |
 | [`backlog/`](backlog/README.md) | Design notes for accepted-but-not-yet-scheduled work, each tied to a tracking issue. |
 | [`archive/`](archive/README.md) | Superseded documents kept for historical reference. Never implementation guidance. |

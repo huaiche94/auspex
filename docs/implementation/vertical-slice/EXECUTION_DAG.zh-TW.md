@@ -8,7 +8,7 @@
 |---|---|
 | 來源 | `Auspex_ADD.md` + `Auspex_Parallel_Execution_Plan.md` + `agents/*.md`（依上述文件為正典） |
 | 範圍 | 七角色垂直切片的完整任務層級分解 |
-| 狀態 | **Wave 1 已整合（`main` @ `3fb37ce`）。已於 2026-07-12 依 ADR-041（predictor forecast 層）在 Wave 2 實作開始前修訂。** |
+| 狀態 | **Phase 1 已整合（`main` @ `3fb37ce`）。已於 2026-07-12 依 ADR-041（predictor forecast 層）在 Phase 2 實作開始前修訂。** |
 | 取代 | 本文件較早的九角色（`A00`–`A08`）版本，封存於 git 歷史中的提交 `f1d9065`，並由 `docs/archive/agent-packets-v1/` 參照。 |
 | 修訂 | `docs/adr/0041-predictor-forecast-layer.md` — 插入 `predictor-05b`／`predictor-05c`，修正 `predictor-07`／`predictor-08`／`predictor-11` 的相依邊。所產生的任務數變化見 §5 摘要。 |
 | 產生時間 | 2026-07-12（在 `agents/` 重組後重新產生；同日依 ADR-041 修訂） |
@@ -134,7 +134,7 @@ Orchestration）。每個部分保有自己的任務序列、專屬路徑與 mig
 | predictor-04 | contract-integrator-07 | M | 250 | 4 | `go test ./internal/predictor/... -run QuantileMonotonic` | 2 | 中 — 屬性測試（property tests）必須對所有輸入成立，包含退化輸入 | 無 |
 | predictor-05 | predictor-03, predictor-04 | M | 300 | 4 | `go test ./internal/predictor/... -run Scope` | 2 | 低 | 無 |
 | predictor-05b **（新增，ADR-041）** | predictor-05 | L | 400 | 4 | `go test ./internal/predictor/... -run TokenForecast` | 2 | 高 — 供給 `RiskCombiner` 的配額／情境風險項；此處的系統性偏差會傳播進每一個下游政策決策 | 無 |
-| predictor-05c **（新增，ADR-041）** | predictor-05b | M | 300 | 4 | `go test ./internal/predictor/... -run QuotaForecast` | 2 | 中 — 本 wave 可接受冷啟動的決定性估計；完整的經驗校準需要 `claude-provider-05`／`foundation-06`（後續 wave） | 無 |
+| predictor-05c **（新增，ADR-041）** | predictor-05b | M | 300 | 4 | `go test ./internal/predictor/... -run QuotaForecast` | 2 | 中 — 本 phase 可接受冷啟動的決定性估計；完整的經驗校準需要 `claude-provider-05`／`foundation-06`（後續 phase） | 無 |
 | predictor-06 | predictor-04 | L | 350 | 4 | `go test ./internal/predictor/runway/...` | 2 | 高 — 由 `runtime` Part A 的 Observe 直接消費；分數不佳恐造成錯誤的暫停觸發 | 無 |
 | predictor-07 | predictor-05, predictor-05c **（原為：predictor-05、predictor-06 — 已修正，ADR-041）** | L | 400 | 5 | `go test ./internal/predictor/... -run RiskComponents` | 2 | 中 | 無 |
 | predictor-08 | predictor-07, predictor-06 **（原為：僅 predictor-07 — 已修正，ADR-041：Policy 直接消費 Runway）** | L | 400 | 5 | `go test ./internal/policy/... -run ColdStart` | 2 | **高 — 絕不可將未校準的分數標示為機率** | Constitution §6/§7 不變量；任何違反都會阻擋合併 |

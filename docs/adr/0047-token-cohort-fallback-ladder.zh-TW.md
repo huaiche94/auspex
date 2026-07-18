@@ -34,7 +34,7 @@ Cohort 機制仍留有兩個缺口：
 ## 誠實範圍聲明
 
 - **Task class 與 repository 不在此階梯之中。** 這兩者在樣本介面上都不存在（classification 是一個衍生、事後產生的訊號，從未被持久化到 usage 事件上；statusline ingest 也沒有填入 `events.repository_id`）。`class` 參數仍被接受但未被使用，並在查詢處註記——與階梯導入前的實作採取相同的誠實紀律。
-- **此階梯目前是休眠中的機制。** 目前沒有任何 payload 帶有 `total_tokens`，因此每一個 rung 都會得到零筆樣本，行為與先前逐位元組相同（session rung、空集合、cold-start 預設值）。當未來某個 wave 新增此欄位時，此階梯將自動啟用——這與階梯導入前的查詢自身所記載的合約完全相同。
+- **此階梯目前是休眠中的機制。** 目前沒有任何 payload 帶有 `total_tokens`，因此每一個 rung 都會得到零筆樣本，行為與先前逐位元組相同（session rung、空集合、cold-start 預設值）。當未來某個 phase 新增此欄位時，此階梯將自動啟用——這與階梯導入前的查詢自身所記載的合約完全相同。
 - **Effort 是以原始字串比對。** 目前只有 Claude 這個 provider 會發出 effort；跨 provider 正規化的 `effort_class` 對應表，依 backlog 自身的排序，屬於延後到 Phase 3（codex 接線）才處理的凍結合約議題。
 - **沒有任何數值決策。** 門檻值（8）與近期樣本上限（50）都是既有的 ADD §15.2／實作常數；候選池的上限是推導出來的（4 × limit，每個身分 rung 各一份再加一份備用），而非經過調校。
 

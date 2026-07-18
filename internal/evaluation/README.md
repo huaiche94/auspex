@@ -21,7 +21,7 @@ Key entry points:
   the storage layer (`authorization_test.go` covers the replay/binding hardening, predictor-10).
 - `ForecastCard` / `LatestForecastCard` / `StatusLineText` (`forecastcard.go`): the issue-#14
   presenter that reads persisted rows back for the UserPromptSubmit hook, the statusline, and
-  `auspex evaluate`. `Probability` is structurally nil (JSON null) until a calibration wave
+  `auspex evaluate`. `Probability` is structurally nil (JSON null) until a calibration phase
   persists one, and surfaces label uncalibrated output as an estimate (Constitution principle #2).
 - `DataSource` (`datasource.go`) is now an alias for the frozen `app.FeatureDataSource` port
   (ADR-044); `SQLDataSource` (`datasource_sql.go`) implements it over SQLite, feeding

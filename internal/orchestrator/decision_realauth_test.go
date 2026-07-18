@@ -93,7 +93,7 @@ func openRealauthDB(t *testing.T) *sqlite.DB {
 
 // --- fakeRealauthDataSource: a configurable evaluation.DataSource, tuned
 // to drive the REAL pipeline stages (scope/token/quota/risk/policy — this
-// wave's real implementations) to a specific, deliberate risk band, rather
+// phase's real implementations) to a specific, deliberate risk band, rather
 // than mocking Combine/Decide's own output directly. See this package's
 // task-scoped research: internal/predictor/risk/combiner.go's
 // OverallRisk.Score = max(quota, context, completion, blastRadius); high

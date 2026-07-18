@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="luxury">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>誰跑 loop，誰治理 loop</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+    :where(img, svg) { max-width: 100%; height: auto; }
+    .diagram-wrap svg { max-width: none; }         /* let mermaid scroll instead of squish */
+    .tag-a { color:#7fc9ef; }
+    .tag-b { color:#e6b84a; }
+  </style>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "strict",
+      themeVariables: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: "15px" } });
+  </script>
+</head>
+<body>
+<main class="mx-auto max-w-5xl px-5 py-9 sm:px-8">
+
+  <!-- ── HERO ────────────────────────────────────────────── -->
+  <header class="mb-10">
+    <div class="mb-3 flex flex-wrap items-center gap-2">
+      <span class="badge badge-soft badge-warning">定位圖解</span>
+      <span class="text-sm opacity-70">Loop engineering ／ harness　vs　Auspex</span>
+    </div>
+    <h1 class="text-3xl font-bold leading-tight sm:text-4xl">誰「跑」loop，誰「治理」loop</h1>
+    <p class="mt-4 max-w-3xl text-base leading-relaxed opacity-90">
+      大家嘴上講的 <b class="tag-a">loop engineering</b> 指的是「<b>跑</b>那條 agentic loop」的程式；
+      <b class="tag-b">Auspex</b> 是另一層——它<b>不跑</b> loop，而是站在 loop 之外<b>治理</b>一條它並不擁有的 loop。
+      詞彙重疊，軸線不同。下面用一張圖 + 一個例子把差別攤開。
+    </p>
+    <div class="mt-5 flex flex-wrap gap-3">
+      <div class="rounded-box border border-info/30 bg-info/10 px-4 py-2 text-sm">
+        <span class="tag-a font-semibold">A · Harness</span>　跑 loop　·　擁有 loop
+      </div>
+      <div class="rounded-box border border-warning/30 bg-warning/10 px-4 py-2 text-sm">
+        <span class="tag-b font-semibold">B · Auspex</span>　治理 loop　·　不擁有 loop
+      </div>
+    </div>
+  </header>
+
+  <!-- ── SECTION 1 · ARCHITECTURE ────────────────────────── -->
+  <section class="mb-12">
+    <h2 class="mb-1 text-xl font-bold sm:text-2xl">① 一張圖：B 環繞 A</h2>
+    <p class="mb-4 max-w-3xl text-sm leading-relaxed opacity-80">
+      內圈（藍）是 harness 自己在跑的 <b>model → tool → 讀結果 → 再決定</b> 迴圈；
+      外圈（金）是 Auspex 的三個治理接觸點——<b>翻頁前</b>、<b>翻頁後</b>、<b>配額撞牆</b>。
+      Auspex 從不進到迴圈裡面，只在邊界上把關。
+    </p>
+    <div class="diagram-wrap overflow-x-auto rounded-box border border-base-content/10 bg-base-100 p-4">
+      <pre class="mermaid">
+flowchart TB
+  subgraph B["🛡️ B · Auspex — 治理 / 續存層（跑在 loop 之外）"]
+    PRE["① 翻頁前 gate<br/>forecast 這輪花費 · policy RUN / BLOCK<br/>CHECKPOINT_AND_RUN 先固化狀態"]
+    subgraph A["🔁 A · Harness — 跑 agentic loop（Claude Code · Agent SDK · LangGraph）"]
+      direction LR
+      MODEL["模型<br/>決定下一步"] --> TOOL["派發工具<br/>編輯 · 測試"] --> OBS["讀結果<br/>自我修正"] --> MODEL
+    end
+    POST["② 翻頁後 gate<br/>evidence gate：測試產物 · checksum · git 快照<br/>沒證據 → 卡住，不算完成"]
+    QUOTA["③ 配額撞牆<br/>Graceful Pause：安全點 → checkpoint<br/>→ wake task → daemon 恢復"]
+    PRE --> A --> POST
+    POST -. 配額見底 .-> QUOTA
+    QUOTA -. 恢復後回到 .-> PRE
+  end
+  classDef gate fill:#3a2f12,stroke:#d4a017,color:#f5e6c0,stroke-width:1px;
+  classDef loop fill:#102a3a,stroke:#3aa0d4,color:#cfe9f5,stroke-width:1px;
+  class PRE,POST,QUOTA gate;
+  class MODEL,TOOL,OBS loop;
+      </pre>
+    </div>
+    <p class="mt-3 text-xs opacity-60">
+      藍＝A 擁有的內層迴圈（就是你之前推導的「切片內 red→green 自我修正」那條）。金＝B 在邊界上的閘門。
+    </p>
+  </section>
+
+  <!-- ── SECTION 2 · WORKED EXAMPLE ──────────────────────── -->
+  <section class="mb-12">
+    <h2 class="mb-1 text-xl font-bold sm:text-2xl">② 一個例子走一遍：「為 <code>/login</code> 加上 rate limiter」</h2>
+    <p class="mb-4 max-w-3xl text-sm leading-relaxed opacity-80">
+      同一個任務，時間由上往下。左欄看 <b class="tag-a">A 在迴圈裡做什麼</b>，右欄看 <b class="tag-b">B 在迴圈外做什麼</b>。
+      注意 B 一次都沒踏進迴圈——它只在「翻頁前 / 翻頁後 / 配額見底」三個時刻出手。
+    </p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table">
+        <thead>
+          <tr>
+            <th class="w-40">時刻</th>
+            <th class="tag-a">A · Harness 跑 loop（擁有 loop）</th>
+            <th class="tag-b">B · Auspex（loop 之外治理）</th>
+          </tr>
+        </thead>
+        <tbody class="align-top">
+          <tr>
+            <td><span class="badge badge-soft badge-warning">翻頁前</span></td>
+            <td class="opacity-60">—（迴圈還沒開始）</td>
+            <td>forecast：這輪約 <b>4.8k tokens</b>、配額還夠 → policy 判 <b>RUN</b>；<br><code>CHECKPOINT_AND_RUN</code> 先把 repo 狀態固化，翻壞了能退。</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-info">迴圈第 1–4 圈</span></td>
+            <td>讀 <code>login</code> handler → 插入 rate-limit middleware → 跑測試 <b class="text-error">🔴 紅</b> → 修 → 再跑 <b class="text-success">🟢 綠</b>。<br><span class="opacity-70">這圈就是內層 micro-loop，A 自己收斂。</span></td>
+            <td class="opacity-70">不介入迴圈內部；只在旁監看 token / 配額的燃燒速率。</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-warning">翻頁後</span></td>
+            <td>宣稱「rate limiter 做好了」。</td>
+            <td><b>evidence gate</b>：要求測試產物 + git 快照才算數；<br>拿不出證據 → <b class="text-warning">擋住，不標記完成</b>（防壓縮後偷偷送 regression）。</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-soft badge-error">凌晨 2:00 配額見底</span></td>
+            <td class="opacity-70">若硬跑，迴圈會死在半途，白燒一整夜到你早上發現。</td>
+            <td><b>Graceful Pause</b>：找安全點 → checkpoint → 寫 wake task 進 SQLite；<br>天亮配額回來，daemon 重驗狀態後<b>自動恢復</b>，不是從頭來。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs opacity-60">
+      重點：紅→綠那條自我修正迴圈，A 全程自理；B 只在邊界（翻頁前後、配額）出手，且從不決定 A 的下一步。
+    </p>
+  </section>
+
+  <!-- ── SECTION 3 · A vs B CARDS ────────────────────────── -->
+  <section class="mb-12">
+    <h2 class="mb-4 text-xl font-bold sm:text-2xl">③ A 與 B，並排看</h2>
+    <div class="grid gap-5 md:grid-cols-2">
+      <!-- A -->
+      <div class="card card-border border-info/40 bg-info/5">
+        <div class="card-body gap-3">
+          <h3 class="card-title tag-a">A · Harness ／ loop engineering</h3>
+          <dl class="space-y-2 text-sm">
+            <div><dt class="font-semibold opacity-70">做什麼</dt>
+              <dd>跑 agentic loop：派發工具 → 讀結果 → 決定下一步 → 重複到完成；＋維持 loop 的 context 工作（壓縮、子 agent、停止條件）。</dd></div>
+            <div><dt class="font-semibold opacity-70">代表</dt>
+              <dd>Claude Code、Claude Agent SDK、LangGraph。</dd></div>
+            <div><dt class="font-semibold opacity-70">跟 loop 的關係</dt>
+              <dd><b>擁有</b>那條 loop —— 它自己就是 loop。</dd></div>
+          </dl>
+          <div class="mt-1 rounded-box bg-info/10 px-3 py-2 text-sm">一句話：讓一條 loop <b>跑起來</b>。</div>
+        </div>
+      </div>
+      <!-- B -->
+      <div class="card card-border border-warning/40 bg-warning/5">
+        <div class="card-body gap-3">
+          <h3 class="card-title tag-b">B · Auspex</h3>
+          <dl class="space-y-2 text-sm">
+            <div><dt class="font-semibold opacity-70">做什麼</dt>
+              <dd>跑在 loop 之外治理它：forecast → policy gate → checkpoint → evidence gate → 配額撞牆轉暫停。</dd></div>
+            <div><dt class="font-semibold opacity-70">代表</dt>
+              <dd>Auspex —— Go 單一 binary、本機、SQLite，無雲端。</dd></div>
+            <div><dt class="font-semibold opacity-70">跟 loop 的關係</dt>
+              <dd><b>不擁有</b>、環繞它；provider-agnostic（Claude Code / Codex CLI 都能罩）。</dd></div>
+          </dl>
+          <div class="mt-1 rounded-box bg-warning/10 px-3 py-2 text-sm">一句話：讓一條它<b>不擁有</b>的 loop <b>可問責</b>。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CLOSING ─────────────────────────────────────────── -->
+  <section>
+    <div role="alert" class="alert alert-warning alert-soft items-start">
+      <span class="text-lg">🎯</span>
+      <div class="text-sm leading-relaxed">
+        <b>同一組詞，不同軸線。</b>harness、loop、checkpoint、verify —— A 和 B 都在用，但
+        <b class="tag-a">A 讓 loop 跑起來</b>、<b class="tag-b">B 讓 loop 可問責</b>。
+        別把 B 講成 A：「跑 loop」那條賽道已被 Claude Code / SDK / Cursor 塞滿；
+        Auspex 要守的護城河是<b>治理 ／ 可觀測</b>這一條——尤其是沒人在 loop engineering 裡談的 <b>forecast ／ 配額治理</b>。
+      </div>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>

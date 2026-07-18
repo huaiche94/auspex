@@ -1,11 +1,11 @@
-# Wave 2 Lessons Aggregation
+# Phase 2 Lessons Aggregation
 
 > 🌐 English | [繁體中文](Wave2_Lessons.zh-TW.md)
 
 | Field | Value |
 |---|---|
-| Phase | 3.3 — Post Wave 2 Analysis |
-| Source | All 5 `lessons_learned.md` files: `contract-integrator`, `foundation`, `claude-provider`, `checkpoint`, `predictor` (Bootstrap + Wave 1 + Wave 2 entries, 19 node-rows total) |
+| Phase | 3.3 — Post Phase 2 Analysis |
+| Source | All 5 `lessons_learned.md` files: `contract-integrator`, `foundation`, `claude-provider`, `checkpoint`, `predictor` (Bootstrap + Phase 1 + Phase 2 entries, 19 node-rows total) |
 | Status | Aggregation only. No implementation changed. |
 
 ## 1. Recurring issues, ranked by frequency
@@ -35,10 +35,10 @@ gap whose absence was independently noticed and flagged by 4 of 5 roles.
 
 ### #3 — A harness-level session interruption occurred mid-node, requiring lead re-verification (3 occurrences)
 
-Observed in: `claude-provider-03` (Wave 1, rate-limit interruption between
-drafting `stop.go` and writing its test), `checkpoint-b02` (Wave 1,
+Observed in: `claude-provider-03` (Phase 1, rate-limit interruption between
+drafting `stop.go` and writing its test), `checkpoint-b02` (Phase 1,
 interruption after implementation files were written but before
-tests/docs/commit), `predictor-03` (Wave 1, interruption between drafting
+tests/docs/commit), `predictor-03` (Phase 1, interruption between drafting
 `taskclass.go`'s enum and finishing the classifier). All three were
 recovered the same way: the lead independently re-ran `gofmt`/`go
 build`/`go vet`/`go test` against on-disk state rather than trusting the
@@ -130,30 +130,30 @@ in the frozen DAG.
 
 ## 5. Integration problems
 
-**None.** Zero merge conflicts occurred across all 4 Wave 2 branch merges
-into the integration branch, and zero across all 4 Wave 1 branch merges
+**None.** Zero merge conflicts occurred across all 4 Phase 2 branch merges
+into the integration branch, and zero across all 4 Phase 1 branch merges
 before that (verified via `git diff --name-only` cross-branch overlap
-checks before each integration — see the Wave 1 Integration Report and
-this conversation's Wave 2 verification steps). This is a direct,
+checks before each integration — see the Phase 1 Integration Report and
+this conversation's Phase 2 verification steps). This is a direct,
 measurable consequence of the Constitution's exclusive-path-ownership
-rule being followed by every teammate in both waves — zero instances of
-two teammates touching the same file were found in either wave.
+rule being followed by every teammate in both phases — zero instances of
+two teammates touching the same file were found in either phase.
 
 ## 6. Ownership issues
 
 **One structural issue, resolved by explicit repository-owner ruling, not
-by a teammate violating a boundary:** the Wave 1 kickoff deadlock, where
+by a teammate violating a boundary:** the Phase 1 kickoff deadlock, where
 `go.mod` needed to exist before any teammate could be assigned a root
 node, but `go.mod` is Foundation-owned and Foundation itself was blocked
-on `contract-integrator-07`, and no named Wave 1 teammate was
+on `contract-integrator-07`, and no named Phase 1 teammate was
 `contract-integrator`. This was resolved by introducing "Bootstrap" as a
-formally separate, lead-only, pre-Wave-1 stage — a process fix, not an
+formally separate, lead-only, pre-Phase-1 stage — a process fix, not an
 ownership violation. See `docs/adr/` context and this conversation's
 transcript for the full resolution.
 
 **Zero instances of a teammate editing another teammate's or the lead's
 owned paths.** Every path-scope check performed during independent
-verification (both waves, all 10 nodes checked individually via `git diff
+verification (both phases, all 10 nodes checked individually via `git diff
 --name-only` against each teammate's declared exclusive paths) came back
 clean.
 

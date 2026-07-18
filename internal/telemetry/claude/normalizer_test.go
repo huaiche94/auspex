@@ -24,7 +24,7 @@ func (f fixedClock) Now() time.Time { return f.t }
 
 // seqIDs is a deterministic domain.IDGenerator fake: each call returns the
 // next integer in sequence, formatted as a string. Real ID generation
-// (UUIDv7) is foundation's internal/idgen, out of scope for this wave.
+// (UUIDv7) is foundation's internal/idgen, out of scope for this phase.
 type seqIDs struct{ n int }
 
 func (s *seqIDs) NewID() string {

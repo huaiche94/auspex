@@ -8,7 +8,7 @@
 // NOT itself run validators (that is internal/artifacts, checkpoint-a03)
 // and it does NOT itself implement the full stage/verify/commit CompleteNode
 // protocol (that is checkpoint-a04) — this is deliberately just the CRUD
-// seam those two build on, per this wave's scoped brief.
+// seam those two build on, per this phase's scoped brief.
 package progress
 
 import (

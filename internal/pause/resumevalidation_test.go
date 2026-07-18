@@ -390,8 +390,8 @@ func TestResumeValidation_CheckSessionCapability_NilReaderFailsClosed(t *testing
 // --- CheckAuthorization: predictor-09/10 fake ------------------------------
 //
 // predictor-10's authorization-hardening pass is a concurrent sibling this
-// same wave, not yet mergeable (per the task brief) — fakes.
-// FakeEvaluationService (already populated by an earlier runtime wave) is
+// same phase, not yet mergeable (per the task brief) — fakes.
+// FakeEvaluationService (already populated by an earlier runtime phase) is
 // used here for app.EvaluationService.ConsumeAuthorization, consistent with
 // the established fake-then-swap pattern (e.g. runtime-a05's State
 // Checkpoint step against checkpoint-a05).

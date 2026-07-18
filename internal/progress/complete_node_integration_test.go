@@ -62,7 +62,7 @@ import (
 // file's tests run against the SAME real stores CompleteNode itself uses —
 // not an in-memory fake (service_test.go's fakeTreeReader is appropriate
 // for that package's own unit tests, but this integration node's whole
-// point is proving the REAL stack end to end, per the wave's explicit
+// point is proving the REAL stack end to end, per the phase's explicit
 // instruction). This adapter is deliberately test-local (not production
 // code): it lives here because it is exactly the kind of "production
 // wiring" seam internal/statecheckpoint's own doc comments say a later
@@ -311,7 +311,7 @@ func TestA09_ConcurrentDifferentNodeCompletions_WithConcurrentReconcileAndSnapsh
 	// CompleteNode.Run's atomic protocol is safe under concurrent
 	// completions that do NOT contend on the same row (a04/a02's own race
 	// tests only ever targeted the SAME node; this is the genuinely new,
-	// cross-node concurrency shape this wave's brief calls for).
+	// cross-node concurrency shape this phase's brief calls for).
 	for i := 0; i < writers; i++ {
 		wg.Add(1)
 		go func(i int) {
@@ -340,7 +340,7 @@ func TestA09_ConcurrentDifferentNodeCompletions_WithConcurrentReconcileAndSnapsh
 	// Readers: concurrently hammer BOTH Reconcilers and Snapshot/LoadLatest
 	// against the SAME, growing set of state_checkpoints rows the writers
 	// above are inserting — this is the actual cross-package "reads during
-	// writes never see torn/inconsistent state" proof the wave brief asks
+	// writes never see torn/inconsistent state" proof the phase brief asks
 	// for. Every read must either succeed cleanly (see some consistent
 	// prefix of completions) or return the frozen not-found error for "no
 	// checkpoints yet" — it must NEVER report a violation/integrity
@@ -478,7 +478,7 @@ func TestA09_CrashMidCompleteNode_BothPackagesReconciliationAgree(t *testing.T) 
 	// artifact evidence has been staged to durable storage but BEFORE the
 	// DB transaction (node update + checkpoint insert + idempotency
 	// ledger) ever opens. This is the exact "state checkpoint half-written"
-	// crash window the wave brief names: from Part A's perspective, staged
+	// crash window the phase brief names: from Part A's perspective, staged
 	// evidence now exists on disk with NOTHING in the DB referencing it
 	// yet — internal/progress's own Reconciler's precise target.
 	crashNodeID := domain.ProgressNodeID("node-crash-victim")

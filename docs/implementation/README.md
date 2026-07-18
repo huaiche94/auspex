@@ -11,7 +11,7 @@ why something was built, never a substitute for the current design docs.
 
 | Folder | What it holds |
 |---|---|
-| [`vertical-slice/`](vertical-slice/README.md) | The complete record of Auspex's first build: 85 DAG nodes across seven roles, executed by parallel agents over 13 integration waves, Bootstrap through the Stage-5 Final gate. Currently the only effort recorded here. |
+| [`vertical-slice/`](vertical-slice/README.md) | The complete record of Auspex's first build: 85 DAG nodes across seven roles, executed by parallel agents over 13 integration phases, Bootstrap through the Stage-5 Final gate. Currently the only effort recorded here. |
 
 ## Neighbors
 

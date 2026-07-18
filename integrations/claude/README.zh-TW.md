@@ -82,7 +82,7 @@ Claude Code 自身 wire-level 的 `hook_event_name` 欄位（位於透過 stdin
 `internal/hooks/claude.FallbackAllowResponse()`——絕不讓 Claude Code
 的 `UserPromptSubmit` hook 卡住，或因 Auspex 端的錯誤而阻擋使用者的
 提示詞（fail-open，依據 `CONTRACT_FREEZE.md` 針對操作性觀測失敗所定義
-的 fail-open/fail-closed 區分，以及此角色 Wave-1 progress artifact 對
+的 fail-open/fail-closed 區分，以及此角色 Phase-1 progress artifact 對
 `claude-provider-02` 的假設）。wrapper 本身（讀取 stdin、呼叫這些函式，
 並依照 `internal/hooks/claude/userpromptsubmit.go` 的
 `EncodeUserPromptSubmitResponse` 所記載的方式寫出 wire response 的

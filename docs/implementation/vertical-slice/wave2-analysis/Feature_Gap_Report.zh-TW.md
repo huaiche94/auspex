@@ -10,11 +10,11 @@
 | 範圍 | `Feature_Registry.md` 中所有登記為 `Unknown` 或 `Available (fixture-scoped only)` 的功能 |
 | 狀態 | 僅為分析——無實作 |
 
-本報告不會重複 Feature Registry 的身分／來源（provenance）欄位（比照 Constitution 的規則：不重複規範性的資料字典）。本報告新增的，正是登記表（registry）中沒有記載的內容：每個缺口為何存在、其影響、建議的補上方式、複雜度估計，以及預期的改善程度——並依優先順序排列，供未來的 wave 排定優先次序。
+本報告不會重複 Feature Registry 的身分／來源（provenance）欄位（比照 Constitution 的規則：不重複規範性的資料字典）。本報告新增的，正是登記表（registry）中沒有記載的內容：每個缺口為何存在、其影響、建議的補上方式、複雜度估計，以及預期的改善程度——並依優先順序排列，供未來的 phase 排定優先次序。
 
 ## 以下使用的複雜度量表
 
-為求一致性，沿用 DAG 自身的 XS/S/M/L/XL 慣例（`EXECUTION_DAG.md` §1），此處套用在*補上此缺口*這個工作單位上，而不是 DAG 節點估計值——這些並非新的 DAG 節點，只是供 Wave 3 以後規劃參考的複雜度訊號。
+為求一致性，沿用 DAG 自身的 XS/S/M/L/XL 慣例（`EXECUTION_DAG.md` §1），此處套用在*補上此缺口*這個工作單位上，而不是 DAG 節點估計值——這些並非新的 DAG 節點，只是供 Phase 3 以後規劃參考的複雜度訊號。
 
 ## 1. 重大重要性缺口
 
@@ -22,7 +22,7 @@
 
 - **缺失原因：** 不是資料缺口——是連接缺口。`internal/gitx` 已經計算出 dirty 檔案／行數計數與 worktree 結構（真實且已測試）。`predictor-05` 的 `FeatureSource.Repository()` 方法沒有具體實作，只有一個測試用的假物件（fake）。
 - **影響：** `ScopeEstimate.FilesChangedP*`／`LinesChangedP*`——Rule Predictor 最重要的兩項輸出——目前從未看到真實的儲存庫狀態，只看到冷啟動預設值與工作階段歷史的混合值。
-- **建議實作方式：** 在未來的 predictor wave 中，實作一個具體的 `FeatureSource`，呼叫 `internal/gitx` 已建置好的基礎功能（primitives）。不需要新的 gitx 功能——這只是膠合程式碼（glue code）。
+- **建議實作方式：** 在未來的 predictor phase 中，實作一個具體的 `FeatureSource`，呼叫 `internal/gitx` 已建置好的基礎功能（primitives）。不需要新的 gitx 功能——這只是膠合程式碼（glue code）。
 - **複雜度：** S——困難的部分（Git 內省）已經完成；這只是轉接器／連接工作。
 - **預期的預測改善程度：** 高。這是整個 registry 中成本最低、槓桿效益最高的單一缺口：真實資料只差一次函式呼叫就能取得。
 
@@ -86,7 +86,7 @@
 - **影響：** 若不針對每個 provider 進行 provider-adapter 層級的工作，`ScopeEstimate.FilesReadP*` 就會永遠停留在估計值，從未有真實基準可對照。
 - **建議實作方式：** 依 provider 各自的工具呼叫形狀（tool-call-shape）啟發式方法（見 `Missing_Telemetry_Report.md` A3）——這是 provider-adapter 的工作，不是 predictor 的工作。
 - **複雜度：** 每個 provider M（每新增一個 provider adapter 就要重複一次）。
-- **預期的預測改善程度：** 低至中——`FilesReadP*` 是一個已命名的欄位，但目前本 wave 建立的任何下游公式都尚未使用它（會使用它的 Token Forecaster，本身也還沒建好）。
+- **預期的預測改善程度：** 低至中——`FilesReadP*` 是一個已命名的欄位，但目前本 phase 建立的任何下游公式都尚未使用它（會使用它的 Token Forecaster，本身也還沒建好）。
 
 ### 4.2 校準統計量（ECE／Brier）（Registry §7）
 
@@ -109,4 +109,4 @@
 | 7 | State Checkpoint 產生者（1.3） | 重大（產品面，非預測面） | XL | 無（非預測缺口） | `foundation-06` |
 | 8 | 校準統計量（4.2） | 重大 | N/A（數量問題，非建置任務） | N/A（是一種量測，不是功能） | 缺口 #6 |
 
-**請仔細閱讀此排序**：排名 1-4 在近期的 wave 中，不需要其他前置條件，確實可以補上。排名 6-8 並不是同一類缺口的縮小版——它們卡在尚不存在的多角色基礎設施上，無論 predictor 端多聰明，都無法讓它們更快補上。`Wave3_Recommendation.md` 直接使用此排序。
+**請仔細閱讀此排序**：排名 1-4 在近期的 phase 中，不需要其他前置條件，確實可以補上。排名 6-8 並不是同一類缺口的縮小版——它們卡在尚不存在的多角色基礎設施上，無論 predictor 端多聰明，都無法讓它們更快補上。`Wave3_Recommendation.md` 直接使用此排序。

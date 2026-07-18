@@ -1,4 +1,4 @@
-# Wave 2 經驗教訓彙整
+# Phase 2 經驗教訓彙整
 
 > 🌐 [English](Wave2_Lessons.md) | 繁體中文
 >
@@ -6,8 +6,8 @@
 
 | 欄位 | 值 |
 |---|---|
-| 階段 | 3.3 — Wave 2 後分析 |
-| 來源 | 全部 5 份 `lessons_learned.md` 檔案：`contract-integrator`、`foundation`、`claude-provider`、`checkpoint`、`predictor`（Bootstrap + Wave 1 + Wave 2 條目，共 19 個節點列） |
+| 階段 | 3.3 — Phase 2 後分析 |
+| 來源 | 全部 5 份 `lessons_learned.md` 檔案：`contract-integrator`、`foundation`、`claude-provider`、`checkpoint`、`predictor`（Bootstrap + Phase 1 + Phase 2 條目，共 19 個節點列） |
 | 狀態 | 僅為彙整，未變更任何實作。 |
 
 ## 1. 依發生頻率排序的重複性問題
@@ -24,7 +24,7 @@
 
 ### #3 — 節點執行途中發生了 harness 層級的工作階段中斷，需要負責人重新驗證（3 次）
 
-觀察於：`claude-provider-03`（Wave 1，在草擬 `stop.go` 與撰寫其測試之間發生 rate-limit 中斷）、`checkpoint-b02`（Wave 1，在實作檔案已寫入、但測試／文件／commit 尚未完成前發生中斷）、`predictor-03`（Wave 1，在草擬 `taskclass.go` 的 enum 與完成分類器之間發生中斷）。這三次都以同樣方式復原：負責人並未信任中斷工作階段的自我回報，而是獨立針對磁碟上現存狀態重新執行 `gofmt`／`go build`／`go vet`／`go test`，接著以「哪些已存在、哪些仍缺少」的精確描述讓隊友繼續工作。三個案例都沒有產生任何重工 — 這次中斷耗費的是負責人驗證的時間，而非實作時間。
+觀察於：`claude-provider-03`（Phase 1，在草擬 `stop.go` 與撰寫其測試之間發生 rate-limit 中斷）、`checkpoint-b02`（Phase 1，在實作檔案已寫入、但測試／文件／commit 尚未完成前發生中斷）、`predictor-03`（Phase 1，在草擬 `taskclass.go` 的 enum 與完成分類器之間發生中斷）。這三次都以同樣方式復原：負責人並未信任中斷工作階段的自我回報，而是獨立針對磁碟上現存狀態重新執行 `gofmt`／`go build`／`go vet`／`go test`，接著以「哪些已存在、哪些仍缺少」的精確描述讓隊友繼續工作。三個案例都沒有產生任何重工 — 這次中斷耗費的是負責人驗證的時間，而非實作時間。
 
 ### #2b — 凍結合約缺少某角色實際需要的欄位／port，該角色選擇本地繞道處理而非修改合約（3 次）
 
@@ -76,13 +76,13 @@
 
 ## 5. 整合問題
 
-**無。** 全部 4 個 Wave 2 分支合併進整合分支的過程中，合併衝突次數為零；在此之前全部 4 個 Wave 1 分支合併也同樣為零（每次整合前皆透過 `git diff --name-only` 進行跨分支重疊檢查來驗證 — 見 Wave 1 整合報告與本次對話中 Wave 2 的驗證步驟）。這是 Constitution 的專屬路徑所有權規則在兩個 wave 中都被每位隊友確實遵守後，一項直接且可衡量的結果 — 在任一個 wave 中，都未發現有兩位隊友觸碰同一個檔案的情形。
+**無。** 全部 4 個 Phase 2 分支合併進整合分支的過程中，合併衝突次數為零；在此之前全部 4 個 Phase 1 分支合併也同樣為零（每次整合前皆透過 `git diff --name-only` 進行跨分支重疊檢查來驗證 — 見 Phase 1 整合報告與本次對話中 Phase 2 的驗證步驟）。這是 Constitution 的專屬路徑所有權規則在兩個 phase 中都被每位隊友確實遵守後，一項直接且可衡量的結果 — 在任一個 phase 中，都未發現有兩位隊友觸碰同一個檔案的情形。
 
 ## 6. 所有權問題
 
-**一項結構性問題，透過儲存庫擁有者的明確裁定解決，並非隊友違反邊界所致：** Wave 1 的啟動死鎖 — 必須先有 `go.mod` 存在，才能將任何根節點指派給隊友，但 `go.mod` 屬於 Foundation 所有，而 Foundation 本身又卡在 `contract-integrator-07` 上，且 Wave 1 命名的隊友中並沒有 `contract-integrator` 這個角色。此問題透過引入「Bootstrap」— 一個正式獨立、僅限負責人執行、在 Wave 1 之前的階段 — 來解決，這是流程上的修正，而非所有權上的違反。完整的解決過程請見 `docs/adr/` 相關內容與本次對話紀錄。
+**一項結構性問題，透過儲存庫擁有者的明確裁定解決，並非隊友違反邊界所致：** Phase 1 的啟動死鎖 — 必須先有 `go.mod` 存在，才能將任何根節點指派給隊友，但 `go.mod` 屬於 Foundation 所有，而 Foundation 本身又卡在 `contract-integrator-07` 上，且 Phase 1 命名的隊友中並沒有 `contract-integrator` 這個角色。此問題透過引入「Bootstrap」— 一個正式獨立、僅限負責人執行、在 Phase 1 之前的階段 — 來解決，這是流程上的修正，而非所有權上的違反。完整的解決過程請見 `docs/adr/` 相關內容與本次對話紀錄。
 
-**沒有任何一次隊友編輯了其他隊友或負責人所擁有路徑的情形。** 在獨立驗證過程中所執行的每一次路徑範圍檢查（兩個 wave、全部 10 個節點，皆個別透過 `git diff --name-only` 對照每位隊友宣告的專屬路徑進行檢查）結果都是乾淨的。
+**沒有任何一次隊友編輯了其他隊友或負責人所擁有路徑的情形。** 在獨立驗證過程中所執行的每一次路徑範圍檢查（兩個 phase、全部 10 個節點，皆個別透過 `git diff --name-only` 對照每位隊友宣告的專屬路徑進行檢查）結果都是乾淨的。
 
 ## 7. 值得延續的正面模式（不只是問題）
 

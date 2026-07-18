@@ -71,7 +71,7 @@ var _ app.EvaluationService = (*Service)(nil)
 
 // DefaultAuthorizationTTL is the fallback one-time-authorization lifetime
 // when Service.AuthorizationTTL is unset. No ADD section names an exact
-// value for this vertical-slice wave; 5 minutes is a conservative, documented
+// value for this vertical-slice phase; 5 minutes is a conservative, documented
 // choice — long enough to cover the checkpoint-then-resume window a
 // CHECKPOINT_AND_RUN/PAUSE_AND_AUTO_RESUME decision implies (ADD §17),
 // short enough that a stale authorization cannot be replayed long after
@@ -271,7 +271,7 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 		return insertPolicyDecision(txCtx, s.DB, policyDecisionRow{
 			ID:                   decisionID,
 			PredictionID:         evaluationID,
-			RunwayForecastID:     nil, // this wave's DataSource surfaces domain.RunwayForecast directly, not a stored runway_forecasts row ID (predictor-06 owns that table)
+			RunwayForecastID:     nil, // this phase's DataSource surfaces domain.RunwayForecast directly, not a stored runway_forecasts row ID (predictor-06 owns that table)
 			PolicyVersion:        policyVersion,
 			Action:               string(result.decision.Action),
 			Severity:             result.decision.Severity,
@@ -535,7 +535,7 @@ func (s *Service) ConsumeAuthorization(ctx context.Context, req app.ConsumeAutho
 // (e.g. internal/orchestrator, once it wires the real Service) is expected
 // to call this after a PolicyAction that requires one (CHECKPOINT_AND_RUN,
 // PAUSE_AND_AUTO_RESUME, etc.) — EvaluateTurn itself does not call this
-// automatically this wave, since which actions require an authorization
+// automatically this phase, since which actions require an authorization
 // and what SnapshotFingerprint/RepositoryCheckpointID to bind are
 // orchestration-layer decisions outside this package's Boundary (no
 // checkpoint creation, no Git commands).

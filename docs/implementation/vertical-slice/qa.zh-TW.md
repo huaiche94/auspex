@@ -229,7 +229,7 @@ validation:
   - "go vet ./internal/integrationtest/...   # PASS"
   - "go test ./internal/integrationtest/... -run LeakageScanner -v   # 6/6 PASS"
   - "go test ./internal/integrationtest/... -race   # PASS"
-  - "go build ./... && go test ./... -race   # whole repo, all 33 packages PASS, zero regressions from merging origin/main (Waves 4/5/6)"
+  - "go build ./... && go test ./... -race   # whole repo, all 33 packages PASS, zero regressions from merging origin/main (Phases 4/5/6)"
   - "golangci-lint run ./...   # 0 issues, whole repo"
 commit: <記錄於下方>
 next_action: 無——qa-05 是本波 qa 的完整任務指派；依任務指示 STOP；向 lead 回報發現以便後續分派
@@ -658,13 +658,13 @@ findings:
       交付）負責修復；lead 負責最終整合與重新驗證。"
 ```
 
-## Wave（Stage 4 completion）— qa-02、qa-03、qa-06、qa-07、qa-09
+## Phase（Stage 4 completion）— qa-02、qa-03、qa-06、qa-07、qa-09
 
 這一波把 qa 剩下的 DAG 範圍*整個*都指派了下來：qa-02
 （vertical-slice demo）、qa-03（同一個 DB 上重啟、跨角色）、qa-06
 （獨立的惡意 fixture）、qa-07（scheduler 雙 worker race，整合層
 級），以及 qa-09（本篇最終報告）。先合併了 `origin/main`
-（fast-forward，乾淨）——Wave 8-11 都已整合，意味著
+（fast-forward，乾淨）——Phase 8-11 都已整合，意味著
 claude-provider、checkpoint、predictor、runtime 在這一波開始時，
 各自的整個 DAG 範圍都已經完成，所以 qa-02 點名的每一個依賴項
 （『全部現在都已整合』）都是真實存在的，沒有任何一項需要造假。依

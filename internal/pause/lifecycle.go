@@ -28,8 +28,8 @@
 // agents/runtime.md Part A deliverable 8 ("Resume validation: quota safe;
 // repository fingerprint compatible; session/provider capability valid;
 // authorization/consent valid") is runtime-a08's own DAG node, not part of
-// runtime-a05/b07's scope this wave (EXECUTION_DAG.md: runtime-a08 depends
-// on runtime-a05, i.e. it comes AFTER this wave's two nodes). Resume here
+// runtime-a05/b07's scope this phase (EXECUTION_DAG.md: runtime-a08 depends
+// on runtime-a05, i.e. it comes AFTER this phase's two nodes). Resume here
 // therefore implements only the STATE MACHINE half of a manual resume
 // (WakePending -> Validating -> Resuming -> Resumed, or the
 // Validating -> Sleeping/BlockedConflict rejection edges if the caller

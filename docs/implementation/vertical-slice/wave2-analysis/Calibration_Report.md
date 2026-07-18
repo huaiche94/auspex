@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.2 — Post Wave 2 Analysis |
+| Phase | 3.2 — Post Phase 2 Analysis |
 | Source | `Prediction_Error_Report.md` (this document adds no new raw data) |
 | Status | Observations only. No predictor coefficients, rules, or implementation modified. |
 | Sample size | n=19 executed nodes (Bootstrap + 5 Foundation + 5 Claude Adapter + 2 Checkpoint + 5 Predictor), 1 repository, 1 provider (Claude, self-hosted agent execution — not a Claude Code end-user session), 1 wall-clock day |
@@ -12,10 +12,10 @@
 ## 0. Sample-size caveat, stated up front
 
 n=19, all from one repository, one contributor, one execution environment,
-across two waves of one day. Every observation below is a real, Observed
+across two phases of one day. Every observation below is a real, Observed
 pattern in this specific dataset — none are fabricated — but none should
 be treated as a general law about Auspex's future scope estimator
-without many more waves of data across different repositories, task
+without many more phases of data across different repositories, task
 classes, and contributors. Where a pattern looks strong, this report says
 so; where n is too small to trust a direction, this report says that too.
 
@@ -104,14 +104,14 @@ self-assessed as lower than the DAG predicted:
   entry gives a specific, falsifiable explanation: ADD §15.4-15.7
   structures the runway forecaster as two tiers of very different size
   (an uncalibrated threshold fallback vs. a full empirical bootstrap with
-  EWMA and 1000 Monte Carlo draws), and this wave correctly built only
+  EWMA and 1000 Monte Carlo draws), and this phase correctly built only
   the smaller tier. The DAG's "L" label describes the tier that was *not*
-  built this wave.
+  built this phase.
 
 **Interpretation**: this is not evidence that Auspex's estimator is
 biased toward over-estimating complexity in general — it is evidence that
 at least one DAG node (`predictor-06`) bundled two very differently-sized
-pieces of work under one complexity label, and the wave correctly executed
+pieces of work under one complexity label, and the phase correctly executed
 only the smaller piece. This is a scope-definition issue, structurally
 similar to `foundation-04`'s stale-estimate problem in
 Prediction_Error_Report.md, not a calibration bias in the ordinary sense.
@@ -147,7 +147,7 @@ separators, `foundation-04`'s POSIX/Windows process-liveness split) both
 surfaced a real bug or design fork that the DAG's complexity label did not
 distinguish from same-OS work of the same nominal size. This is n=2 and
 should not be treated as established without more data — flagged as a
-hypothesis for Wave 3+ to test, not a conclusion.
+hypothesis for Phase 3+ to test, not a conclusion.
 
 No other task-class-correlated pattern was observed with enough repeated
 instances (this sample has essentially one node per distinct task type)
@@ -166,7 +166,7 @@ to distinguish a task-class effect from ordinary node-to-node variance.
 | Provider-specific | Unknown, and possibly a category error to ask | N/A | Dataset measures implementer cost, not Auspex's target (coding-agent turn cost) |
 | Task-class | Weak hypothesis only | Very low | n=2 for the one pattern observed |
 
-## 8. What would most improve confidence before Wave 3
+## 8. What would most improve confidence before Phase 3
 
 In order of expected information gain per unit effort, per this dataset
 alone (not a general research plan — see `Predictor_Improvement_Suggestions.md`
@@ -180,6 +180,6 @@ and `Wave3_Recommendation.md` for those):
    either disappear or become meaningful, rather than measuring a
    category mismatch.
 3. Capture real wall-clock timestamps (tool-call level, not self-reported)
-   for at least one future wave, since 10 of 19 nodes in this sample have
+   for at least one future phase, since 10 of 19 nodes in this sample have
    no duration data at all and the 9 that do are self-reported estimates
    from a model with no clock access.

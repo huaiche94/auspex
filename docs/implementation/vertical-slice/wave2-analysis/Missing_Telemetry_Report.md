@@ -4,9 +4,9 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.6 — Post Wave 2 Analysis |
+| Phase | 3.6 — Post Phase 2 Analysis |
 | Status | Analysis only |
-| Scope | Two categories: (A) **Product telemetry** — data Auspex's own predictor needs from a real coding-agent session, none of which has ever been captured because no live session has been run; (B) **Process telemetry** — data about implementing Auspex itself that this wave's execution could have captured but did not, per `Prediction_Error_Report.md` |
+| Scope | Two categories: (A) **Product telemetry** — data Auspex's own predictor needs from a real coding-agent session, none of which has ever been captured because no live session has been run; (B) **Process telemetry** — data about implementing Auspex itself that this phase's execution could have captured but did not, per `Prediction_Error_Report.md` |
 
 ## A. Product telemetry (Auspex's predictor inputs)
 
@@ -50,7 +50,7 @@
   to hold the ledger).
 - **Expected impact on prediction quality:** Critical for the Quota
   Forecaster (`predictor-05c`, not built) and for Runway (`predictor-06`,
-  built this wave but currently only exercised with synthetic test
+  built this phase but currently only exercised with synthetic test
   inputs, never a real quota observation).
 - **Suggested future implementation:** `foundation-06` (SQLite migrations
   for `quota_observations`) is the direct prerequisite.
@@ -133,7 +133,7 @@
   never be presented as probabilities).
 - **Expected impact on prediction quality:** This *is* the prediction
   quality metric for the calibrated tier — its absence is why every
-  `RunwayForecast`/`TokenForecast`/`QuotaForecast` this wave's tests
+  `RunwayForecast`/`TokenForecast`/`QuotaForecast` this phase's tests
   produce is correctly `Calibrated: false`.
 - **Suggested future implementation:** Accumulate real samples via A1-A5
   above; no shortcut.
@@ -144,7 +144,7 @@
 - **Provenance:** Unknown
 - **Why unavailable:** ADD §14.4 specifies this (`go list -deps -json
   ./...`, `dotnet list <project> reference`) but no `predictor-05`
-  deliverable this wave consumed it — `predictor-05`'s `FeatureSource`
+  deliverable this phase consumed it — `predictor-05`'s `FeatureSource`
   workaround interface (see `Wave2_Lessons.md` §1, issue #2b) has no
   dependency-graph field yet.
 - **Provider limitation:** None — this is a local, deterministic
@@ -163,7 +163,7 @@
 
 ### B1. Per-node token usage
 
-- **Current status:** Observed only at teammate-per-wave granularity (10
+- **Current status:** Observed only at teammate-per-phase granularity (10
   of 19 nodes share an invocation with sibling nodes and cannot be split)
 - **Provenance:** Observed (aggregate) / Unknown (per-node)
 - **Why unavailable:** The harness reports one usage total per background
@@ -173,14 +173,14 @@
 - **Provider limitation:** N/A — this is a harness/tooling capability
   gap, not a provider limitation in the product sense.
 - **Possible deterministic workaround:** Assign exactly one node per
-  background-agent invocation in future waves, trading parallelism
+  background-agent invocation in future phases, trading parallelism
   efficiency for clean per-node attribution — a real tradeoff, not a free
   fix.
 - **Expected impact on prediction quality:** Directly blocks
   `Prediction_Error_Report.md`'s per-node token-error computation for 17
   of 19 nodes (§2 of that report).
 - **Suggested future implementation:** Either the harness exposes a
-  per-turn token count teammates can self-report, or Wave 3 planning
+  per-turn token count teammates can self-report, or Phase 3 planning
   deliberately trades some parallelism for measurement cleanliness on a
   sampled subset of nodes.
 
@@ -196,13 +196,13 @@
 - **Possible deterministic workaround:** Have the lead record
   spawn-timestamp and completion-notification-timestamp per agent
   invocation (the lead does receive real timestamps via task
-  notifications) — this was not done systematically this wave and is a
+  notifications) — this was not done systematically this phase and is a
   process gap, not a tooling gap.
 - **Expected impact on prediction quality:** Directly blocks any duration
   estimate in a future DAG (`Calibration_Report.md` §8 names this as a
   top improvement priority).
 - **Suggested future implementation:** Lead records invocation
-  start/end wall-clock time from its own tool-call timestamps in Wave 3,
+  start/end wall-clock time from its own tool-call timestamps in Phase 3,
   independent of teammate self-report.
 
 ### B3. Files read per node (process-scoped)

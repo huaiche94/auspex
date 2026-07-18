@@ -24,7 +24,7 @@ ADD 為準（見 `CONSTITUTION.md` §1），本檔案視為需要修正的錯誤
 ## 支援的版本
 
 Auspex 目前處於 pre-1.0 階段（vertical slice 仍在活躍、里程碑閘控的建置中——見
-`README.md` 的 wave roadmap）。在 1.0 發布之前，安全性修復僅會落地於
+`README.md` 的 phase roadmap）。在 1.0 發布之前，安全性修復僅會落地於
 `main`；目前還沒有長期支援（long-term-support）分支。1.0 發布之後，本章節會依
 `docs/design/Auspex_ADD.md` §30.6 的 SemVer／穩定性保證，更新為真正的支援矩陣。
 

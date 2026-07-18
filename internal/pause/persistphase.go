@@ -215,21 +215,21 @@ type PersistDeps struct {
 	// (app.ProgressTreeSnapshot), so this deliberately reuses it rather
 	// than inventing a narrower one (Constitution Sec 7 rule 10: no
 	// speculative new abstractions). checkpoint-a04's real Progress Tree
-	// side is integrated this wave, but Snapshot is used here as a FAKE
-	// this wave per the task brief's explicit instruction -- see this
+	// side is integrated this phase, but Snapshot is used here as a FAKE
+	// this phase per the task brief's explicit instruction -- see this
 	// package's persistphase_test.go and docs/implementation/vertical-slice/
-	// runtime.md's Wave 7 section for why (no dedicated frozen service
+	// runtime.md's Phase 7 section for why (no dedicated frozen service
 	// port beyond the general ProgressTreeService exists specifically for
 	// this call site, and the task brief names it fake-able regardless).
 	ProgressTree app.ProgressTreeService
-	// StateCheckpoint is checkpoint-a05's frozen port. FAKE this wave --
+	// StateCheckpoint is checkpoint-a05's frozen port. FAKE this phase --
 	// checkpoint-a05's real implementation is a sibling teammate's
-	// concurrent, not-yet-mergeable work this same wave (task brief,
+	// concurrent, not-yet-mergeable work this same phase (task brief,
 	// verbatim). internal/testutil/fakes.FakeStateCheckpointService is the
 	// intended double.
 	StateCheckpoint app.StateCheckpointService
-	// RepositoryCheckpoint is checkpoint-b04's frozen port. REAL this wave
-	// -- checkpoint-b04 landed on main in Wave 5 and is mergeable; the
+	// RepositoryCheckpoint is checkpoint-b04's frozen port. REAL this phase
+	// -- checkpoint-b04 landed on main in Phase 5 and is mergeable; the
 	// task brief explicitly instructs calling the real
 	// internal/repocheckpoint.Service here, not a fake.
 	RepositoryCheckpoint app.RepositoryCheckpointService
@@ -386,7 +386,7 @@ func Persist(ctx context.Context, deps PersistDeps, req PersistRequest) (Persist
 		return newPersistResult(progress, resumed), halt
 	}
 
-	// --- Phase 2: State Checkpoint (FAKE this wave -- see PersistDeps doc) --
+	// --- Phase 2: State Checkpoint (FAKE this phase -- see PersistDeps doc) --
 	if progress.StateCheckpointID == nil {
 		ckpt, err := deps.StateCheckpoint.Create(ctx, app.CreateStateCheckpointRequest{TaskID: req.TaskID})
 		if err != nil {
@@ -401,7 +401,7 @@ func Persist(ctx context.Context, deps PersistDeps, req PersistRequest) (Persist
 		return newPersistResult(progress, resumed), halt
 	}
 
-	// --- Phase 3: Repository Checkpoint (REAL this wave -- checkpoint-b04) --
+	// --- Phase 3: Repository Checkpoint (REAL this phase -- checkpoint-b04) --
 	if progress.RepositoryCheckpointID == nil {
 		repoCkpt, err := deps.RepositoryCheckpoint.Create(ctx, app.CreateRepositoryCheckpointRequest{
 			WorktreeID: req.WorktreeID,

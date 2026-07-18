@@ -88,7 +88,7 @@ func newVersionCmd() *cobra.Command {
 
 // newInitCmd builds `auspex init` (ADD §10.1 day-one setup flow). Stub:
 // workspace/repository registration depends on internal/app/wiring, not
-// built this wave.
+// built this phase.
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
@@ -119,7 +119,7 @@ func newEvaluateCmd() *cobra.Command {
 
 // newDecisionCmd builds `auspex decision {allow,deny}`. Stub: both
 // subcommands depend on EvaluationService.Decide/ConsumeAuthorization,
-// not wired this wave.
+// not wired this phase.
 func newDecisionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "decision",
@@ -149,7 +149,7 @@ func newDecisionCmd() *cobra.Command {
 // newCheckpointCmd builds `auspex checkpoint create`. Stub: depends on
 // sequencing checkpoint role Part A (state) then Part B (repository) per
 // the frozen transaction/orchestration contract (CONTRACT_FREEZE.md
-// "Transaction boundaries"), not wired this wave.
+// "Transaction boundaries"), not wired this phase.
 func newCheckpointCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkpoint",
@@ -168,7 +168,7 @@ func newCheckpointCmd() *cobra.Command {
 
 // newProgressCmd builds the standalone-stub `auspex progress
 // {show,complete}` subtree. `show` (ProgressTreeService.Snapshot) remains
-// a stub: depends on internal/app/wiring, not built this wave. `complete`
+// a stub: depends on internal/app/wiring, not built this phase. `complete`
 // is a stub ONLY on this bare tree — internal/app/wiring.App.RootCmd()
 // replaces the whole `progress` subtree with NewProgressCmd's real
 // handlers (progress.go), the same stub-then-swap pattern `hook`/
@@ -208,7 +208,7 @@ func newProgressShowStubCmd() *cobra.Command {
 }
 
 // newStateCmd builds `auspex state show` (StateCheckpointService.LoadLatest).
-// Stub: depends on internal/app/wiring, not built this wave.
+// Stub: depends on internal/app/wiring, not built this phase.
 func newStateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "state",
@@ -226,7 +226,7 @@ func newStateCmd() *cobra.Command {
 }
 
 // newPauseCmd builds `auspex pause {request,cancel}` (GracefulPauseService).
-// Stub: Part A (internal/pause/**) is not this role's Wave-3 scope; this
+// Stub: Part A (internal/pause/**) is not this role's Phase-3 scope; this
 // command surface exists so the CLI tree shape is complete, but every
 // handler defers to a service that does not exist yet.
 func newPauseCmd() *cobra.Command {
@@ -256,7 +256,7 @@ func newPauseCmd() *cobra.Command {
 }
 
 // newResumeCmd builds `auspex resume` (GracefulPauseService.Resume).
-// Stub: depends on Part A's pause state machine, not built this wave.
+// Stub: depends on Part A's pause state machine, not built this phase.
 func newResumeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "resume",
@@ -270,7 +270,7 @@ func newResumeCmd() *cobra.Command {
 
 // newSchedulerCmd builds `auspex scheduler run-once` (durable wake
 // scheduler, Part A). Stub: depends on internal/scheduler, not this
-// role's Wave-3 scope.
+// role's Phase-3 scope.
 func newSchedulerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scheduler",
@@ -317,7 +317,7 @@ func newDaemonCmd() *cobra.Command {
 
 // newStatusCmd builds `auspex status`. Stub: depends on
 // internal/app/wiring to summarize session/pause/quota state, not built
-// this wave.
+// this phase.
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -440,7 +440,7 @@ func newWatchCmd() *cobra.Command {
 
 // newDoctorCmd builds `auspex doctor`. Stub: environment/provider
 // capability diagnostics depend on ProviderDetector/ProviderCapabilityReader
-// wiring, not built this wave.
+// wiring, not built this phase.
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",

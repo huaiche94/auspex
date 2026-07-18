@@ -67,7 +67,7 @@ func TestRegistry_UnknownKind_ReturnsFailedResultNotError(t *testing.T) {
 
 // TestRegistry_ValidMarkdownSection_CompletesValidation exercises the DAG's
 // required "valid Markdown section completes and checkpoints" test, scoped
-// per this wave's brief to "validator returns success" (the full completion
+// per this phase's brief to "validator returns success" (the full completion
 // protocol that would create a State Checkpoint is checkpoint-a04's job):
 // running every relevant built-in validator against the real, valid ADD
 // fixture all report success together, as CompleteNode would require before

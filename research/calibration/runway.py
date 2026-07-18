@@ -36,7 +36,7 @@ Go-side semantics mirrored (read, never modified):
     a score, not a probability, and this module never calls it one
     (Constitution §7 / AGENTS.md: uncalibrated risk scores are not
     probabilities). `hit_probability` is NULL by construction this
-    wave (populated only once `calibrated=1`).
+    phase (populated only once `calibrated=1`).
   * `burn_rate_p50`/`burn_rate_p90` are percent-of-quota per MINUTE
     (ADD §15.4's Δused_percent/Δminutes); NULL means no burn rate was
     computable (cold start) — never zero.
@@ -152,7 +152,7 @@ class Forecast:
     limit_id: str
     horizon_seconds: int
     risk_score: float  # UNCALIBRATED score (never a probability)
-    hit_probability: Optional[float]  # NULL this wave (calibrated=0)
+    hit_probability: Optional[float]  # NULL this phase (calibrated=0)
     calibrated: bool
     confidence: str
     current_used_percent: Optional[float]

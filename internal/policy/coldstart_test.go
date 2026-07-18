@@ -22,7 +22,7 @@ import (
 // PAUSE_AND_AUTO_RESUME, BLOCK) is exercised at least once with an
 // uncalibrated upstream input, asserting Probability == nil in every
 // case. SPLIT and PAUSE_AND_AUTO_RESUME are not reachable through this
-// wave's Decide implementation (agents/predictor.md's initial policy
+// phase's Decide implementation (agents/predictor.md's initial policy
 // suggestion list does not name a SPLIT/PAUSE_AND_AUTO_RESUME trigger
 // condition for predictor-08 specifically — SPLIT is deferred, and
 // PAUSE_AND_AUTO_RESUME is runtime's Graceful-Pause-with-authorization
@@ -30,7 +30,7 @@ import (
 // package); both are still covered by a direct construction test proving
 // the *type itself* cannot express a probability claim on an
 // uncalibrated Decision, so the invariant holds structurally even for
-// actions this wave's Decide never emits.
+// actions this phase's Decide never emits.
 
 // assertNeverAProbability is the single shared assertion this whole file
 // is built around: given a Decision, if nothing about its inputs was
@@ -107,7 +107,7 @@ func TestColdStartLiteralContract(t *testing.T) {
 }
 
 // TestColdStartAcrossAllReachableBands sweeps every risk band this
-// wave's Decide can reach, all with Calibrated=false inputs, asserting
+// phase's Decide can reach, all with Calibrated=false inputs, asserting
 // Probability is nil in every band — not just one representative case.
 // This directly targets the DAG's risk note: "must never label an
 // uncalibrated score a probability" is a claim about EVERY decision this
@@ -287,7 +287,7 @@ func TestColdStartArmedButNotYetConfirmedRunwayIsCalibratedAndMayReportProbabili
 // Decision literal for each of the eight frozen app.PolicyAction values
 // directly (bypassing Decide) to prove the *type* itself never forces a
 // non-nil Probability — i.e. the invariant is enforceable for
-// SPLIT/PAUSE_AND_AUTO_RESUME too, even though this wave's Decide
+// SPLIT/PAUSE_AND_AUTO_RESUME too, even though this phase's Decide
 // doesn't emit them, so a future node adding those trigger conditions
 // inherits a type that already supports the discipline rather than
 // having to retrofit it.

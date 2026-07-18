@@ -30,7 +30,7 @@
 -- structural transform of the already-archived token_p50/p90, so exporting
 -- it would add no independent calibration signal and open no
 -- unlabeled-history hole (#11 can reconstruct it from the total). The
--- export extension is deferred to the wave where a calibrated forecaster
+-- export extension is deferred to the phase where a calibrated forecaster
 -- estimates the axes INDEPENDENTLY — capture-before-model (D-10/D-12).
 ALTER TABLE predictions ADD COLUMN token_input_p50 INTEGER;
 ALTER TABLE predictions ADD COLUMN token_input_p90 INTEGER;

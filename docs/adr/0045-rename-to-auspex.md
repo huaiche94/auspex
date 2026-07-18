@@ -65,5 +65,5 @@ Scope of the rename executed with this ADR:
   (auspex.tools / getauspex.dev), since auspex.dev is registered.
 - The statusline glyph prefix changes `pf✈` → `ax✈` (the bird stays —
   auspicium was literally bird-watching).
-- Historical artifacts (issue titles, wave-era progress docs in
+- Historical artifacts (issue titles, phase-era progress docs in
   `docs/archive/`, commit messages) intentionally still say Preflight.

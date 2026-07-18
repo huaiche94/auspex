@@ -3,7 +3,7 @@
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
 Each file here is a design note for work the repository owner has
-accepted but that is not (fully) scheduled into an active wave. A
+accepted but that is not (fully) scheduled into an active phase. A
 backlog note is tied to a tracking GitHub issue, records the audit that
 motivated it, and carries its own phased TODO — so scheduling later
 never has to reconstruct the reasoning. Notes follow the same grounding

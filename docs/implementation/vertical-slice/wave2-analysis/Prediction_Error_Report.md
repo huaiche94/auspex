@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.1 — Post Wave 2 Analysis |
-| Scope | Every completed node, Bootstrap through Wave 2 (19 executed units) |
+| Phase | 3.1 — Post Phase 2 Analysis |
+| Scope | Every completed node, Bootstrap through Phase 2 (19 executed units) |
 | Status | Analysis only. No implementation, DAG, or contract changes. |
 | Generated | 2026-07-12 |
 
@@ -33,17 +33,17 @@ Two structural facts constrain this entire report and recur in every row:
    proxy would be a fabrication by relabeling. `actual_files_read` is
    `Unknown` for every node.
 
-Actual token usage is only `Observed` at **teammate-per-wave granularity**
+Actual token usage is only `Observed` at **teammate-per-phase granularity**
 (one number per background-agent invocation, covering every node that
 invocation completed), never at per-node granularity, because the
 sub-agents did not self-report a token breakdown per node and the harness
-does not expose one. Where a node shares a teammate-wave token total with
+does not expose one. Where a node shares a teammate-phase token total with
 sibling nodes, this is stated explicitly rather than divided evenly and
 presented as if it were per-node data.
 
 ## 1. Node-by-node comparison
 
-### Bootstrap (lead-executed, not a Wave)
+### Bootstrap (lead-executed, not a Phase)
 
 | Metric | Estimated | Actual | Provenance (est. / act.) | Abs. error | % error |
 |---|---|---|---|---|---|
@@ -73,7 +73,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 180 | 489 insertions | Observed / Observed | 309 | 171.7% |
 | Duration | Unknown | ~20 min (self-reported) | Unknown / Estimated | — | — |
-| Token usage | Unknown | Shared with foundation-03/04/05/09 — this teammate's Wave 2 invocation totaled 191,727 across all 5 nodes; no per-node split exists | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared with foundation-03/04/05/09 — this teammate's Phase 2 invocation totaled 191,727 across all 5 nodes; no per-node split exists | Unknown / Unknown (per-node) | — | — |
 | Complexity | S | S (held) | Observed / Derived | 0 | 0% |
 
 ### foundation-03
@@ -84,7 +84,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 250 | 563 insertions | Observed / Observed | 313 | 125.2% |
 | Duration | Unknown | ~25 min (self-reported) | Unknown / Estimated | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | S–M (self-assessed as simpler than M) | Observed / Derived | — | — |
 
 ### foundation-04 (reduced scope: `internal/lock` only)
@@ -95,7 +95,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 150 (original full-scope estimate — **not comparable**) | 370 insertions | Observed (stale) / Observed | N/A | N/A |
 | Duration | Unknown | ~20 min (self-reported) | Unknown / Estimated | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
 | Complexity | S (reduced, no distinct re-estimate issued) | S (held) | Derived / Derived | 0 | 0% |
 
 **Note:** the DAG's foundation-04 row was never re-issued with a reduced-scope estimate after `clock`/`idgen` were pulled forward into `foundation-01`. Comparing the stale 6-files/150-LOC full-scope number against the actual reduced-scope (`internal/lock`-only) output would compute a misleading error and is deliberately not reported as a percentage. This gap is itself a finding — see §2.
@@ -107,8 +107,8 @@ presented as if it were per-node data.
 | Files changed | 5 | 6 (`git show --stat b0ef5a0`) | Observed / Observed | 1 | 20.0% |
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 350 | 1,138 insertions | Observed / Observed | 788 | 225.1% |
-| Duration | Unknown | ~45 min (self-reported; longest node this wave) | Unknown / Estimated | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
+| Duration | Unknown | ~45 min (self-reported; longest node this phase) | Unknown / Estimated | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held; "High risk flag earned its keep," per self-assessment, independently corroborated by lead review of pragma tests) | Observed / Derived | 0 | 0% |
 
 ### foundation-09
@@ -119,18 +119,18 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 150 | 195 insertions, 18 deletions | Observed / Observed | 45 (insertions only) | 30.0% |
 | Duration | Unknown | ~35 min (self-reported) | Unknown / Estimated | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see foundation-02) | Unknown / Unknown (per-node) | — | — |
 | Complexity | XS | S (held slightly above XS) | Observed / Derived | — | — |
 
 ### claude-provider-01
 
 | Metric | Estimated | Actual | Provenance | Abs. error | % error |
 |---|---|---|---|---|---|
-| Files changed | 8 | 7 (self-reported breakdown, verified by lead against actual worktree contents during Wave 1 review; the underlying commit `69462cc` bundles all of -01/-02/-03 together, see §0 combined-commit note) | Observed / Observed (verified) | 1 | 12.5% |
+| Files changed | 8 | 7 (self-reported breakdown, verified by lead against actual worktree contents during Phase 1 review; the underlying commit `69462cc` bundles all of -01/-02/-03 together, see §0 combined-commit note) | Observed / Observed (verified) | 1 | 12.5% |
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 300 | Not separable — part of a 1,558-insertion combined commit across 29 files for -01/-02/-03; no per-node LOC split exists | Observed / Unknown (per-node) | — | — |
 | Duration | Unknown | Unknown ("not tracked," per lessons-learned) | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 1 total — see §2 combined-invocation caveat below | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 1 total — see §2 combined-invocation caveat below | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held) | Observed / Derived | 0 | 0% |
 
 ### claude-provider-02
@@ -141,7 +141,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 300 | Not separable (see claude-provider-01) | Observed / Unknown (per-node) | — | — |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 1 total | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 1 total | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held) | Observed / Derived | 0 | 0% |
 
 ### claude-provider-03
@@ -152,7 +152,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 250 | Not separable (see claude-provider-01) | Observed / Unknown (per-node) | — | — |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 1 total | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 1 total | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held, "slightly more iteration") | Observed / Derived | 0 | 0% |
 
 ### claude-provider-04
@@ -163,7 +163,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 400 | 689 insertions (`git show --stat d4d2869`) | Observed / Observed | 289 | 72.3% |
 | Duration | Unknown | Unknown ("one continuous pass," no wall-clock given) | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 2 total — this teammate's invocation totaled 107,101 across -04 and -06; no per-node split exists | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total — this teammate's invocation totaled 107,101 across -04 and -06; no per-node split exists | Unknown / Unknown (per-node) | — | — |
 | Complexity | L | M–L (self-assessed as closer to M once the design question resolved) | Observed / Derived | — | — |
 
 ### claude-provider-06
@@ -174,7 +174,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 100 | 164 insertions | Observed / Observed | 64 | 64.0% |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see claude-provider-04) | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see claude-provider-04) | Unknown / Unknown (per-node) | — | — |
 | Complexity | S | S (held) | Observed / Derived | 0 | 0% |
 
 ### checkpoint-b02
@@ -196,7 +196,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 250 | 876 insertions, 1 deletion | Observed / Observed | 626 | 250.4% |
 | Duration | Unknown | ~20 min (self-reported) | Unknown / Estimated | — | — |
-| Token usage | Unknown | 79,613 (harness-observed, this teammate's single-node Wave 2 invocation) | Unknown / Observed | — | — |
+| Token usage | Unknown | 79,613 (harness-observed, this teammate's single-node Phase 2 invocation) | Unknown / Observed | — | — |
 | Complexity | M | M (held) | Observed / Derived | 0 | 0% |
 
 ### predictor-02
@@ -207,7 +207,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 150 | 409 insertions | Observed / Observed | 259 | 172.7% |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 1 total — see §2 combined-invocation caveat | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 1 total — see §2 combined-invocation caveat | Unknown / Unknown (per-node) | — | — |
 | Complexity | S | S (held) | Observed / Derived | 0 | 0% |
 
 ### predictor-03
@@ -218,7 +218,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 300 | 409 insertions | Observed / Observed | 109 | 36.3% |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 1 total | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 1 total | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held, "slightly lighter than expected") | Observed / Derived | 0 | 0% |
 
 ### predictor-04
@@ -236,11 +236,11 @@ presented as if it were per-node data.
 
 | Metric | Estimated | Actual | Provenance | Abs. error | % error |
 |---|---|---|---|---|---|
-| Files changed | 4 | 4 (self-reported: `doc.go, coldstart.go, estimator.go, estimator_test.go`; not independently re-diffed per-node since predictor-05/06 share one lead-side diff against the Wave 1 tip) | Observed (est.) / Estimated (self-reported, not independently split by lead) | 0 | 0% |
+| Files changed | 4 | 4 (self-reported: `doc.go, coldstart.go, estimator.go, estimator_test.go`; not independently re-diffed per-node since predictor-05/06 share one lead-side diff against the Phase 1 tip) | Observed (est.) / Estimated (self-reported, not independently split by lead) | 0 | 0% |
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 300 | Not separable — predictor-05 and predictor-06 together total 1,424 insertions across 8 files (`git diff --stat 4f96d7f..HEAD` on `vertical-slice/predictor`); no independently-verified per-node split exists | Observed / Unknown (per-node) | — | — |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 2 total — this teammate's invocation totaled 138,172 across -05 and -06; no per-node split exists | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total — this teammate's invocation totaled 138,172 across -05 and -06; no per-node split exists | Unknown / Unknown (per-node) | — | — |
 | Complexity | M | M (held) | Observed / Derived | 0 | 0% |
 
 ### predictor-06
@@ -251,7 +251,7 @@ presented as if it were per-node data.
 | Files read | Unknown | Unknown | Unknown / Unknown | — | — |
 | LOC | 350 | Not separable (see predictor-05) | Observed / Unknown (per-node) | — | — |
 | Duration | Unknown | Unknown | Unknown / Unknown | — | — |
-| Token usage | Unknown | Shared Wave 2 total (see predictor-05) | Unknown / Unknown (per-node) | — | — |
+| Token usage | Unknown | Shared Phase 2 total (see predictor-05) | Unknown / Unknown (per-node) | — | — |
 | Complexity | L | M (self-assessed as lighter than L) | Observed / Derived | — | — |
 
 ## 2. Aggregate statistics (files and LOC only — the only metrics with complete paired data)

@@ -33,7 +33,7 @@ payload fixes landed (acceptance proof:
 `internal/integrationtest/forecast_prompt_conditioned_test.go`, which asserts P50 now differs by
 task class in the direction the §14.6 multipliers imply), but until a deployment accumulates
 >= 8 similar samples the forecast still responds to the prompt only through the class multiplier
-and the §15.2 multipliers over these constants. Every result this wave is `Calibrated=false`
+and the §15.2 multipliers over these constants. Every result this phase is `Calibrated=false`
 with Confidence at most medium — never a probability (Constitution §7 rule 7).
 
 Output feeds [`quota/`](../quota/README.md) (delta scaling) and

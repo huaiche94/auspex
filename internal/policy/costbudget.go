@@ -114,7 +114,7 @@ func applyTurnCostBudget(base Decision, req DecideRequest, cfg Config) Decision 
 
 	return Decision{
 		Action:               tierAction,
-		Calibrated:           false, // an estimated cost range is uncalibrated by construction this wave
+		Calibrated:           false, // an estimated cost range is uncalibrated by construction this phase
 		Confidence:           base.Confidence,
 		RiskScore:            base.RiskScore,
 		Probability:          nil, // a budget comparison is never a probability (Constitution principle #2)

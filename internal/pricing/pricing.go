@@ -22,7 +22,7 @@
 // Constitution principle #2's spirit: an uncalibrated number is never
 // presented as more certain than it is).
 //
-// # Config override: documented follow-up, not built this wave
+// # Config override: documented follow-up, not built this phase
 //
 // ADR-043 calls the table "config-overridable". internal/config today
 // exposes only a merged Raw map with no production loader wired into
@@ -33,7 +33,7 @@
 // a later milestone needs but this one doesn't). The programmatic seam
 // already exists (NewTable merges caller overrides over the defaults);
 // binding it to a `pricing:` YAML section is the documented follow-up for
-// whichever wave wires config loading into the binary.
+// whichever phase wires config loading into the binary.
 package pricing
 
 import (
@@ -249,7 +249,7 @@ type CostBreakdown struct {
 // multipliers above (one source for the one published relationship). This is
 // the explicit-cache formula only; the implicit-cache variant (a GPT-5-style
 // single 0.2×-input class with no separate creation) is a sibling method for
-// whichever wave lands the Codex adapter (D-02), not built here.
+// whichever phase lands the Codex adapter (D-02), not built here.
 //
 // ok=false when any token count is negative (unknown is not zero — a caller
 // with an unmeasured class must not pass a fabricated 0 and treat the result

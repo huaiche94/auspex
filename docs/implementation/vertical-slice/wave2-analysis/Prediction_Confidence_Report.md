@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.8 — Post Wave 2 Analysis |
+| Phase | 3.8 — Post Phase 2 Analysis |
 | Derived from | `Feature_Registry.md` (canonical). This document adds a confidence-sorted view and training-suitability recommendations; it does not restate descriptions, sources, or operational metadata already in the registry. |
 | Status | Analysis only |
 
@@ -12,7 +12,7 @@
 
 These are Observed, not predicted, and safe to trust as-is.
 
-| Metric | Value (this wave) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
+| Metric | Value (this phase) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
 |---|---|---|---|---|---|---|---|---|---|
 | `ByteLength`/`RuneCount`/`LineCount` | Per-prompt, computed | Observed | 1.00 | `internal/features/prompt.go`, verified | Per turn | No | Yes | Yes | Yes |
 | `Fingerprint.ComputeDigest()` | Per-repo-state, computed | Observed | 1.00 | `internal/gitx`, independently verified for determinism | Per checkpoint event | Yes | N/A (not a predictor input) | N/A | N/A |
@@ -34,19 +34,19 @@ usage data," which is false (see §2).
 Real signal exists but is heuristic, unverified against live reality, or
 both.
 
-| Metric | Value (this wave) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
+| Metric | Value (this phase) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
 |---|---|---|---|---|---|---|---|---|---|
 | `ExplicitPathCount` | Per-prompt | Observed (heuristic) | 0.60 | `internal/features/prompt.go` | Per turn | No | Yes | Yes | Yes |
 | Verb-presence flags (5) | Per-prompt | Observed (keyword match) | 0.60 | same; self-flagged false-positive risk in `Wave2_Lessons.md` §1 issue #5 | Per turn | No | Yes | Yes | Yes |
 | Keyword-indicator flags (5) | Per-prompt | Observed (keyword match) | 0.60 | same | Per turn | No | Yes | Yes | Yes |
 | `ScopeEstimate.RequiresUnitTests/RequiresIntegration/CrossProject/MigrationLikely/SecuritySensitive` | Per-turn prediction | Estimated | 0.50-0.60 | `predictor-05`, verified for structural correctness, not accuracy | Per turn | No | Yes | Yes | Yes |
 | `ApproxTokens` | Per-prompt | Estimated | 0.30 (ADD §14.7 mandates `confidence=low`) | `internal/features/prompt.go` | Per turn | No | Yes | Yes | Low weight (superseded once real usage exists) |
-| `RunwayForecast.RiskScore` | Per-observation | Estimated (uncalibrated fallback) | Variable, always uncalibrated this wave | `internal/predictor/runway`, verified via 300-combination sweep | Continuous during active turn | No | Yes | Yes | Low weight (not a probability until calibrated) |
+| `RunwayForecast.RiskScore` | Per-observation | Estimated (uncalibrated fallback) | Variable, always uncalibrated this phase | `internal/predictor/runway`, verified via 300-combination sweep | Continuous during active turn | No | Yes | Yes | Low weight (not a probability until calibrated) |
 | `Fingerprint.Entries` (status entries) | Per-repo-state | Observed | 1.00 for the parse itself, but not listed in §1 because its *use* in checkpoint identity is not a predictor-confidence question | Observed | Per checkpoint event | Yes | N/A | N/A | N/A |
 
 ## 3. Low-confidence features (confidence < 0.30, but not zero — some signal exists)
 
-| Metric | Value (this wave) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
+| Metric | Value (this phase) | Provenance | Confidence | Evidence source | Update frequency | Ground Truth | Rule | Statistical | ML |
 |---|---|---|---|---|---|---|---|---|---|
 | `ScopeEstimate.FilesReadP50/P80/P90` | Cold-start default or session-blend | Estimated | Low (never ground-truthed, per `Feature_Gap_Report.md` §1.1) | `predictor-05` | Per turn | No | Yes | Yes | Yes |
 | `ScopeEstimate.FilesChangedP50/P80/P90` | Cold-start default or session-blend | Estimated | Low, for the same reason — `RepositoryFeatures` isn't wired | `predictor-05` | Per turn | No | Yes | Yes | Yes |

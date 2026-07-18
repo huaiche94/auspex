@@ -27,5 +27,5 @@ approval gates it defines.
   the reusable generalization.
 - The execution the methodology was distilled from is recorded in
   [`../implementation/vertical-slice/`](../implementation/vertical-slice/README.md);
-  its Phase 6 ("Post-Wave Analysis") corresponds to
+  its Phase 6 ("Post-Phase Analysis") corresponds to
   [`wave2-analysis/`](../implementation/vertical-slice/wave2-analysis/README.md).

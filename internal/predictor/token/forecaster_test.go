@@ -130,7 +130,7 @@ func assertSplitSane(t *testing.T, label string, tf domain.TokenForecast) {
 		t.Fatalf("%s: input P50 + output P50 = %d does not partition total P50 = %d", label, sum, tf.TokensP50)
 	}
 	// The whole point of the split: the input interval must be wider than
-	// the output interval. Compare absolute widths (equal centers this wave)
+	// the output interval. Compare absolute widths (equal centers this phase)
 	// so the check holds even if a future share makes the centers differ.
 	inWidth, outWidth := inP90-inP50, outP90-outP50
 	if tf.TokensP50 > 0 && inWidth <= outWidth {
@@ -236,7 +236,7 @@ func TestTokenForecastMonotonicity(t *testing.T) {
 }
 
 func TestTokenForecastNeverCalibratedThisWave(t *testing.T) {
-	// Cold-start-only contract for this wave: no durable historical
+	// Cold-start-only contract for this phase: no durable historical
 	// telemetry store exists yet (agents/predictor.md cold-start
 	// contract), so Calibrated must always be false and Confidence must
 	// never exceed ConfidenceMedium (reached only via the >=8-sample
@@ -538,7 +538,7 @@ func TestTokenForecastInputOutputSplit(t *testing.T) {
 			}
 			// The split is uncalibrated: it must never claim calibration.
 			if got.Calibrated {
-				t.Fatalf("split forecast must not be calibrated this wave")
+				t.Fatalf("split forecast must not be calibrated this phase")
 			}
 		})
 	}

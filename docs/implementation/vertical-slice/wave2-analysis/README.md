@@ -1,10 +1,10 @@
-# docs/implementation/vertical-slice/wave2-analysis/ — the mid-build analysis round that re-planned Wave 3+
+# docs/implementation/vertical-slice/wave2-analysis/ — the mid-build analysis round that re-planned Phase 3+
 
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
-After Wave 2 integrated (19 executed nodes: Bootstrap + Waves 1–2), the
+After Phase 2 integrated (19 executed nodes: Bootstrap + Phases 1–2), the
 build paused for a ten-part analysis phase (numbered 3.1–3.10) before
-any Wave 3 assignment. Its ground rule was "Unknown is preferred over
+any Phase 3 assignment. Its ground rule was "Unknown is preferred over
 invented": several reports exist precisely to state that data was absent
 rather than to fill the requested format with numbers. Reports are
 analysis/recommendation only — none modified implementation.
@@ -21,11 +21,11 @@ analysis/recommendation only — none modified implementation.
 | [`Feature_Gap_Report.md`](Feature_Gap_Report.md) | 3.7 | Companion to the registry: why each Unknown/fixture-scoped feature gap exists, impact, closing approach, ranked. |
 | [`Prediction_Confidence_Report.md`](Prediction_Confidence_Report.md) | 3.8 | Confidence-sorted view of the registry plus training-suitability recommendations. |
 | [`ADR_Recommendations.md`](ADR_Recommendations.md) | 3.9 | Contract-level proposals ("proposals only" at the time; REC-01 was later accepted as [ADR-044](../../../adr/0044-frozen-feature-lookup-port.md)). |
-| [`Wave3_Recommendation.md`](Wave3_Recommendation.md) | 3.10 | The unlocked-node analysis and proposed Wave 3 assignment, explicitly awaiting owner approval. |
+| [`Wave3_Recommendation.md`](Wave3_Recommendation.md) | 3.10 | The unlocked-node analysis and proposed Phase 3 assignment, explicitly awaiting owner approval. |
 
 ## Neighbors
 
-The wave-by-wave record these reports fed back into is
+The phase-by-phase record these reports fed back into is
 [`../README.md`](../README.md); the accepted decisions they produced are
 in [`../../../adr/`](../../../adr/README.md); the deferred-with-data
 discipline they established carries on in

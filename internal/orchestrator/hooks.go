@@ -9,7 +9,7 @@
 // (internal/providers/claude.ParseStatusLine, internal/hooks/claude.Parse*)
 // and normalizing that struct into the frozen pkg/protocol/v1.Event
 // envelope (internal/telemetry/claude.Normalizer) are both
-// claude-provider-04's real, already-merged work (Wave 2) — this package
+// claude-provider-04's real, already-merged work (Phase 2) — this package
 // calls them directly, not a fake, per the task brief ("claude-provider-04's
 // normalizer IS already integrated"). What this node adds is the missing
 // middle/outer layer: reading stdin, invoking parse+normalize, optionally
@@ -265,7 +265,7 @@ type StatusLineResult struct {
 // §22.6, Auspex's wrapper is expected to ultimately compose with
 // whatever status-line command was previously configured; that installer/
 // compose mechanism is a separate, not-yet-built concern (no
-// internal/statusline composition package exists this wave) — this
+// internal/statusline composition package exists this phase) — this
 // handler's job stops at normalize+persist, matching what claude-
 // provider-04 and this node's own migration/storage dependencies actually
 // support today. Callers that need the composed text output build it on

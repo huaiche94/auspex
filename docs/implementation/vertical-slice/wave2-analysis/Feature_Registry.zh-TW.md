@@ -6,8 +6,8 @@
 
 | 欄位 | 值 |
 |---|---|
-| 階段 | 3.7 — Wave 2 後分析 |
-| 狀態 | **建立當下為權威版本（Canonical，Phase 3.7，Wave 2 分析）——現為某一時點的快照。** 撰寫當時，本文件被宣告為 Auspex 預測器管線所使用或將使用之每一項特徵的唯一真實來源，該階段的預測器工作也透過它參照特徵（此規則類比於憲章條款，由儲存庫負責人於當時所述）。由於它位於已凍結的 `wave2-analysis/` 目錄，**在此不再持續維護**：日後的真實來源為程式碼（`internal/features/**`、`internal/domain/**`）與 ADD 的 §14／§15／§16 特徵清單——也就是下方每一筆項目原本即可追溯到的那兩個來源。請將它當作 Wave 2 當時的參照來閱讀，並以那些活的來源加以核對。 |
+| 階段 | 3.7 — Phase 2 後分析 |
+| 狀態 | **建立當下為權威版本（Canonical，Phase 3.7，Phase 2 分析）——現為某一時點的快照。** 撰寫當時，本文件被宣告為 Auspex 預測器管線所使用或將使用之每一項特徵的唯一真實來源，該階段的預測器工作也透過它參照特徵（此規則類比於憲章條款，由儲存庫負責人於當時所述）。由於它位於已凍結的 `wave2-analysis/` 目錄，**在此不再持續維護**：日後的真實來源為程式碼（`internal/features/**`、`internal/domain/**`）與 ADD 的 §14／§15／§16 特徵清單——也就是下方每一筆項目原本即可追溯到的那兩個來源。請將它當作 Phase 2 當時的參照來閱讀，並以那些活的來源加以核對。 |
 | 方法 | 以下每一項特徵均以下列兩者之一為根據：(a) 真實、已驗證的程式碼（`internal/features/**`、`internal/domain/**`），或 (b) ADD 本身已明確指定的 §14/§15/§16 特徵清單。本登錄冊不會憑空杜撰任何無法追溯至上述兩個來源的特徵。 |
 
 ## 如何閱讀本登錄冊
@@ -20,7 +20,7 @@
 
 ## 1. 提示詞特徵
 
-來源：`internal/features/prompt.go`（`PromptFeatures`，真實存在、於 Wave 1 建置、已驗證）。這些欄位皆無真實資料（ground truth）可言——每個欄位本身都是關於提示詞的衍生訊號，而非世界能獨立確認或否認的事實。
+來源：`internal/features/prompt.go`（`PromptFeatures`，真實存在、於 Phase 1 建置、已驗證）。這些欄位皆無真實資料（ground truth）可言——每個欄位本身都是關於提示詞的衍生訊號，而非世界能獨立確認或否認的事實。
 
 ### 1a. 身分與來源
 
@@ -70,7 +70,7 @@
 | `IsMonorepo` / `IsWorktree` | 儲存庫結構旗標 | bool | `internal/gitx` resolver（已有真實程式碼）**但尚未串接** | 可用（就底層而言），未知（就已串接特徵而言） | 以已串接的狀態而言為 0.00 | 否 | 未知（串接缺口） | 低 |
 | `RecentChangedPathCount` | 近期異動路徑數量 | int | （已宣告，尚未串接） | 未知 | 0.00 | 否 | 未知 | 中 |
 
-**§0 但書，重要：** 這是整份登錄冊中**串接缺口而非資料缺口**最清楚的案例。`internal/gitx`（Wave 1/2，`checkpoint-b02`／`b03`）已經能計算未提交檔案／行數、worktree 對比 main 的偵測，以及完整的 status／numstat 解析——這些都是真實、已測試、屬於已觀測品質的資料。但目前沒有任何程式碼路徑會把這些資料餵入已填值的 `RepositoryFeatures`；根據本階段自身的驗證（見上方程式碼閱讀），`predictor-05` 的 `FeatureSource.Repository()` 方法目前只是一個介面，背後只有一個測試用假物件（fake）。補上這個缺口屬於串接工作，而非新資料蒐集工作——這一點已在 `Feature_Gap_Report.md` 與 `ADR_Recommendations.md` 中明確標記。
+**§0 但書，重要：** 這是整份登錄冊中**串接缺口而非資料缺口**最清楚的案例。`internal/gitx`（Phase 1/2，`checkpoint-b02`／`b03`）已經能計算未提交檔案／行數、worktree 對比 main 的偵測，以及完整的 status／numstat 解析——這些都是真實、已測試、屬於已觀測品質的資料。但目前沒有任何程式碼路徑會把這些資料餵入已填值的 `RepositoryFeatures`；根據本階段自身的驗證（見上方程式碼閱讀），`predictor-05` 的 `FeatureSource.Repository()` 方法目前只是一個介面，背後只有一個測試用假物件（fake）。補上這個缺口屬於串接工作，而非新資料蒐集工作——這一點已在 `Feature_Gap_Report.md` 與 `ADR_Recommendations.md` 中明確標記。
 
 ### 2b. 適用性與維運
 
@@ -120,7 +120,7 @@
 | `QuotaObservation.ResetsAt` | 配額視窗重設時間戳記 | `*time.Time` | 同上 | 可用（僅限固定資料範圍） | 與上述相同的但書 | 否 | 可用（僅限固定資料範圍） | 高 |
 | `ContextObservation.{UsedTokens,WindowTokens,UsedPercent}` | 上下文視窗使用量 | `*int64`/`*int64`/`*float64` | 同上 | 可用（僅限固定資料範圍） | 與上述相同的但書 | 否 | 可用（僅限固定資料範圍） | 極高 |
 
-**「Available（僅限固定資料範圍）」這個型態貫穿本節全部內容，值得在此明確且不含糊地說明一次：** `claude-provider` 的剖析器與正規化器是真實、已測試、可運作的程式碼——已由負責人（lead）在 Wave 1／2 審查期間獨立驗證過，包括隱私與冪等性（idempotency）測試。但它們通過的每一項測試，都是針對手工建構的 JSON 固定資料，而不是真實 Claude Code session 所發出的任何一個位元組。本登錄冊刻意不將這些資料稱為未加限定的「Available」——即 §2 節 `internal/gitx` 儲存庫資料所使用的那種無條件的「可用」，因為固定資料只能證明*剖析器*可以運作，並不能證明該*特徵*曾在真實環境中被觀測到。
+**「Available（僅限固定資料範圍）」這個型態貫穿本節全部內容，值得在此明確且不含糊地說明一次：** `claude-provider` 的剖析器與正規化器是真實、已測試、可運作的程式碼——已由負責人（lead）在 Phase 1／2 審查期間獨立驗證過，包括隱私與冪等性（idempotency）測試。但它們通過的每一項測試，都是針對手工建構的 JSON 固定資料，而不是真實 Claude Code session 所發出的任何一個位元組。本登錄冊刻意不將這些資料稱為未加限定的「Available」——即 §2 節 `internal/gitx` 儲存庫資料所使用的那種無條件的「可用」，因為固定資料只能證明*剖析器*可以運作，並不能證明該*特徵*曾在真實環境中被觀測到。
 
 ### 4b. 適用性與維運
 
@@ -141,13 +141,13 @@
 
 | 特徵 | 說明 | 資料型別／單位 | 來源 | 出處 | 信賴度 | 真實資料 | 目前可用性 | 重要性 |
 |---|---|---|---|---|---|---|---|---|
-| `ScopeEstimate.FilesReadP50/P80/P90` | 預測的已讀取檔案數分位數 | `*int64` ×3 | `RuleScopeEstimator`（真實存在，Wave 2） | 估計 | 冷啟動預設值或工作階段混合值，從未有真實資料驗證過 | 否——這是一項*預測*，而非觀測結果 | 估計 | 高 |
+| `ScopeEstimate.FilesReadP50/P80/P90` | 預測的已讀取檔案數分位數 | `*int64` ×3 | `RuleScopeEstimator`（真實存在，Phase 2） | 估計 | 冷啟動預設值或工作階段混合值，從未有真實資料驗證過 | 否——這是一項*預測*，而非觀測結果 | 估計 | 高 |
 | `ScopeEstimate.FilesChangedP50/P80/P90` | 預測的已變更檔案數分位數 | `*int64` ×3 | 同上 | 估計 | 同上 | 否 | 估計 | 極高 |
 | `ScopeEstimate.LinesChangedP50/P80/P90` | 預測的已變更行數分位數 | `*int64` ×3 | 同上 | 估計 | 同上 | 否 | 估計 | 極高 |
 | `ScopeEstimate.ToolCallsP50/P90`、`VerificationP50/P90`、`RetryLoopsP50/P90`、`DurationP50/P90` | 預測的工具呼叫／驗證／重試／耗時 | `*int64` ×8 | 同上 | 未知 | N/A | 否 | 未知（本階段刻意保持 `nil`——已由 `TestEstimateScopeUnknownFieldsStayNil` 驗證） | 中 |
 | `ScopeEstimate.RequiresUnitTests/RequiresIntegration/CrossProject/MigrationLikely/SecuritySensitive` | 預測的布林訊號 | bool ×5 | 同上 | 估計（源自關鍵字／啟發式推導） | 0.50-0.60 | 否 | 可用（已填值，信賴度低） | 高 |
-| `TokenForecast.TokensP50/P80/P90` | 預測的 token 成本 | int64 ×3 | （尚未建置——`predictor-05b`，已延後至 Wave 2 之後） | 未知 | 0.00 | 否 | 未知 | 極高 |
-| `QuotaForecast.ProjectedQuotaUsedP90` / `ProjectedContextUsedP90` | 推估的配額／上下文使用位置 | `*float64` ×2 | （尚未建置——`predictor-05c`，已延後至 Wave 2 之後） | 未知 | 0.00 | 否 | 未知 | 極高 |
+| `TokenForecast.TokensP50/P80/P90` | 預測的 token 成本 | int64 ×3 | （尚未建置——`predictor-05b`，已延後至 Phase 2 之後） | 未知 | 0.00 | 否 | 未知 | 極高 |
+| `QuotaForecast.ProjectedQuotaUsedP90` / `ProjectedContextUsedP90` | 推估的配額／上下文使用位置 | `*float64` ×2 | （尚未建置——`predictor-05c`，已延後至 Phase 2 之後） | 未知 | 0.00 | 否 | 未知 | 極高 |
 | `RunwayForecast.RiskScore` | 10 分鐘配額危害分數 | float64 | `internal/predictor/runway`（真實存在，`predictor-06`） | 估計（依 ADD §15.7 節採用未校準備援值） | 本階段一律未校準（已由 `TestScoreNeverCalibratedNeverPanics` 驗證） | 否 | 可用（僅有分數，非機率值） | 極高 |
 | `RunwayForecast.HitProbability` | 已校準的 10 分鐘命中機率 | `*float64` | 同上 | 未知 | 0.00（ADR-026／ADD §15.6 節：在通過校準閘門之前，正確地一律保持 `nil`） | 否 | 未知（依設計如此） | 極高 |
 

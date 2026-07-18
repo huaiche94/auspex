@@ -1,7 +1,7 @@
 // store.go: the Go domain-level store for repository_checkpoints
 // (migrations/0030_repository_checkpoints.sql), following the same
 // QuerierFromContext pattern established by internal/telemetry/claude's
-// EventStore and internal/progress's stores in this same wave.
+// EventStore and internal/progress's stores in this same phase.
 package repocheckpoint
 
 import (
@@ -35,7 +35,7 @@ type Row struct {
 
 // ErrNotFound is returned when no repository_checkpoints row matches a
 // lookup, using the frozen domain.Error shape (mirrors
-// internal/progress.ErrNotFound's convention within this same wave).
+// internal/progress.ErrNotFound's convention within this same phase).
 var ErrNotFound = &domain.Error{
 	Code:      domain.ErrCodeNotFound,
 	Message:   "repocheckpoint: no matching row",

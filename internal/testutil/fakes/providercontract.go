@@ -53,7 +53,7 @@
 // t.Run subtest. This mirrors Go's own stdlib convention for reusable
 // contract suites (e.g. testing/fstest.TestFS) applied to this project's
 // own frozen interfaces. Any implementation — FakeTurnInterrupter/
-// FakeSessionResumer (provider.go, this wave) today, or a future real
+// FakeSessionResumer (provider.go, this phase) today, or a future real
 // claude-provider signal-interruption/session-resume adapter (claude-
 // provider's own documented stretch goal, agents/claude-provider.md
 // "Stretch") — runs this exact suite to prove itself compliant, without

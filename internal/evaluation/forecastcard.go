@@ -27,9 +27,9 @@
 //
 // Every rendered surface labels the card "uncalibrated estimate" while
 // Calibrated is false, and ForecastCard.Probability is nil (JSON null)
-// unless a calibrated probability actually exists — which, this wave, it
+// unless a calibrated probability actually exists — which, this phase, it
 // never does: neither migration 0041 nor 0043 persists one, so the field
-// is structurally always nil until a calibration wave lands and persists
+// is structurally always nil until a calibration phase lands and persists
 // it. That is the "cold-start emits probability: null" rule made
 // load-bearing in the type, not just in prose.
 package evaluation
@@ -139,7 +139,7 @@ type ForecastCard struct {
 
 	// Probability is nil (JSON null) unless a calibrated probability was
 	// actually produced and persisted — which no migration does this
-	// wave, so it is structurally always nil today. See the file doc
+	// phase, so it is structurally always nil today. See the file doc
 	// comment's Constitution-principle-#2 section.
 	Probability *float64
 
@@ -226,7 +226,7 @@ func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (For
 		ReasonCodes:         reasons,
 		Confidence:          row.Confidence,
 		Calibrated:          row.Calibrated,
-		Probability:         nil, // always nil this wave — see the file doc comment (Constitution principle #2)
+		Probability:         nil, // always nil this phase — see the file doc comment (Constitution principle #2)
 		PolicyAction:        app.PolicyAction(decisionRow.Action),
 	}
 
@@ -420,7 +420,7 @@ type StatusLineInput struct {
 	// exhaustion within the horizon, so a session with headroom stays quiet.
 	// The rendered value is always labeled with a leading "~" (an estimate,
 	// never a probability — Constitution §7); the whole line is uncalibrated
-	// by construction this wave.
+	// by construction this phase.
 	RunwayTimeToLimitSeconds *int64
 }
 
@@ -617,8 +617,8 @@ func policyBadge(active app.PolicyAction) string {
 
 func (c ForecastCard) labelText() string {
 	if c.Calibrated {
-		// No calibrated pipeline exists this wave; kept so the label can
-		// never silently misreport if a calibration wave lands.
+		// No calibrated pipeline exists this phase; kept so the label can
+		// never silently misreport if a calibration phase lands.
 		return "calibrated"
 	}
 	return calibrationLabel

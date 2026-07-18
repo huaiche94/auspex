@@ -36,7 +36,7 @@ this file is a bug to be fixed.
 ## Supported versions
 
 Auspex is currently pre-1.0 (vertical slice under active,
-milestone-gated construction — see `README.md`'s wave roadmap). Until a
+milestone-gated construction — see `README.md`'s phase roadmap). Until a
 1.0 release, security fixes land on `main` only; there is no
 long-term-support branch yet. Once 1.0 ships, this section will be
 updated with a real support matrix per `docs/design/Auspex_ADD.md` §30.6's

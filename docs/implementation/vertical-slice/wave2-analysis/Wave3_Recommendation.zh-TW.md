@@ -1,4 +1,4 @@
-# Wave 3 建議
+# Phase 3 建議
 
 > 🌐 [English](Wave3_Recommendation.md) | 繁體中文
 >
@@ -6,25 +6,25 @@
 
 | 欄位 | 值 |
 |---|---|
-| 階段 | 3.10 — Wave 2 後分析 |
+| 階段 | 3.10 — Phase 2 後分析 |
 | 狀態 | **僅為建議。尚未指派任何隊友。尚未執行。等待核准。** |
-| 假定的前提條件 | 本分析將 Wave 2 的四個分支視為已整合（依 DAG 相依語意），因為它們已個別完成驗證與確認，且依本階段自身的定義屬於不可變更的 Wave 2 紀錄。**它們實際上尚未合併進 `main`** — 該合併本身是一項待辦動作，本文件並不執行、也未獲授權執行該動作。 |
+| 假定的前提條件 | 本分析將 Phase 2 的四個分支視為已整合（依 DAG 相依語意），因為它們已個別完成驗證與確認，且依本階段自身的定義屬於不可變更的 Phase 2 紀錄。**它們實際上尚未合併進 `main`** — 該合併本身是一項待辦動作，本文件並不執行、也未獲授權執行該動作。 |
 | 使用的輸入 | `docs/implementation/vertical-slice/EXECUTION_DAG.md`（已凍結）、`Auspex_Predictor_Design_Supplement.md`、`Prediction_Error_Report.md`、`Missing_Telemetry_Report.md`、`Feature_Registry.md`、`Prediction_Confidence_Report.md`、`Feature_Gap_Report.md`、`ADR_Recommendations.md` |
 
 ## 1. 新解鎖的節點
 
-透過對照每個尚未完成的 DAG 節點的相依清單，與已完成節點的完整集合（Bootstrap + Wave 1 + Wave 2 = 19 個節點）比對後判定。有六個節點屬於新解鎖，或仍未指派但已解鎖：
+透過對照每個尚未完成的 DAG 節點的相依清單，與已完成節點的完整集合（Bootstrap + Phase 1 + Phase 2 = 19 個節點）比對後判定。有六個節點屬於新解鎖，或仍未指派但已解鎖：
 
-| 節點 | 相依項目 | 是否全部滿足？ | 本 wave 新解鎖，或先前已解鎖但從未指派？ |
+| 節點 | 相依項目 | 是否全部滿足？ | 本 phase 新解鎖，或先前已解鎖但從未指派？ |
 |---|---|---|---|
-| `foundation-06` | `foundation-05`、`contract-integrator-01` | 是（`foundation-05` 已於 Wave 2 完成） | 本 wave 新解鎖 |
-| `foundation-08` | `foundation-02`、`foundation-03` | 是（兩者皆已於 Wave 2 完成） | 本 wave 新解鎖 |
-| `predictor-05b` | `predictor-05` | 是（已於 Wave 2 完成） | 本 wave 新解鎖 |
-| `runtime-b01` | `contract-integrator-07`、`foundation-01` | 是（兩者皆已於 **Wave 1** 完成） | 自 Wave 1 結束後便已解鎖 — 因「runtime」從未是 Wave 1／2 四位具名隊友之一，故從未被指派 |
-| `qa-01` | `foundation-09`、`contract-integrator-07` | 是（`foundation-09` 已於 Wave 2 完成） | 本 wave 新解鎖 |
+| `foundation-06` | `foundation-05`、`contract-integrator-01` | 是（`foundation-05` 已於 Phase 2 完成） | 本 phase 新解鎖 |
+| `foundation-08` | `foundation-02`、`foundation-03` | 是（兩者皆已於 Phase 2 完成） | 本 phase 新解鎖 |
+| `predictor-05b` | `predictor-05` | 是（已於 Phase 2 完成） | 本 phase 新解鎖 |
+| `runtime-b01` | `contract-integrator-07`、`foundation-01` | 是（兩者皆已於 **Phase 1** 完成） | 自 Phase 1 結束後便已解鎖 — 因「runtime」從未是 Phase 1／2 四位具名隊友之一，故從未被指派 |
+| `qa-01` | `foundation-09`、`contract-integrator-07` | 是（`foundation-09` 已於 Phase 2 完成） | 本 phase 新解鎖 |
 | `qa-08` | —（無相依項目） | 是（空泛地成立） | 自 Bootstrap 起便已解鎖 — 因「qa」從未是 4 位具名隊友之一，故從未被指派 |
 
-**這件事本身就值得明白指出：** 有兩個節點（`runtime-b01`、`qa-08`）自 Wave 1 結束後便可執行，卻始終未被拿起處理，純粹是因為團隊名冊（4 位隊友：`foundation`、`claude-provider`、`checkpoint`、`predictor`）從未納入 `runtime` 或 `qa`。這不是 DAG 的問題 — 而是儲存庫擁有者在 Wave 1–2 刻意做出的團隊組成決策 — 但 Wave 3 規劃應將其視為一項需要再次明確做出的選擇，而不是應被悄悄修正的疏漏。
+**這件事本身就值得明白指出：** 有兩個節點（`runtime-b01`、`qa-08`）自 Phase 1 結束後便可執行，卻始終未被拿起處理，純粹是因為團隊名冊（4 位隊友：`foundation`、`claude-provider`、`checkpoint`、`predictor`）從未納入 `runtime` 或 `qa`。這不是 DAG 的問題 — 而是儲存庫擁有者在 Phase 1–2 刻意做出的團隊組成決策 — 但 Phase 3 規劃應將其視為一項需要再次明確做出的選擇，而不是應被悄悄修正的疏漏。
 
 ## 2. 仍受阻的節點（為求完整列出 — 並非整個 DAG 的窮舉，僅限直接前緣節點）
 
@@ -57,7 +57,7 @@
 | LOC | DAG 估計：300。校準調整後：約 627（300 × 2.089，`Calibration_Report.md` §2 的平均 LOC 比率） | DAG：已觀察。調整值：推導 | 低至中（樣本數 n=13，100% 呈同一方向但個別分佈範圍很寬） | 分佈很寬 — 此節點自身的風險標記（「負載承重……schema 錯誤會連鎖擴散」）顯示，相較於一般 M 節點，它可能需要更謹慎、因而也更長的程式碼 |
 | 工期 | 未知 | 未知 | 0.0 | 不存在 DAG 估計（`Prediction_Error_Report.md` §0）；本資料集中沒有與此節點風險程度相當、帶有*高風險*標記的 M 複雜度參照類別 — `foundation-05`（M、高風險、自我回報約 45 分鐘）是最接近的類比，但本身也只是單一資料點 |
 | Token 使用量 | 未知 | 未知 | 0.0 | 除 `foundation-01`／`checkpoint-b03` 外，先前沒有任何節點在此細緻程度上存在逐節點 token 資料，且兩者都不是高風險 migration-schema 節點的良好類比 |
-| 複雜度 | M（DAG） | 已觀察 | 高（DAG 標籤） | 兩份獨立的經驗教訓條目（`foundation-05`、本 wave 的 Calibration Report）都顯示，被標記為高風險的 M 節點，相較於一般 M 節點往往耗時較長 |
+| 複雜度 | M（DAG） | 已觀察 | 高（DAG 標籤） | 兩份獨立的經驗教訓條目（`foundation-05`、本 phase 的 Calibration Report）都顯示，被標記為高風險的 M 節點，相較於一般 M 節點往往耗時較長 |
 | 執行風險 | 高 — DAG 原文：「每個功能角色的 migration 都以外鍵參照這些資料表……schema 錯誤會連鎖擴散到 claude-provider／checkpoint／predictor／runtime 的 migration 範圍」 | 已觀察（DAG 文字） | 高度信心這確實是高風險，而非只是被貼上標籤 — `foundation-05`（最接近的類比，同一作者角色、同一子系統）已證實確實需要謹慎的 pragma／transaction 設計 | 這是已解鎖集合中槓桿效益最高、風險也最高的單一節點 |
 
 ### foundation-08
@@ -67,10 +67,10 @@
 | 變更檔案數 | DAG：4。調整後：約 6（4 × 1.544） | 已觀察／推導 | 低至中 | ±2 |
 | 讀取檔案數 | 未知 | 未知 | 0.0 | 與所有節點相同 |
 | LOC | DAG：200。調整後：約 418（200 × 2.089） | 已觀察／推導 | 低至中 | 分佈很寬 |
-| 工期 | 約 22 分鐘（推導自本 wave S 複雜度自我回報的參照類別平均：`foundation-01` 約 25 分鐘、`foundation-02` 約 20 分鐘、`foundation-04` 約 20 分鐘） | 推導（較弱 — 來源資料為自我回報，n=3） | 低 | ±10 分鐘屬合理範圍 |
-| Token 使用量 | 在逐節點細緻程度上未知（會與該隊友在 Wave 3 被指派的其他工作共用同一筆總量） | 未知 | 0.0 | 不適用 |
-| 複雜度 | S（DAG） | 已觀察 | 高（DAG 標籤；此為小型、範圍界定清楚的優先序測試節點，符合本 wave 中 S 節點估計值維持不變的模式） | 低 |
-| 執行風險 | 低 — DAG 原文；明確依賴跨平台測試（「需要 Windows／macOS／Linux CI（`qa-01`）才能取得完整訊號」） | 已觀察 | 中 — `Calibration_Report.md` §6 將跨平台工作標記為一項較弱（n=2）的隱藏風險假設，超出名義標籤所示 | 此節點自身的 DAG 註記將 `qa-01` 列為取得*完整*訊號所需的相依項目，即使它並非硬性阻擋相依 — 若兩者在同一 wave 中，值得安排在 `qa-01` 之後執行 |
+| 工期 | 約 22 分鐘（推導自本 phase S 複雜度自我回報的參照類別平均：`foundation-01` 約 25 分鐘、`foundation-02` 約 20 分鐘、`foundation-04` 約 20 分鐘） | 推導（較弱 — 來源資料為自我回報，n=3） | 低 | ±10 分鐘屬合理範圍 |
+| Token 使用量 | 在逐節點細緻程度上未知（會與該隊友在 Phase 3 被指派的其他工作共用同一筆總量） | 未知 | 0.0 | 不適用 |
+| 複雜度 | S（DAG） | 已觀察 | 高（DAG 標籤；此為小型、範圍界定清楚的優先序測試節點，符合本 phase 中 S 節點估計值維持不變的模式） | 低 |
+| 執行風險 | 低 — DAG 原文；明確依賴跨平台測試（「需要 Windows／macOS／Linux CI（`qa-01`）才能取得完整訊號」） | 已觀察 | 中 — `Calibration_Report.md` §6 將跨平台工作標記為一項較弱（n=2）的隱藏風險假設，超出名義標籤所示 | 此節點自身的 DAG 註記將 `qa-01` 列為取得*完整*訊號所需的相依項目，即使它並非硬性阻擋相依 — 若兩者在同一 phase 中，值得安排在 `qa-01` 之後執行 |
 
 ### predictor-05b（Token 預測器）
 
@@ -91,7 +91,7 @@
 | 變更檔案數 | DAG：6。調整後：約 9（6 × 1.544） | 已觀察／推導 | 低至中 | ±3 |
 | 讀取檔案數 | 未知 | 未知 | 0.0 | 不適用 |
 | LOC | DAG：350。調整後：約 731（350 × 2.089） | 已觀察／推導 | 低至中 | 分佈很寬 |
-| 工期 | 約 30 分鐘（推導自本 wave M 複雜度自我回報的參照類別平均：`foundation-03` 約 25 分鐘、`foundation-05` 約 45 分鐘、`checkpoint-b03` 約 20 分鐘 — 分佈範圍很寬，此平均值僅為較弱的集中趨勢估計） | 推導（較弱，n=3，範圍 20–45 分鐘） | 低 | ±15 分鐘屬合理範圍 — 比 S 複雜度參照類別的範圍更寬 |
+| 工期 | 約 30 分鐘（推導自本 phase M 複雜度自我回報的參照類別平均：`foundation-03` 約 25 分鐘、`foundation-05` 約 45 分鐘、`checkpoint-b03` 約 20 分鐘 — 分佈範圍很寬，此平均值僅為較弱的集中趨勢估計） | 推導（較弱，n=3，範圍 20–45 分鐘） | 低 | ±15 分鐘屬合理範圍 — 比 S 複雜度參照類別的範圍更寬 |
 | Token 使用量 | 未知 | 未知 | 0.0 | 不適用 |
 | 複雜度 | M（DAG） | 已觀察 | 中 | 此節點明確不能觸碰 `cmd/auspex/main.go`（依 vertical-slice 計畫，屬於 `contract-integrator`／`foundation` 所有）— 這代表其實際合併需要超出一般單一角色 M 節點的負責人協調成本，而這項成本並未被 DAG 的複雜度標籤所涵蓋 |
 | 執行風險 | 低 — DAG 原文 | 已觀察 | 中 — 根目錄接線協調的需求是一項真實、DAG 未能顯現的整合風險，即使 DAG 自身的風險欄位寫的是「低」，這與 `Calibration_Report.md` 發現 DAG 風險標籤有時會漏掉「整合形」風險（相對於「實作形」風險）的情況類似 | 建議將此視為低至中，而非單純的低 |

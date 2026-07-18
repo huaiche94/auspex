@@ -29,7 +29,7 @@ Auspex is currently in the **Initial** governance stage
 
 This reflects where the project actually is today (early, single-lead,
 pre-1.0, vertical slice under construction — see `README.md`'s
-wave roadmap), not an aspiration.
+phase roadmap), not an aspiration.
 
 ## Mature stage (future)
 

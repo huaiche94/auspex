@@ -105,7 +105,7 @@ func PauseCancelCmd(ctx context.Context, deps PauseLifecycleDeps, req PauseCance
 
 // ResumeCmdRequest is `auspex resume`'s input. See pause.ResumeRequest's
 // doc comment (lifecycle.go) for why the verdict is caller-supplied this
-// wave rather than independently computed here: real resume validation
+// phase rather than independently computed here: real resume validation
 // (quota/repository/session/authorization checks) is runtime-a08's scope,
 // not yet built. Defaulting Valid to true when no verdict flag is set at
 // all keeps the common CLI case (`auspex resume` with no extra flags)

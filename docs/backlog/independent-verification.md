@@ -77,7 +77,7 @@ Two integration strengths, sequenced:
 - **Completion-evidence contract** — the *gating* form (§3.2 above) changes the
   Progress Tree completion invariant, a Constitution §6 rule ⇒ ADR + amendment.
 - **Milestone ordering** — this is later-milestone work; introducing it now would
-  be build-ahead (§7.10). It should not precede the current wave.
+  be build-ahead (§7.10). It should not precede the current phase.
 
 ## 5. Phased TODO
 

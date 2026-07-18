@@ -59,7 +59,7 @@ func itoa(n int64) string {
 //
 // runtime-a05's task brief requires the Repository Checkpoint step to use
 // the REAL internal/repocheckpoint.Service (checkpoint-b04, integrated on
-// main since Wave 5), not a fake — this harness builds one against a real,
+// main since Phase 5), not a fake — this harness builds one against a real,
 // migrated temp-file SQLite database and a real temporary Git repository,
 // mirroring internal/repocheckpoint's own service_test.go /
 // internal/scheduler's lease_test.go seeding conventions (both public-API
@@ -215,7 +215,7 @@ type harness struct {
 // newHarness builds a full PersistDeps: real RepositoryCheckpointService,
 // fake StateCheckpointService and ProgressTreeService (per the task brief:
 // checkpoint-a05's real implementation is a sibling teammate's concurrent,
-// not-yet-mergeable work this same wave), real pause.MemStore, and a real
+// not-yet-mergeable work this same phase), real pause.MemStore, and a real
 // scheduler.Store against the same migrated DB.
 func newHarness(t *testing.T, clock domain.Clock) *harness {
 	t.Helper()

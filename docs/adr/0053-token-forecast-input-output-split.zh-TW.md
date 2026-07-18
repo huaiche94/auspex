@@ -81,7 +81,7 @@ SWE-bench 證據，絕不引入。
   預測複製進 `calibration_samples`）不同，此拆分**不**加入 export。今日的
   拆分是已 export 之 total 的*確定性結構轉換*，因此 export 它不增加任何獨立的
   校準訊號，也不開啟 unlabeled-history 破口（#11 可從 `token_p50/p90` 重建
-  它）。export 的擴充延後到「校準後的預測器獨立估計兩軸」的那個 wave——
+  它）。export 的擴充延後到「校準後的預測器獨立估計兩軸」的那個 phase——
   capture-before-model（D-10/D-12）。
 - **未來校準後的預測器會獨立估計兩軸。** 此合約欄位是真正的軸空間，而不僅是
   render-time 的轉換：它為 #11 校準後的預測器所需的形狀預留位置，正如
@@ -110,5 +110,5 @@ SWE-bench 證據，絕不引入。
 - **每一軸都持久化 P50/P80/P90。** 已否決：此拆解以 range 呈現；每軸的 P80
   只增加儲存與呈現面向，卻不驅動任何決策。P80 留在具權威性的 total 上，與
   scope/duration band 一致。
-- **現在就擴充 research export。** 因為過早而否決：此 wave 的拆分可從已 export
+- **現在就擴充 research export。** 因為過早而否決：此 phase 的拆分可從已 export
   的 total 重建，因此在校準後的預測器讓兩軸獨立之前，export 它是多餘的。

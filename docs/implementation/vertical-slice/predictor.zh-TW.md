@@ -5,7 +5,7 @@
 > 本文件為非規範翻譯，內容以英文版為準（ADR-049）。
 
 角色包（role packet）：`agents/predictor.md`。凍結合約：`docs/implementation/vertical-slice/CONTRACT_FREEZE.md`。
-分支：`vertical-slice/predictor`。本波（wave）僅涵蓋依凍結執行 DAG、由 `contract-integrator` 解除阻塞的根節點：
+分支：`vertical-slice/predictor`。本波（phase）僅涵蓋依凍結執行 DAG、由 `contract-integrator` 解除阻塞的根節點：
 `predictor-02`、`predictor-03`、`predictor-04`。
 
 `predictor-01`（SQLite migrations 0040-0049）**不**在本波範圍內——它依賴尚未完成的 `foundation-06`
@@ -182,7 +182,7 @@ validation:
   - "gofmt -l internal/predictor/token  # clean"
   - "go build ./...  # ok, whole module"
   - "go vet ./internal/predictor/...  # ok"
-  - "go test ./internal/predictor/... -run TokenForecast -v  # PASS (7 top-level tests: monotonicity table across 9 cases, never-calibrated-this-wave gate check across 3 sample-count cases, cold-start reason code, determinism, source-error propagation across 4 sources, multiplier-cap explosion guard, degenerate/negative-sample no-panic sweep)"
+  - "go test ./internal/predictor/... -run TokenForecast -v  # PASS (7 top-level tests: monotonicity table across 9 cases, never-calibrated-this-phase gate check across 3 sample-count cases, cold-start reason code, determinism, source-error propagation across 4 sources, multiplier-cap explosion guard, degenerate/negative-sample no-panic sweep)"
   - "go test ./internal/predictor/... ./internal/features/... -race  # PASS, full packages, no regressions"
   - "golangci-lint run ./...  # zero issues in files owned by this role; 3 pre-existing issues remain in internal/hooks/claude, internal/clock, internal/idgen (not owned by predictor — noted, not fixed)"
 commit: <see final report>
@@ -209,7 +209,7 @@ blockers: []
 
 ## 第 4 波（predictor-01、predictor-05c）
 
-分支：`vertical-slice/predictor`，接續自 `22fde28`（第 3 波，`predictor-05b`）。依明確指示，先 merge 了 `main`（`git merge main -m "Sync main (Wave 3) before predictor-01/05c"`）——從 `22fde28` 到 `ca7062f` 的乾淨 fast-forward，帶入了 foundation-06/08、`predictor-05b` 自身已 merge 的副本、`runtime-b01`、`qa-01/08`，以及一大批先前尚未 merge 的 foundation 基礎建設（`internal/cli`、`internal/config`、`internal/lock`、`internal/paths`、`internal/gitx`、`internal/storage/sqlite` 的 db/migrate 引擎、`internal/telemetry/claude`、CI／governance 文件）。merge 完成後、在撰寫任何新程式碼之前，全 repo 的 `go build ./...` 與 `go test ./...` 皆乾淨通過。依指示，開始前重新閱讀了 CONSTITUTION.md、CONTRACT_FREEZE.md 的「Predictor pipeline ports (ADR-041)」章節、`docs/adr/0041-predictor-forecast-layer.md`、`agents/predictor.md`、`internal/predictor/token/forecaster.go`、`internal/predictor/scope/estimator.go`、`internal/app/ports.go` 的 ADR-041 章節、`internal/domain/forecast.go`，以及 `Auspex_ADD.md` §15.3／§15.9。
+分支：`vertical-slice/predictor`，接續自 `22fde28`（第 3 波，`predictor-05b`）。依明確指示，先 merge 了 `main`（`git merge main -m "Sync main (Phase 3) before predictor-01/05c"`）——從 `22fde28` 到 `ca7062f` 的乾淨 fast-forward，帶入了 foundation-06/08、`predictor-05b` 自身已 merge 的副本、`runtime-b01`、`qa-01/08`，以及一大批先前尚未 merge 的 foundation 基礎建設（`internal/cli`、`internal/config`、`internal/lock`、`internal/paths`、`internal/gitx`、`internal/storage/sqlite` 的 db/migrate 引擎、`internal/telemetry/claude`、CI／governance 文件）。merge 完成後、在撰寫任何新程式碼之前，全 repo 的 `go build ./...` 與 `go test ./...` 皆乾淨通過。依指示，開始前重新閱讀了 CONSTITUTION.md、CONTRACT_FREEZE.md 的「Predictor pipeline ports (ADR-041)」章節、`docs/adr/0041-predictor-forecast-layer.md`、`agents/predictor.md`、`internal/predictor/token/forecaster.go`、`internal/predictor/scope/estimator.go`、`internal/app/ports.go` 的 ADR-041 章節、`internal/domain/forecast.go`，以及 `Auspex_ADD.md` §15.3／§15.9。
 
 ```yaml
 node: predictor-01
@@ -249,7 +249,7 @@ artifacts:
 validation:
   - "gofmt -l internal/predictor/quota  # clean"
   - "go vet ./internal/predictor/quota/...  # ok"
-  - "go test ./internal/predictor/... -run QuotaForecast -v  # PASS (19 tests: never-calibrated-this-wave across 4 input shapes, unknown-when-no-observation for both quota and context, nil-UsedPercent treated as unknown not zero, forward projection from current usage for both quota and context, context UsedTokens/WindowTokens fallback + zero-WindowTokens guard, near-limit reason codes for quota/context/Reached-flag, multi-window max-combination, reset-soon delta suppression vs reset-far-away delta application, TokenForecast-scaled delta (small vs large forecast, zero-value-behaves-as-absent), determinism, degenerate-input no-panic sweep incl. negative/huge/MaxInt64 values)"
+  - "go test ./internal/predictor/... -run QuotaForecast -v  # PASS (19 tests: never-calibrated-this-phase across 4 input shapes, unknown-when-no-observation for both quota and context, nil-UsedPercent treated as unknown not zero, forward projection from current usage for both quota and context, context UsedTokens/WindowTokens fallback + zero-WindowTokens guard, near-limit reason codes for quota/context/Reached-flag, multi-window max-combination, reset-soon delta suppression vs reset-far-away delta application, TokenForecast-scaled delta (small vs large forecast, zero-value-behaves-as-absent), determinism, degenerate-input no-panic sweep incl. negative/huge/MaxInt64 values)"
   - "go build ./...  # ok, whole module"
   - "go test ./internal/predictor/... ./internal/features/... -race  # PASS, full packages, no regressions"
   - "golangci-lint run ./...  # 0 issues repo-wide"
@@ -382,7 +382,7 @@ validation:
   - "go test ./internal/evaluation/... -race  # PASS, including the dedicated 8-goroutine concurrent-replay test"
   - "go build ./...  # ok, whole module"
   - "go test ./... -race  # PASS, whole module, no regressions"
-  - "golangci-lint run ./...  # 0 issues repository-wide (one errorlint finding in a first draft — a bare `err.(*domain.Error)` type assertion in a test helper — caught and fixed by switching to errors.As before this wave's final commit)"
+  - "golangci-lint run ./...  # 0 issues repository-wide (one errorlint finding in a first draft — a bare `err.(*domain.Error)` type assertion in a test helper — caught and fixed by switching to errors.As before this phase's final commit)"
 commit: <see final report>
 next_action: 無——predictor-09 是本波唯一指派的節點；predictor-10／predictor-11 明確不在範圍內，除了 app.EvaluationService 的 ConsumeAuthorization 方法為了能夠編譯並正確運作所必須存在的部分之外，未開始、未 stub、也未 scaffold
 assumptions:
@@ -412,7 +412,7 @@ validation:
   - "go test ./internal/evaluation/... -race -count=1  # PASS, whole package"
   - "go build ./...  # ok, whole module"
   - "go test ./... -race -count=1  # PASS, whole module, no regressions"
-  - "golangci-lint run ./...  # 0 issues repository-wide (three errcheck findings on unused *domain.Error returns from a new test helper, caught and fixed by prefixing the standalone-statement call sites with `_ =` before this wave's final commit)"
+  - "golangci-lint run ./...  # 0 issues repository-wide (three errcheck findings on unused *domain.Error returns from a new test helper, caught and fixed by prefixing the standalone-statement call sites with `_ =` before this phase's final commit)"
 commit: <see final report>
 next_action: 無——predictor-10 是第 8 波唯一指派的節點；predictor-11 明確不在範圍內，未開始
 assumptions:

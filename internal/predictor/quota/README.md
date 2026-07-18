@@ -28,7 +28,7 @@ Mechanics:
 - Unknown stays unknown: a missing observation yields a nil projection plus
   `QUOTA_UNKNOWN`/`CONTEXT_UNKNOWN`, never a fabricated 0.
 
-Every result this wave is `Calibrated=false`, Confidence low, with `PREDICTION_COLD_START` —
+Every result this phase is `Calibrated=false`, Confidence low, with `PREDICTION_COLD_START` —
 no empirical delta distribution exists yet, exactly the first implementation CONTRACT_FREEZE.md
 licenses. ADD sections cited above live in
 [Auspex_ADD.md](../../../docs/design/Auspex_ADD.md). See `doc.go` for the package contract.

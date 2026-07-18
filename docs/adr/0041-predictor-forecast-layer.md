@@ -36,7 +36,7 @@ Evaluation Components diagram shows the same conflation (`TOK --> RUNWAY
 
 This was discovered via `Auspex_Predictor_Design_Supplement.md` (a
 companion design document identifying the same gap independently) before
-any Wave 2 predictor implementation began. Per Constitution §6/§7 and this
+any Phase 2 predictor implementation began. Per Constitution §6/§7 and this
 project's own "no blind resume" discipline for architecture: a real gap
 found before code is written is fixed at the contract layer, not patched
 around at the implementation layer.
@@ -104,19 +104,19 @@ both feed `RiskCombiner`), `domain.RiskComponent` (one named risk term —
 
 A `domain.ReasonCode` type (`string`-based, closed enum) is also
 introduced, backed by the ~28 constants already listed in ADD §16.4. The
-existing (Wave-1-frozen but not yet consumed by any merged code)
+existing (Phase-1-frozen but not yet consumed by any merged code)
 `Evaluation.ReasonCodes` field changes from `[]string` to
-`[]domain.ReasonCode` to use it — safe because no Wave 1 code constructs
+`[]domain.ReasonCode` to use it — safe because no Phase 1 code constructs
 or reads that field yet.
 
 ### Corrected DAG dependency edges
 
 - New node `predictor-05b` (Token Forecaster): depends on `predictor-05`.
 - New node `predictor-05c` (Quota Forecaster): depends on `predictor-05b`.
-  Cold-start-safe for Wave 2 — a deterministic current-observation-plus-default-delta
+  Cold-start-safe for Phase 2 — a deterministic current-observation-plus-default-delta
   estimate is acceptable pending full empirical calibration once
   `claude-provider-05` (durable telemetry persistence) and `foundation-06`
-  (SQLite) land in a later wave, consistent with the existing cold-start
+  (SQLite) land in a later phase, consistent with the existing cold-start
   contract already established for `predictor-04`/`predictor-08`.
 - `predictor-07` (Risk Combiner): dependency corrected from
   `predictor-05, predictor-06` to `predictor-05, predictor-05c` — `predictor-06`
@@ -155,11 +155,11 @@ ADR removes it.
 - `CONTRACT_FREEZE.md` gains a new section documenting the four interfaces,
   the reason-code taxonomy, and the `Evaluation.ReasonCodes` type change.
 - The execution DAG gains two new predictor nodes and three corrected
-  dependency edges; total remaining predictor task count for Wave 2+
-  increases by 2 (from 6 remaining after Wave 1 to 8).
-- The Wave 2 predictor assignment proposed before this ADR is superseded —
+  dependency edges; total remaining predictor task count for Phase 2+
+  increases by 2 (from 6 remaining after Phase 1 to 8).
+- The Phase 2 predictor assignment proposed before this ADR is superseded —
   regenerated in the same change that lands this ADR.
-- No Wave 1 code is affected. No migration, schema, checkpoint format,
+- No Phase 1 code is affected. No migration, schema, checkpoint format,
   privacy default, or public protocol compatibility changes. This ADR does
   not fall under any of Constitution §3's mandatory-ADR triggers on its own
   merits (it implements, rather than changes, an already-committed ADD

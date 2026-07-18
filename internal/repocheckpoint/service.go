@@ -33,7 +33,7 @@ type Service struct {
 	// does not own the worktrees table (foundation does) and must not
 	// reach into it directly — the caller supplies the mapping, matching
 	// the same "depend on the frozen port, not another role's storage"
-	// discipline as everywhere else in this wave.
+	// discipline as everywhere else in this phase.
 	resolveWorktree func(ctx context.Context, worktreeID domain.WorktreeID) (WorktreeLocation, error)
 }
 

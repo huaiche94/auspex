@@ -26,7 +26,7 @@ How the estimate is built:
   [`internal/predictor.Quantiles`](../README.md)' own guarantee.
 
 `ToolCallsP50/P90`, `VerificationP50/P90`, `RetryLoopsP50/P90`, and `DurationP50/P90` are left
-nil this wave — no tool-call or verification telemetry is wired up yet, and nil means unknown,
+nil this phase — no tool-call or verification telemetry is wired up yet, and nil means unknown,
 never zero.
 
 The output `domain.ScopeEstimate` feeds [`token/`](../token/README.md) (multipliers) and

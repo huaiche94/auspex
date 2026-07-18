@@ -5,9 +5,9 @@
 -- operation as every node completion (Constitution §6.3, ADD ADR-029
 -- "State checkpoint at every semantic boundary"). Deferred from
 -- checkpoint-a01 (0020-0022) to this node, per a01's own progress-artifact
--- note: "state_checkpoints ... is deferred to the wave that implements the
+-- note: "state_checkpoints ... is deferred to the phase that implements the
 -- State Checkpoint manifest (checkpoint-a04); it will take 0023+." This is
--- that wave.
+-- that phase.
 --
 -- manifest_json carries the full Appendix B document (schema_version
 -- auspex.state-checkpoint.v1); the columns below duplicate the fields a

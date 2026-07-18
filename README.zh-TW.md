@@ -282,3 +282,39 @@ testdata/             cross-package fixtures (checkpoints, provider events)
 Go 1.26.5 單一靜態二進位檔搭配 SQLite（WAL）．僅在 VS Code 延伸模組中使用
 TypeScript．Python 3.12+ 僅供離線研究使用．
 Apache-2.0（詳見 [`LICENSE`](LICENSE)、[`NOTICE`](NOTICE)）。
+
+## Milestone 狀態（M0–M15）
+
+來源：[`docs/design/Auspex_ADD.md`](docs/design/Auspex_ADD.md) §31 的
+M0–M15 路線圖。先講框架：Auspex 是一條**穿過多個 milestone 的 vertical
+slice**（85/85 DAG 節點整合進 `main`），不是逐個 milestone 依序完工。因此
+**「已交付」＝已整合進 `main`，不等於已發版**——ADD 標的 release marker
+（M4 的 `v0.1.0` 到 M15 的 `v1.0.0`）**目前一個 git tag 都還沒 stamp**。
+十六個 milestone 中，八個已交付、四個部分（核心到位、有具名尾巴）、四個未開始。
+
+圖例——✅ 已交付（在 `main`，未必發版）．◐ 部分（核心可用、有具名尾巴）．
+○ 未開始。
+
+| M | 名稱 | 狀態 | 做了什麼 · 還缺什麼 | Release marker |
+|---|---|---|---|---|
+| M0 | Repository bootstrap | ✅ | Go module、`cmd/auspex`、version/build info、Taskfile/Makefile、lint/CI、Apache-2.0、governance/security/contribution 檔案、ADD/AGENTS.md。 | — |
+| M1 | Domain · paths · config · SQLite | ✅ | IDs/enums、clock/id 注入、OS paths、YAML config 優先序、schemas、SQLite 連線/migrations、repo/worktree/session/turn/task stores、`paths`/`config` 指令。 | — |
+| M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser、snapshot fingerprint、checkpoint create/list/show/verify、真實 restore（[#6](https://github.com/huaiche94/auspex/issues/6)）、binary patch、untracked archive、secret/path 過濾。 | — |
+| M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store、batch API、idempotency/out-of-order、normalized usage/tool/file/quota/context、de-identified export、tiered retention（ADR-046）。 | — |
+| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、`progress`/`state` CLI。**缺：**把決策接成自動 hook——pre-turn（[#116](https://github.com/huaiche94/auspex/issues/116)）、Stop reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、PreCompact（[#114](https://github.com/huaiche94/auspex/issues/114)）；`progress` inspect 也未接。 | `v0.1.0`（未 tag） |
+| M5 | Feature extraction · predictor · policy | ✅ | task classifier、Go/.NET topology、feature v1、empirical quantiles、token/scope 估計、risk components、reason codes、policy rules、`evaluate`/`decide`。**注意：**全為 cold-start 規則；校準屬 M13（資料未到）。 | — |
+| M6 | Daemon · local API · durable scheduler | ✅ | daemon（[#7](https://github.com/huaiche94/auspex/issues/7)）、loopback auth、v1 endpoints、SSE、in-process fallback、wake job lease/recovery、doctor baseline、session-status API。 | — |
+| M7 | Codex managed adapter | ◐ | 偵測/capability、managed `run --provider codex`（走 `codex exec --json`）、exec JSONL fallback、fixtures。**缺（[#9](https://github.com/huaiche94/auspex/issues/9) Phase 2）：**App Server 訂閱、graceful interrupt、`codex exec resume`。 | — |
+| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`、UserPromptSubmit、pre/post compact、tool/stop、native block、doctor checks。**注意：**compact 前自動 state checkpoint 的一般化接線與 [#114](https://github.com/huaiche94/auspex/issues/114) 同片，仍在收尾。 | `v0.2.0`（未 tag） |
+| M9 | Claude managed + native integration | ✅ | plugin、hooks、TaskCreated/Completed mapping、statusline wrapper、context/quota telemetry、stream-json runner、resume、native-hook session bootstrap（[#17](https://github.com/huaiche94/auspex/issues/17)）、`watch codex`（[#92](https://github.com/huaiche94/auspex/issues/92)）。 | `v0.3.0`（未 tag） |
+| M10 | Runway Forecaster + Graceful Pause | ◐ | live burn-rate、runway forecast、uncalibrated fallback、statusline runway、safe-point coordinator、pause state machine、state/repo checkpoint 整合、durable wake schedule、四路 resume validation、CLI pause/resume/scheduler——已實作且測過。**缺：**自動 quota-runway 觸發器與 provider turn-interrupt（hands-free 觸發 pause）。 | `v0.4.0`（未 tag） |
+| M11 | Managed shell + UX hardening | ○ | `auspex shell` 尚不存在；互動面板、pause UI、Ctrl+C、history/status、no-TTY policy 都未做。是 M7 Phase 2 之後的下一塊 net-new。 | — |
+| M12 | VS Code extension | ◐ | daemon client/SSE、status bar、views、guarded prompt、progress tree、pause/resume/conflict UI、binary resolution（[#10](https://github.com/huaiche94/auspex/issues/10)，吃 session-status API）。**缺：**Marketplace/Open VSX 發佈（publisher 未註冊，[#18](https://github.com/huaiche94/auspex/issues/18)；目前跑 source/VSIX）。 | `v0.5.0`（未 tag） |
+| M13 | Predictor research + personalization | ○ | backtesting、outcome labels、quantile models、runway calibration、model registry、Python research package、reports——都未做。**資料閘：**等 telemetry 累積；這是把預測從 cold-start 變 calibrated 的關鍵。 | — |
+| M14 | External provider protocol | ○ | manifest、JSONL handshake、registry、capability negotiation、fake plugin、security limits——未開始。 | — |
+| M15 | 1.0 hardening | ○ | perf SLO、security review、migration review、support bundle、docs site、packages、signed artifacts、SBOM/provenance、provider matrix、governance finalization——未開始。**目前無任何 release tag。** | `v1.0.0`（未 tag） |
+
+兩件事別搞混：**（1）**前十個 milestone 的功能大多已在 `main`，但**沒有一個
+release marker 被 tag**——vertical slice 先打穿深度，把版本化發版留給 M15
+hardening。**（2）**真正「未動」的是 **M11（shell）、M13（校準）、M14（外部
+provider）、M15（1.0 hardening）**——其中 M13 卡在資料，其餘是 net-new 工程。

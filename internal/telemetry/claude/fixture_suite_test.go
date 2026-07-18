@@ -186,7 +186,7 @@ func TestFixtureSuite(t *testing.T) {
 		// Claude Code has no dedicated PreCompact/PostCompact hook parser
 		// on this branch yet (agents/claude-provider.md P0 deliverable #1
 		// lists PreCompact as optional, "when fixtures are available" -
-		// none were built in earlier waves). The observable signature of
+		// none were built in earlier phases). The observable signature of
 		// "a compaction just happened" that this role's EXISTING parser
 		// (status-line) can actually see is: low current context usage
 		// relative to a high cumulative cost/duration/LOC total - i.e. a

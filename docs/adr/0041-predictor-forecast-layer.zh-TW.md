@@ -15,7 +15,7 @@
 
 凍結的執行 DAG（`docs/implementation/vertical-slice/EXECUTION_DAG.md`）延續了相同的缺口：`predictor-05`（Scope Estimator）直接餵入 `predictor-07`（Risk Combiner），而 `predictor-06`（Runway Forecaster）也被列為 `predictor-07` 的相依項。但 `Auspex_ADD.md` §16.2 自身的風險公式需要 `projected_quota_p90` 與 `projected_context_p90`——分別是 quota 差值模型（§15.3）與 context 推估（§15.9）的輸出——而 DAG 中沒有任何節點產生這兩者。`predictor-06` 的 Runway Forecaster 回答的是另一個問題（迫在眉睫的 10 分鐘內 quota 耗盡風險，§15.5，直接供 Graceful Pause 使用），從來就不是 `quota_risk`/`context_risk` 的有效來源。DAG 中 `predictor-07` 對 `predictor-06` 的相依，本身就是同一個規格未完整的管線所產生的副產物，而非刻意的設計決策——`Auspex_ADD.md` §7.3 自己的 C4 Evaluation Components 圖也呈現了相同的混淆（`TOK --> RUNWAY --> RISK`），本 ADR 對此做出修正。
 
-這個問題是透過 `Auspex_Predictor_Design_Supplement.md`（一份獨立指出相同缺口的輔助設計文件）在任何 Wave 2 predictor 實作開始之前發現的。依 Constitution §6/§7 以及本專案自身對架構的「no blind resume」紀律：在程式碼寫成之前發現的真實缺口，應在合約層修正，而不是在實作層打補丁繞過。
+這個問題是透過 `Auspex_Predictor_Design_Supplement.md`（一份獨立指出相同缺口的輔助設計文件）在任何 Phase 2 predictor 實作開始之前發現的。依 Constitution §6/§7 以及本專案自身對架構的「no blind resume」紀律：在程式碼寫成之前發現的真實缺口，應在合約層修正，而不是在實作層打補丁繞過。
 
 ## 決策
 
@@ -61,12 +61,12 @@ type RiskCombiner interface {
 
 這些介面背後有四個新的凍結 domain 型別支撐（`internal/domain/forecast.go`）：`domain.ScopeEstimate`（鏡射 ADD §14.1 已定義的 struct，欄位集完全相同，但依 ADD principle 1「unknown 不等於 zero」的原則改用 pointer 型別的數值欄位——ADD 自身的虛擬碼使用純 `int`，本 ADR 為了與其他所有凍結量測型別保持一致而修正此點）、`domain.TokenForecast`（P50/P80/P90，新定義——ADD §15.1–15.2 有公式但沒有 struct）、`domain.QuotaForecast`（`ProjectedQuotaUsedP90`、`ProjectedContextUsedP90`——兩種推估合併於同一型別，因為 §15.3 與 §15.9 使用相同的差值推估技術，且兩者皆餵入 `RiskCombiner`）、`domain.RiskComponent`（單一具名風險項——`Score`、`Calibrated`、`Confidence`、`ReasonCodes`）、`domain.DataQuality`（整體信任訊號，獨立於任何單一元件自身的 confidence）。
 
-同時新增一個 `domain.ReasonCode` 型別（以 `string` 為底的封閉列舉），由 ADD §16.4 已列出的約 28 個常數支撐。既有的（Wave 1 已凍結但尚未被任何已合併程式碼使用的）`Evaluation.ReasonCodes` 欄位型別由 `[]string` 改為 `[]domain.ReasonCode` 以使用它——這是安全的，因為目前沒有任何 Wave 1 程式碼會建構或讀取該欄位。
+同時新增一個 `domain.ReasonCode` 型別（以 `string` 為底的封閉列舉），由 ADD §16.4 已列出的約 28 個常數支撐。既有的（Phase 1 已凍結但尚未被任何已合併程式碼使用的）`Evaluation.ReasonCodes` 欄位型別由 `[]string` 改為 `[]domain.ReasonCode` 以使用它——這是安全的，因為目前沒有任何 Phase 1 程式碼會建構或讀取該欄位。
 
 ### 修正後的 DAG 相依邊
 
 - 新節點 `predictor-05b`（Token Forecaster）：相依於 `predictor-05`。
-- 新節點 `predictor-05c`（Quota Forecaster）：相依於 `predictor-05b`。對 Wave 2 而言是 cold-start 安全的——在 `claude-provider-05`（持久化 telemetry persistence）與 `foundation-06`（SQLite）於後續 wave 落地、進而完成完整的經驗校準之前，採用「目前觀測值＋預設差值」的確定性推估是可接受的，這與 `predictor-04`/`predictor-08` 已建立的既有 cold-start 合約一致。
+- 新節點 `predictor-05c`（Quota Forecaster）：相依於 `predictor-05b`。對 Phase 2 而言是 cold-start 安全的——在 `claude-provider-05`（持久化 telemetry persistence）與 `foundation-06`（SQLite）於後續 phase 落地、進而完成完整的經驗校準之前，採用「目前觀測值＋預設差值」的確定性推估是可接受的，這與 `predictor-04`/`predictor-08` 已建立的既有 cold-start 合約一致。
 - `predictor-07`（Risk Combiner）：相依項由 `predictor-05, predictor-06` 修正為 `predictor-05, predictor-05c`——移除 `predictor-06`（Runway）作為相依項；它從來就不是 risk combination 的有效輸入。
 - `predictor-08`（Policy）：相依項由 `predictor-07` 修正為 `predictor-07, predictor-06`——Policy 同時直接消費綜合風險分數與獨立的 runway 命中機率（這與 `agents/predictor.md` 既有的「Initial policy suggestion」清單一致，該清單已將校準過的十分鐘命中機率列為獨立的 policy 輸入）。
 - `predictor-11`（Required tests）：相依清單擴充，納入 `predictor-05b`、`predictor-05c`。
@@ -80,6 +80,6 @@ type RiskCombiner interface {
 - `internal/domain/forecast.go` 與 `internal/app/ports.go` 新增凍結的型別／介面（僅為合約，尚無實作，依明確指示——「先核准 ADR，不要求先做出 stub」）。
 - `Auspex_ADD.md` §7.3 的 C4 圖、§9.9 的介面清單，以及 §33 的 ADR 清單均已更新以反映此決策。
 - `CONTRACT_FREEZE.md` 新增一節，記載這四個介面、reason-code 分類法，以及 `Evaluation.ReasonCodes` 的型別變更。
-- 執行 DAG 新增兩個 predictor 節點與三條修正後的相依邊；Wave 2+ 剩餘的 predictor 任務總數增加 2 個（從 Wave 1 結束後剩餘的 6 個增加到 8 個）。
-- 本 ADR 之前提出的 Wave 2 predictor 分配方案已被取代——在讓本 ADR 落地的同一次變更中重新產生。
-- 不影響任何 Wave 1 程式碼。沒有 migration、schema、checkpoint 格式、隱私預設值或公開協定相容性的變更。就其本質而言，本 ADR 並不落入 Constitution §3 任何強制要求 ADR 的觸發條件之中（它是在實作、而非變更一項已經拍板的 ADD 決策）——之所以仍然撰寫本文件，是因為 repository owner 的 Phase 2 指示已將 `Auspex_ADD.md`、`CONTRACT_FREEZE.md` 與 DAG 凍結，需經明確的 ADR 核准才能變動，而本文件正是提供這項核准。
+- 執行 DAG 新增兩個 predictor 節點與三條修正後的相依邊；Phase 2+ 剩餘的 predictor 任務總數增加 2 個（從 Phase 1 結束後剩餘的 6 個增加到 8 個）。
+- 本 ADR 之前提出的 Phase 2 predictor 分配方案已被取代——在讓本 ADR 落地的同一次變更中重新產生。
+- 不影響任何 Phase 1 程式碼。沒有 migration、schema、checkpoint 格式、隱私預設值或公開協定相容性的變更。就其本質而言，本 ADR 並不落入 Constitution §3 任何強制要求 ADR 的觸發條件之中（它是在實作、而非變更一項已經拍板的 ADD 決策）——之所以仍然撰寫本文件，是因為 repository owner 的 Phase 2 指示已將 `Auspex_ADD.md`、`CONTRACT_FREEZE.md` 與 DAG 凍結，需經明確的 ADR 核准才能變動，而本文件正是提供這項核准。

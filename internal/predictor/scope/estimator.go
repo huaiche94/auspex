@@ -39,7 +39,7 @@ type FeatureSource interface {
 	Progress(ctx context.Context, taskID *domain.TaskID) (features.ProgressFeatures, bool, error)
 }
 
-// RuleScopeEstimator is the Wave 2 (Version 1, rule-based/heuristic) Stage-1
+// RuleScopeEstimator is the Phase 2 (Version 1, rule-based/heuristic) Stage-1
 // implementation of app.ScopeEstimator (ADR-041). It combines ADD §14.6
 // cold-start defaults with empirical session-history quantiles
 // (internal/predictor.EmpiricalQuantiles) once enough recent-turn samples

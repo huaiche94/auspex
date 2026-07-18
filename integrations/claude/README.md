@@ -85,7 +85,7 @@ and (once wired) an evaluation port, then falls back to
 never leaving Claude Code's `UserPromptSubmit` hook hanging or blocking a
 user's prompt on a Auspex-side bug (fail-open, per
 `CONTRACT_FREEZE.md`'s fail-open/fail-closed split for operational
-observation failures, and this role's Wave-1 progress artifact assumptions
+observation failures, and this role's Phase-1 progress artifact assumptions
 for `claude-provider-02`). The wrapper itself (the code that reads stdin,
 calls these functions, and writes the wire response documented in
 `internal/hooks/claude/userpromptsubmit.go`'s

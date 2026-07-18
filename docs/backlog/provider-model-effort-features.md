@@ -46,7 +46,7 @@ Evidence:
   so the full cohort was descoped.
 - `internal/predictor/quota/coldstart.go` — quota deltas hardcoded
   (P50 = 2.0 pp, P90 = 6.0 pp); ADD §15.3 step 5's「依 provider/model/task
-  class 計算 empirical P50/P90」 is explicitly marked unreachable this wave.
+  class 計算 empirical P50/P90」 is explicitly marked unreachable this phase.
 - `internal/storage/sqlite/migrations/0041_predictions.sql` — persisted
   predictions carry **no** provider/model/effort columns, so historical
   predictions cannot be stratified by model for calibration after the fact.

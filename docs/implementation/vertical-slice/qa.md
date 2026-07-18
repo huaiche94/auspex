@@ -24,7 +24,7 @@
 - **No VS Code / JSON Schema / migration-test CI jobs yet**: ADD §30.3
   names `ci.yml` jobs for VS Code lint/test/build, JSON Schema checks,
   docs link/fence checks, and migration tests. None of those trees exist
-  yet in this wave (no `vscode/`, no JSON Schema artifacts, no
+  yet in this phase (no `vscode/`, no JSON Schema artifacts, no
   `internal/storage/sqlite/migrations/*.sql` — `foundation-06` is still
   pending per `docs/implementation/vertical-slice/foundation.md`). Scaffolding CI
   jobs against paths that don't exist would violate Constitution §7 rule
@@ -34,7 +34,7 @@
 - **`security.yml`, `provider-contract.yml`, `release.yml`**: named in
   ADD §30.3 but out of scope for qa-01 (whose validation target is
   narrowly "CI green on a trivial PR (Ubuntu/macOS/Windows)" per the
-  execution DAG). Not created this wave.
+  execution DAG). Not created this phase.
 - **Governance docs** (qa-08): `SECURITY.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `GOVERNANCE.md` at the repository root are
   grounded in `Auspex_ADD.md` §30.7 (Governance) and §30.8 (Security
@@ -60,7 +60,7 @@ validation:
   - "go build ./... && go test ./... -race   # whole repo, all packages PASS, zero regressions"
   - "golangci-lint run ./...   # 0 issues, whole repo"
 commit: <recorded below>
-next_action: none — qa-04 was this wave's full qa assignment; STOP per task instruction; report findings to lead for routing
+next_action: none — qa-04 was this phase's full qa assignment; STOP per task instruction; report findings to lead for routing
 assumptions:
   - "Before writing any test, did a repo-wide investigation (grep for any
     file importing both internal/telemetry/claude and internal/progress,
@@ -142,7 +142,7 @@ findings:
     file: "internal/orchestrator/hooks.go (HandleStop/HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize+persist and stop there — HandleStop's own doc comment: 'Full Progress Tree/Git/artifact reconciliation... is outcome labeling depth beyond this node's scope'); internal/telemetry/claude/normalizer.go (no producer ever assigns Event.TaskID or Event.ProgressNodeID — every event's envelope() helper sets only SessionID); internal/progress/complete_node.go's CompleteNodeInput and internal/app/ports.go's CompleteNodeRequest (both frozen to exactly {NodeID, IdempotencyKey, Artifacts[, RepositoryCheckpointID]} — no v1.Event/EventID/EventType field anywhere); internal/progress/node_store.go's Node.ProviderNodeID field (stored and read back, confirmed via grep, but no code anywhere looks a node up BY ProviderNodeID); internal/app/wiring/wiring.go (wires no bridge between internal/telemetry/claude and internal/progress; Services.ProgressTree is still just the bare frozen interface, unimplemented, per that package's own doc comment)."
     reproduction: "go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v — parses+normalizes a real Stop fixture and asserts ev.TaskID==\"\" and ev.ProgressNodeID==\"\" (both true today); combined with a repo-wide grep (documented in this file's own package doc comment) for any file importing both internal/telemetry/claude and internal/progress (zero matches) or pkg/protocol/v1 and internal/progress (zero matches), and for any adapter/bridge/consumer/dispatcher file (none exist)."
     expected_invariant: "Auspex_ADD.md's Progress Tree is meant to be driven forward by real provider observations (a provider.turn.completed signal is exactly the kind of real-world event that should be able to trigger a node's completion) — Constitution §6.1 ('Progress Tree is the canonical durable task state... never an agent's own claim of done') implies SOME real signal must be able to drive a real completion, not just a test harness hand-constructing a CompleteNodeInput. Today, nothing does: the event pipeline (claude-provider) and the completion pipeline (checkpoint/progress) are both individually correct and individually well-tested, but there is a genuine missing middle layer between them. This is exactly the kind of integration-only gap qa-04 was chartered to find, per its own task brief ('an event type or field mapping mismatch, a case where claude-provider's real events don't actually carry information checkpoint's ordering-check logic expects')."
-    owning_role: "contract-integrator (a new cross-component port/field is needed on the frozen v1.Event/CompleteNodeRequest contract, or a documented decision that TaskID/ProgressNodeID resolution happens via a different, not-yet-built lookup path — Constitution §4.2 reserves pkg/protocol/v1/** and internal/app/ports.go exclusively to this role) in coordination with claude-provider (would need to populate TaskID/ProgressNodeID on produced events once a resolution mechanism exists) and checkpoint (whichever role builds the actual consumer/adapter). Not routed as P0: every individual component this gap spans is itself correct and passes its own tests, no existing invariant is violated, and vertical-slice's frozen DAG never assigned any node the explicit job of building this adapter this wave — it is a forward-looking integration gap this node exists to surface, not a regression."
+    owning_role: "contract-integrator (a new cross-component port/field is needed on the frozen v1.Event/CompleteNodeRequest contract, or a documented decision that TaskID/ProgressNodeID resolution happens via a different, not-yet-built lookup path — Constitution §4.2 reserves pkg/protocol/v1/** and internal/app/ports.go exclusively to this role) in coordination with claude-provider (would need to populate TaskID/ProgressNodeID on produced events once a resolution mechanism exists) and checkpoint (whichever role builds the actual consumer/adapter). Not routed as P0: every individual component this gap spans is itself correct and passes its own tests, no existing invariant is violated, and vertical-slice's frozen DAG never assigned any node the explicit job of building this adapter this phase — it is a forward-looking integration gap this node exists to surface, not a regression."
   - severity: P2
     title: "checkpoint-a07's duplicate/out-of-order semantics hold correctly when driven by REAL claude-provider events end-to-end, not just hand-built CompleteNodeInput values — no defect found in either component's own logic"
     file: "internal/telemetry/claude/store.go (claude-provider-05); internal/progress/idempotency.go, internal/progress/complete_node.go (checkpoint-a07)"
@@ -162,10 +162,10 @@ validation:
   - "go vet ./internal/integrationtest/...   # PASS"
   - "go test ./internal/integrationtest/... -run LeakageScanner -v   # 6/6 PASS"
   - "go test ./internal/integrationtest/... -race   # PASS"
-  - "go build ./... && go test ./... -race   # whole repo, all 33 packages PASS, zero regressions from merging origin/main (Waves 4/5/6)"
+  - "go build ./... && go test ./... -race   # whole repo, all 33 packages PASS, zero regressions from merging origin/main (Phases 4/5/6)"
   - "golangci-lint run ./...   # 0 issues, whole repo"
 commit: <recorded below>
-next_action: none — qa-05 was this wave's full qa assignment; STOP per task instruction; report findings to lead for routing
+next_action: none — qa-05 was this phase's full qa assignment; STOP per task instruction; report findings to lead for routing
 assumptions:
   - "Built internal/integrationtest as a brand-new package (did not exist
     before this node) since qa's exclusive paths include it and no other
@@ -289,7 +289,7 @@ assumptions:
     called out narrower Windows race-detector support in some past
     versions) - given qa-01's validation bar is 'CI green on a trivial
     PR,' introducing a known flake source on one matrix leg for coverage
-    this wave does not yet exploit (no concurrency-heavy code outside
+    this phase does not yet exploit (no concurrency-heavy code outside
     internal/lock/internal/storage/sqlite exists yet) was judged not
     worth it. Race coverage is not dropped project-wide: two of three
     matrix legs (ubuntu, macos) run the full `-race` suite every PR, and
@@ -333,7 +333,7 @@ assumptions:
     the basic build/lint/test workflow only. The other three depend on
     infrastructure (a provider fixture corpus, a release/signing
     pipeline, govulncheck/CodeQL wiring) that doesn't exist yet this
-    wave and is scope creep beyond this node."
+    phase and is scope creep beyond this node."
 blockers: []
 ```
 
@@ -350,7 +350,7 @@ validation:
   - "manual doc review against Auspex_ADD.md §30.7 (Governance) and §30.8 (Security disclosure), and against README.md's existing 'Contributing' section and Tech stack table, for contradictions -> none found"
   - "grep -rn \"CLA\" --include=*.md .   # only CONTRIBUTING.md/GOVERNANCE.md/Auspex_ADD.md mention it, all consistent ('no CLA')"
 commit: a4ab0b2
-next_action: none — qa-01 and qa-08 were this wave's full qa assignment; STOP per task instruction
+next_action: none — qa-01 and qa-08 were this phase's full qa assignment; STOP per task instruction
 assumptions:
   - "SECURITY.md's disclosure channel is a private GitHub Security
     Advisory with a 3-business-day acknowledgement target, verbatim from
@@ -465,7 +465,7 @@ validation:
 commit: <recorded below>
 next_action: none — this is a corrective task, not a new DAG node; STOP once committed. Re-validation of the updated test to an actual PASS happens once the lead merges vertical-slice/checkpoint into vertical-slice/qa; not this node's job to force that merge.
 assumptions:
-  - "checkpoint independently fixed this wave's qa-05 P1 finding
+  - "checkpoint independently fixed this phase's qa-05 P1 finding
     ('Secret-shaped content in a TRACKED file's staged/unstaged diff is
     never filtered by internal/redact') via vertical-slice/checkpoint commit
     f981bde ('checkpoint: extend secret scanning to tracked-file diff
@@ -528,19 +528,19 @@ findings:
     title: "qa-05 P1 finding ('secret-shaped content in a TRACKED file's staged/unstaged diff is never filtered') is now fixed upstream by checkpoint (vertical-slice/checkpoint@f981bde, internal/repocheckpoint/patchredact.go) — this node's test updated to assert the corrected behavior; re-validated for real once the lead's integration merges vertical-slice/checkpoint and vertical-slice/qa together."
     file: "internal/integrationtest/leakage_scanner_test.go (this node); internal/repocheckpoint/patchredact.go, internal/repocheckpoint/capture.go (checkpoint, read-only reference only)"
     reproduction: "go test ./internal/integrationtest/... -run TestLeakageScanner_SecretInTrackedFileDiff_NowFiltered -v — on vertical-slice/qa alone (checkpoint's fix absent) this currently fails as expected with 'secret-shaped content leaked into staged.patch.gz unredacted'; once vertical-slice/checkpoint@f981bde is integrated, the same command is expected to PASS, asserting no raw secret survives in staged.patch.gz, checkpoint's exact redaction placeholder string is present instead, and the redacted patch remains git-apply-able."
-    expected_invariant: "Once integrated, no secret-shaped content staged/unstaged into a tracked file survives unredacted into a Repository Checkpoint's patch artifacts, and the redacted patch remains structurally valid (git-apply-able) — closing this wave's qa-05 P1 finding."
+    expected_invariant: "Once integrated, no secret-shaped content staged/unstaged into a tracked file survives unredacted into a Repository Checkpoint's patch artifacts, and the redacted patch remains structurally valid (git-apply-able) — closing this phase's qa-05 P1 finding."
     owning_role: "qa (this node) for the test; checkpoint (already delivered, per f981bde) for the fix; lead for final integration and re-validation."
 ```
 
-## Wave (Stage 4 completion) — qa-02, qa-03, qa-06, qa-07, qa-09
+## Phase (Stage 4 completion) — qa-02, qa-03, qa-06, qa-07, qa-09
 
-This wave assigned qa its ENTIRE remaining DAG scope: qa-02 (the vertical-slice
+This phase assigned qa its ENTIRE remaining DAG scope: qa-02 (the vertical-slice
 demo), qa-03 (restart-same-DB, multi-role), qa-06 (independent malicious
 fixtures), qa-07 (scheduler double-worker race, integration scope), and
 qa-09 (this final report). Merged `origin/main` first (fast-forward,
-clean) — Waves 8-11 integrated, meaning claude-provider, checkpoint,
+clean) — Phases 8-11 integrated, meaning claude-provider, checkpoint,
 predictor, and runtime had ALL completed their entire DAG scope by the
-time this wave began, so every dependency qa-02 named ("ALL NOW
+time this phase began, so every dependency qa-02 named ("ALL NOW
 INTEGRATED") was genuinely real, nothing needed to be faked. Each node
 below was validated and committed independently, per the explicit task
 instruction — no batching.
@@ -559,7 +559,7 @@ validation:
   - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
   - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
 commit: abad4d9
-next_action: qa-03 (this wave's next assigned node)
+next_action: qa-03 (this phase's next assigned node)
 assumptions:
   - "Designed ONE coherent 'risky turn' narrative rather than six
     disconnected sub-tests, per the task brief's explicit preference: a
@@ -604,7 +604,7 @@ assumptions:
     ValidateResume/Resume, the same technique
     internal/pause/fulllifecycle_test.go's own runFullLifecycleToSleeping
     helper uses), rather than waiting on a port adapter that is not this
-    wave's scope to build. This is real production code throughout, not a
+    phase's scope to build. This is real production code throughout, not a
     fake standing in for a gap — it is simply reached one layer below the
     not-yet-existing unified port, exactly as runtime-b10's own restart
     test does for the same two services."
@@ -644,7 +644,7 @@ validation:
   - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
   - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
 commit: a1d376a
-next_action: qa-06 (this wave's next assigned node)
+next_action: qa-06 (this phase's next assigned node)
 assumptions:
   - "Built on runtime-b10's own in-process-restart-same-SQLite-file
     technique (internal/app/wiring/restart_test.go: open a real on-disk,
@@ -714,7 +714,7 @@ validation:
   - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
   - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
 commit: 4d81590
-next_action: qa-07 (this wave's next assigned node)
+next_action: qa-07 (this phase's next assigned node)
 assumptions:
   - "Read checkpoint-b09's own final report in docs/implementation/vertical-slice/checkpoint.md
     in full before writing anything, to identify EXACTLY what that node's
@@ -797,14 +797,14 @@ validation:
   - "go build ./... && go test ./...   # whole repo, all 34 packages PASS, zero regressions"
   - "golangci-lint run ./internal/integrationtest/...   # 0 issues"
 commit: 09b2be8
-next_action: qa-09 (this wave's final node — the report you are reading)
+next_action: qa-09 (this phase's final node — the report you are reading)
 assumptions:
   - "The DAG's own validation command for this row
     (`go test ./internal/scheduler/... -run DoubleWorkerRace -race
     -count=20`) targets internal/scheduler/..., which is runtime's
     EXCLUSIVE path, not qa's — qa cannot edit anything under
     internal/scheduler/** or internal/pause/** (agents/qa.md's own
-    exclusive-paths list does not include either). Per this wave's
+    exclusive-paths list does not include either). Per this phase's
     explicit routing instruction, built an INDEPENDENT test in
     internal/integrationtest instead, calling only runtime's real,
     already-exported APIs (scheduler.NewStore/Schedule/Claim/Get,
@@ -856,9 +856,9 @@ findings:
 ## qa-09: Final report (severity-ranked, full role scope)
 
 This is qa's final assigned DAG node. Per `agents/qa.md`'s "Final report"
-section and this wave's own task instructions, this report is
+section and this phase's own task instructions, this report is
 comprehensive across the ENTIRE qa role's vertical-slice scope — qa-01 through
-qa-09 — not just this wave's four nodes. `go test ./... -race` was
+qa-09 — not just this phase's four nodes. `go test ./... -race` was
 re-run as this node's own required validation (see "Full-repo test
 health" below); `golangci-lint run ./...` (whole repo) was re-run and is
 clean.
@@ -942,14 +942,14 @@ unsafe.
      HandleUserPromptSubmit/HandleStopFailure/HandleStatusLine normalize
      and persist a provider event and stop there); `internal/telemetry/claude/normalizer.go`
      (no producer ever assigns `Event.TaskID`/`Event.ProgressNodeID` —
-     confirmed unchanged this wave: both fields remain plain `string`
+     confirmed unchanged this phase: both fields remain plain `string`
      fields on `pkg/protocol/v1.Event`, unset by every real normalizer
      call path); `internal/progress/complete_node.go`'s
      `CompleteNodeInput` and `internal/app/ports.go`'s
      `CompleteNodeRequest` (still frozen to exactly `{NodeID,
      IdempotencyKey, Artifacts[, RepositoryCheckpointID]}` — no
      `v1.Event`/`EventID`/`EventType` field anywhere, confirmed by
-     re-reading `internal/app/ports.go` this wave); `internal/app/wiring/wiring.go`
+     re-reading `internal/app/ports.go` this phase); `internal/app/wiring/wiring.go`
      (still wires no bridge between `internal/telemetry/claude` and
      `internal/progress`/a real `app.ProgressTreeService` — confirmed via
      runtime-b10's own `restart_test.go` package doc comment, which
@@ -959,7 +959,7 @@ unsafe.
    - Reproduction: `go test ./internal/integrationtest/... -run TestDuplicateOutOfOrder_KnownGap_NoProviderEventToCompleteNodeAdapterExists -v`
      — still passes, i.e. the gap is still real (a real normalized Stop
      event's `TaskID`/`ProgressNodeID` are still empty strings). Also
-     reconfirmed this wave via qa-02's own end-to-end scenario: driving
+     reconfirmed this phase via qa-02's own end-to-end scenario: driving
      the literal vertical-slice demo required this test's own file to complete a
      Progress Tree node via `internal/progress.CompleteNode` directly,
      using a hand-built `CompleteNodeInput` rather than any real event-
@@ -988,7 +988,7 @@ unsafe.
      provider's normalizer, checkpoint's CompleteNode, runtime's hook
      handlers) is itself correct and passes its own tests; no existing
      invariant is violated; vertical-slice's frozen DAG never assigned any node the
-     explicit job of building this adapter this wave. It is a real,
+     explicit job of building this adapter this phase. It is a real,
      forward-looking integration gap, not a regression — but it is
      squarely in the path of "the literal vertical-slice demo" (qa-02) actually
      working end-to-end in a REAL deployed system (as opposed to this
@@ -999,7 +999,7 @@ unsafe.
 **P2 — documented follow-up:**
 
 1. **LICENSE/NOTICE files do not exist in the repository root** (originally
-   flagged by qa-08, re-confirmed still absent this wave).
+   flagged by qa-08, re-confirmed still absent this phase).
    - File: repository root (no `LICENSE`/`NOTICE` file exists;
      `foundation`'s own exclusive-paths list names them, and
      `foundation-09`'s own progress artifact already flagged this gap
@@ -1049,7 +1049,7 @@ unsafe.
 | qa-02 | E2E high-risk Claude fixture flow (vertical-slice demo) | Completed; one coherent real end-to-end scenario passes; surfaces the qa-04 P1 gap as load-bearing (see above) |
 | qa-03 | Restart same-DB test | Completed; multi-role state (5 roles' storage) survives a real restart in one shared file; no defect |
 | qa-04 | Duplicate/out-of-order event test | Completed; found and routed the **P1** finding above (still open) |
-| qa-05 | Raw-prompt/secret leakage scanner | Completed; found a **P1** (secret-shaped content in tracked-file diffs unfiltered), **routed and FIXED** by checkpoint (`f981bde`), re-verified passing this wave |
+| qa-05 | Raw-prompt/secret leakage scanner | Completed; found a **P1** (secret-shaped content in tracked-file diffs unfiltered), **routed and FIXED** by checkpoint (`f981bde`), re-verified passing this phase |
 | qa-06 | Path traversal/symlink/malicious fixture tests | Completed; independent adversarial fixtures confirm checkpoint-b09's own fix (a real P1/security finding THAT node found and fixed itself) holds from an external vantage point; no new defect |
 | qa-07 | Scheduler double-worker/lease race test | Completed; independent integration-scope composition of the race across both real SQLite-backed layers; no defect |
 | qa-08 | Support-bundle/doctor privacy baseline (via governance docs) | Completed; flagged the **P2** LICENSE/NOTICE gap above (still open, not qa-owned) |

@@ -4,7 +4,7 @@ package quota
 // percentage-point delta, used when no empirical per-provider/model/task-
 // class delta distribution exists yet (ADD §15.3 step 5, "依
 // provider/model/task class 計算 empirical P50/P90" — unreachable this
-// wave with no durable telemetry store, per this package's doc comment).
+// phase with no durable telemetry store, per this package's doc comment).
 //
 // ADD §15.3 does not name an exact default delta value (unlike §14.6's
 // token-multiplier table), so these are this package's own conservative,
@@ -37,7 +37,7 @@ const (
 // defaultContextGrowthP50/P90Tokens are the cold-start "typical turn" net
 // context-window growth, in TOKENS, used when no same-session delta
 // history exists to calibrate against (ADD §15.9: "以 same-session deltas
-// calibrate" — unreachable this wave for the same reason as the quota
+// calibrate" — unreachable this phase for the same reason as the quota
 // defaults above). D-14: these were originally window-capacity fractions
 // (0.03/0.10) tuned when 200k was the only window size — on a 1M window
 // "10% per turn" meant an absurd 100k tokens and the projection ran a

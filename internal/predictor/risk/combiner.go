@@ -8,7 +8,7 @@ import (
 	"github.com/huaiche94/auspex/internal/domain"
 )
 
-// RuleRiskCombiner is the Wave 5 (Version 1, rule-based/deterministic)
+// RuleRiskCombiner is the Phase 5 (Version 1, rule-based/deterministic)
 // Stage-4 implementation of app.RiskCombiner (ADR-041, predictor-07). It
 // implements ADD §16.2's "Initial explainable formula" verbatim (see
 // doc.go), combining the upstream Stage 1-3 outputs
@@ -141,7 +141,7 @@ func completionRiskComponent(scope domain.ScopeEstimate) domain.RiskComponent {
 // domain.ReasonPublicAPIChange in scope.ReasonCodes via
 // completionRiskTermsFromReasonCodes' sibling helper, hasReason, since that
 // is the only channel through which a public-API-change signal reaches the
-// frozen CombineRiskRequest shape this wave.
+// frozen CombineRiskRequest shape this phase.
 func blastRadiusRiskComponent(scope domain.ScopeEstimate) domain.RiskComponent {
 	filesChangedP90 := ptrToFloat(scope.FilesChangedP90)
 

@@ -81,8 +81,8 @@ of them.
 
 ## Making a change
 
-1. Confirm the change fits the current milestone/wave (see
-   `README.md`'s "Wave roadmap" and
+1. Confirm the change fits the current milestone/phase (see
+   `README.md`'s "Phase roadmap" and
    `docs/implementation/vertical-slice/EXECUTION_DAG.md`).
 2. Confirm the files you need to touch are inside a path you're allowed
    to edit (see "Ground rules" above).

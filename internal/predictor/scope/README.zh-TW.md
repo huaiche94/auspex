@@ -27,7 +27,7 @@ consumer 端的一個窄化視角，在正式環境中由 [`internal/evaluation`
   [`internal/predictor.Quantiles`](../README.md) 自身的保證一致。
 
 `ToolCallsP50/P90`、`VerificationP50/P90`、`RetryLoopsP50/P90` 與 `DurationP50/P90` 在本波
-（wave）維持 nil——目前尚未接上 tool-call 或 verification 的 telemetry，而 nil 代表未知，
+（phase）維持 nil——目前尚未接上 tool-call 或 verification 的 telemetry，而 nil 代表未知，
 絕不是零。
 
 輸出的 `domain.ScopeEstimate` 會提供給 [`token/`](../token/README.md)（作為倍率）與

@@ -6,7 +6,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | **Backlog / TODO** —— 已記錄，尚未排入目前波次（wave） |
+| 狀態 | **Backlog / TODO** —— 已記錄，尚未排入目前波次（phase） |
 | 追蹤 | Issues [#65](https://github.com/huaiche94/auspex/issues/65)（Phase 1）、[#66](https://github.com/huaiche94/auspex/issues/66)（Phase 2）、[#67](https://github.com/huaiche94/auspex/issues/67)（Phase 3）、[#68](https://github.com/huaiche94/auspex/issues/68)（Phase 4），2026-07-14 建立；排序在 #11（校準）、#13（成本軸）、#20（provider／model／effort）之後 |
 | 來源 | 擁有者請求，2026-07-14：完整讀完 arXiv:2604.22750，並要求把其發現納入路線圖 |
 | 相關 | `Auspex_ADD.md` §14–§17、`../design/Auspex_Predictor_Design_Supplement.md`（「External Evidence」）、ADR-041（forecast 層）、ADR-043（多資源 runway／成本軸，#13）、ADR-047（cohort fallback ladder）、issues #11、#14、#20、#42 |

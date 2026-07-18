@@ -4,7 +4,7 @@
 // this is THE literal vertical-slice demo: "Cannot start meaningfully until all six
 // upstream tasks are real" — claude-provider-07, checkpoint-a09,
 // checkpoint-b09, predictor-11, runtime-a11, runtime-b10 — and, as of this
-// wave (Waves 8-11 merged), every one of them is.
+// phase (Phases 8-11 merged), every one of them is.
 //
 // # The narrative this file drives, once, end to end
 //

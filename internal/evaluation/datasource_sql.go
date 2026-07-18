@@ -356,7 +356,7 @@ func (s *SQLDataSource) Repository(_ context.Context, _ domain.RepositoryID) (fe
 // ChangedLinesRecentP50/90, RetryRate, TestFailureRate,
 // ToolOutputBytesP50, ContextGrowthRateP50, CompactionCount,
 // CheckpointAge) are almost entirely empirical quantiles/rates over a
-// well-defined historical window that this wave's schema cannot honestly
+// well-defined historical window that this phase's schema cannot honestly
 // reconstruct end-to-end: events.payload_json carries per-observation
 // usage/quota/context numbers (consumed directly and correctly by Quota/
 // Context/RecentSimilarTurnTokens below, which need only raw observations,
@@ -934,7 +934,7 @@ func (s *SQLDataSource) Context(ctx context.Context, sessionID domain.SessionID)
 // its caller, but does not itself write it to this table) — this query is
 // nonetheless real and correct against the frozen schema; it activates
 // automatically, with no further change to this file, the moment a future
-// wave wires persistence for that table (out of this role's exclusive path
+// phase wires persistence for that table (out of this role's exclusive path
 // to add, per Constitution §4).
 func (s *SQLDataSource) RunwayForecast(ctx context.Context, sessionID domain.SessionID) (domain.RunwayForecast, bool, error) {
 	// Note: runway_forecasts (migration 0042) has no sample_count column,

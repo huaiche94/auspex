@@ -23,7 +23,7 @@ named after the formula's own variables):
 
 Invariant (Constitution §7 rule 7): uncalibrated scores are never probabilities. Every
 `domain.RiskComponent.Score` is a 0–1 risk score, not a probability, unless every contributing
-input is itself `Calibrated=true` — unreachable this wave, since Stages 1–3 are cold-start-only.
+input is itself `Calibrated=true` — unreachable this phase, since Stages 1–3 are cold-start-only.
 Calibrated/Confidence are propagated honestly from upstream, never manufactured, and on the
 cold-start path the downstream probability surfaces
 ([`internal/policy`](../../policy/README.md)'s `Decision.Probability`,

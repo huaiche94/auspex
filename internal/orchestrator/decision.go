@@ -3,7 +3,7 @@
 // runtime-b06) — the two remaining decision-flow commands after
 // runtime-b03's Evaluate pipeline. Per the task brief, this node's explicit
 // job is to wire the REAL internal/evaluation.Service (predictor-09/10,
-// both integrated on main as of this wave) into the decision-allow path,
+// both integrated on main as of this phase) into the decision-allow path,
 // replacing runtime-b03's FAKE app.EvaluationService — this is now a HARD
 // dependency, not fake-able, per the DAG's own note: "second-authorization-
 // replay-rejected is a required test," and a fake can only ever simulate
@@ -65,7 +65,7 @@ type AuthorizationIssuer interface {
 
 // DecisionDeps bundles DecisionAllowCmd/DecisionDenyCmd's collaborators.
 // Evaluation is the frozen app.EvaluationService port (Decide/
-// ConsumeAuthorization) — REAL this wave (internal/evaluation.Service),
+// ConsumeAuthorization) — REAL this phase (internal/evaluation.Service),
 // per the DAG's hard-dependency note. Issuer is the same concrete Service
 // value, satisfying AuthorizationIssuer — a caller wires both fields from
 // the one real *evaluation.Service instance (it satisfies both

@@ -27,5 +27,5 @@
   使用的通用化版本。
 - 本方法論所蒸餾自的實際執行紀錄，記錄於
   [`../implementation/vertical-slice/`](../implementation/vertical-slice/README.md)；
-  其中 Phase 6（「Post-Wave Analysis」）對應到
+  其中 Phase 6（「Post-Phase Analysis」）對應到
   [`wave2-analysis/`](../implementation/vertical-slice/wave2-analysis/README.md)。

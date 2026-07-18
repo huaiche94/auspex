@@ -204,7 +204,7 @@ type ServiceDeps struct {
 	// commits the resulting wake job's run_after should be -- i.e. how
 	// long this pause should sleep by default before a scheduler worker
 	// wakes it, absent any provider-specific reset-time signal (a future
-	// refinement this Service does not attempt this wave; ADD §20.7's
+	// refinement this Service does not attempt this phase; ADD §20.7's
 	// backoff schedule already governs RETRY spacing once a wake job
 	// exists, which is the mechanism Resume's own quota-unsafe path reuses
 	// via RescheduleWakeJobOnQuotaUnsafe).

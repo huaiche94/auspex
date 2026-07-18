@@ -12,7 +12,7 @@ This report does not repeat the Feature Registry's identity/provenance
 columns (Constitution-analogous rule: don't duplicate the canonical data
 dictionary). It adds exactly what the registry does not carry: why each
 gap exists, its impact, a suggested closing approach, a complexity
-estimate, and an expected improvement — ranked so a future wave can
+estimate, and an expected improvement — ranked so a future phase can
 prioritize.
 
 ## Complexity scale used below
@@ -20,7 +20,7 @@ prioritize.
 Reuses the DAG's own XS/S/M/L/XL convention (`EXECUTION_DAG.md` §1) for
 consistency, applied here to a *closing this gap* unit of work, not a
 DAG-node estimate — these are not new DAG nodes, just complexity signals
-for Wave 3+ planning to draw on.
+for Phase 3+ planning to draw on.
 
 ## 1. Critical-importance gaps
 
@@ -34,7 +34,7 @@ for Wave 3+ planning to draw on.
   Rule Predictor's most important outputs — currently never see real
   repository state, only cold-start defaults and session-history blends.
 - **Suggested implementation:** A concrete `FeatureSource` implementation
-  in a future predictor wave that calls into `internal/gitx`'s already-built
+  in a future predictor phase that calls into `internal/gitx`'s already-built
   primitives. No new gitx functionality needed — this is glue code.
 - **Complexity:** S — the hard part (Git introspection) is done; this is
   adapter/wiring work.
@@ -161,7 +161,7 @@ for Wave 3+ planning to draw on.
 - **Complexity:** M per provider (repeats for each new provider adapter).
 - **Expected prediction improvement:** Low-medium — `FilesReadP*` is a
   named field but not currently consumed by any downstream formula this
-  wave built (Token Forecaster, which would use it, is itself unbuilt).
+  phase built (Token Forecaster, which would use it, is itself unbuilt).
 
 ### 4.2 Calibration statistics (ECE/Brier) (Registry §7)
 
@@ -190,7 +190,7 @@ for Wave 3+ planning to draw on.
 | 8 | Calibration statistics (4.2) | Critical | N/A (volume, not build) | N/A (a measurement, not a feature) | Gap #6 |
 
 **Read this ranking carefully**: rank 1-4 are genuinely closeable in a
-near-term wave with no other prerequisite. Rank 6-8 are not smaller
+near-term phase with no other prerequisite. Rank 6-8 are not smaller
 versions of the same kind of gap — they are blocked on multi-role
 infrastructure that doesn't exist, and no amount of predictor-side
 cleverness closes them faster. `Wave3_Recommendation.md` uses this

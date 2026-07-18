@@ -28,7 +28,7 @@
 // (omitting PromptHash on the request used to silently skip the binding
 // check even when the authorization itself was bound to a real prompt hash).
 // Every other adversarial scenario in this file passed on the first try
-// against predictor-09's existing logic — see the wave's progress artifact
+// against predictor-09's existing logic — see the phase's progress artifact
 // (docs/implementation/vertical-slice/predictor.md, node predictor-10) for the full
 // enumeration of what was tested and which passed pre-existing vs. needed
 // the fix.

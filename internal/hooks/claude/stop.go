@@ -152,7 +152,7 @@ func ParseStopFailure(raw []byte) (StopFailureEvent, error) {
 // frozen domain.FailureClass enum. This mapping is Auspex's own
 // heuristic (not part of any frozen contract) and may need refinement once
 // real StopFailure payloads are observed against a live account — see the
-// progress artifact's "assumptions" for this wave.
+// progress artifact's "assumptions" for this phase.
 func classifyFailure(errType, message string, statusCode *int64) domain.FailureClass {
 	t := strings.ToLower(errType)
 	m := strings.ToLower(message)

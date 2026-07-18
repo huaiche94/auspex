@@ -6,7 +6,7 @@
 |---|---|
 | Source | `Auspex_ADD.md` + `Auspex_Parallel_Execution_Plan.md` + `agents/*.md` (canonical per those docs) |
 | Scope | Full task-level breakdown of the seven-role vertical slice |
-| Status | **Wave 1 integrated (`main` @ `3fb37ce`). Amended 2026-07-12 per ADR-041 (predictor forecast layer) before Wave 2 implementation begins.** |
+| Status | **Phase 1 integrated (`main` @ `3fb37ce`). Amended 2026-07-12 per ADR-041 (predictor forecast layer) before Phase 2 implementation begins.** |
 | Supersedes | The earlier nine-role (`A00`–`A08`) version of this document, archived in git history at commit `f1d9065` and referenced from `docs/archive/agent-packets-v1/`. |
 | Amendments | `docs/adr/0041-predictor-forecast-layer.md` — inserted `predictor-05b`/`predictor-05c`, corrected `predictor-07`/`predictor-08`/`predictor-11` dependency edges. See §5 Summary for the resulting task-count delta. |
 | Generated | 2026-07-12 (regenerated after the `agents/` restructuring; amended same day per ADR-041) |
@@ -137,7 +137,7 @@ final integration).
 | predictor-04 | contract-integrator-07 | M | 250 | 4 | `go test ./internal/predictor/... -run QuantileMonotonic` | 2 | Medium — property tests must hold for all inputs, including degenerate ones | None |
 | predictor-05 | predictor-03, predictor-04 | M | 300 | 4 | `go test ./internal/predictor/... -run Scope` | 2 | Low | None |
 | predictor-05b **(new, ADR-041)** | predictor-05 | L | 400 | 4 | `go test ./internal/predictor/... -run TokenForecast` | 2 | High — feeds `RiskCombiner`'s quota/context risk terms; a systematic bias here propagates into every downstream policy decision | None |
-| predictor-05c **(new, ADR-041)** | predictor-05b | M | 300 | 4 | `go test ./internal/predictor/... -run QuotaForecast` | 2 | Medium — cold-start deterministic estimate acceptable this wave; full empirical calibration needs `claude-provider-05`/`foundation-06` (later wave) | None |
+| predictor-05c **(new, ADR-041)** | predictor-05b | M | 300 | 4 | `go test ./internal/predictor/... -run QuotaForecast` | 2 | Medium — cold-start deterministic estimate acceptable this phase; full empirical calibration needs `claude-provider-05`/`foundation-06` (later phase) | None |
 | predictor-06 | predictor-04 | L | 350 | 4 | `go test ./internal/predictor/runway/...` | 2 | High — consumed directly by `runtime` Part A Observe; a bad score risks false pause triggers | None |
 | predictor-07 | predictor-05, predictor-05c **(was: predictor-05, predictor-06 — corrected, ADR-041)** | L | 400 | 5 | `go test ./internal/predictor/... -run RiskComponents` | 2 | Medium | None |
 | predictor-08 | predictor-07, predictor-06 **(was: predictor-07 only — corrected, ADR-041: Policy consumes Runway directly)** | L | 400 | 5 | `go test ./internal/policy/... -run ColdStart` | 2 | **High — must never label an uncalibrated score a probability** | Constitution §6/§7 invariant; any violation blocks merge |

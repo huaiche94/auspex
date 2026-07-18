@@ -22,9 +22,9 @@ var ErrNotFound = &domain.Error{
 }
 
 // featureSetVersion is the fixed feature-set version string persisted
-// with every feature_vectors/predictions row this wave (migration
+// with every feature_vectors/predictions row this phase (migration
 // 0040/0041's feature_set_version column). No versioning scheme beyond a
-// literal constant exists yet — a later wave introducing a second feature
+// literal constant exists yet — a later phase introducing a second feature
 // set would bump this.
 const featureSetVersion = "v1"
 

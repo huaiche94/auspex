@@ -76,7 +76,7 @@ type RunwayHint struct {
 	// P90 usage reaches the limit inside the horizon.
 	ProjectedExceedsWithinHorizon bool
 	// Calibrated mirrors the forecast's calibration bit — always false in
-	// native-hook mode this wave (no durable calibrated burn-rate history),
+	// native-hook mode this phase (no durable calibrated burn-rate history),
 	// carried so presenters can label the hint uncalibrated per §7.
 	Calibrated bool
 }

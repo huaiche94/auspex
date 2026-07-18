@@ -37,7 +37,7 @@
 // for a hook handler that already has a provider session ID from the
 // normalized event, or a CLI command run inside an already-`init`ed
 // repository — and treats "resolve" as validating those IDs are present
-// and well-formed, not as a new database lookup layer. If a later wave
+// and well-formed, not as a new database lookup layer. If a later phase
 // freezes a real ResolverService port, swapping this node's resolve step
 // to call it is a localized, additive change.
 //

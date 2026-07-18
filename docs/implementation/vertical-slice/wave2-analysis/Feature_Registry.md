@@ -4,8 +4,8 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.7 — Post Wave 2 Analysis |
-| Status | **Canonical at creation (Phase 3.7, Wave 2 analysis) — now a point-in-time snapshot.** When written, this was declared the single source of truth for every feature Auspex's predictor pipeline uses or will use, and predictor work of that phase referenced features through it (a Constitution-analogous rule the repository owner stated at the time). Because it lives in the frozen `wave2-analysis/` directory it is **not continuously maintained here**: the live sources of truth going forward are the code (`internal/features/**`, `internal/domain/**`) and the ADD's §14/§15/§16 feature lists — the same two sources every entry below is already traceable to. Read it as the Wave-2 reference it is, reconciling against those live sources. |
+| Phase | 3.7 — Post Phase 2 Analysis |
+| Status | **Canonical at creation (Phase 3.7, Phase 2 analysis) — now a point-in-time snapshot.** When written, this was declared the single source of truth for every feature Auspex's predictor pipeline uses or will use, and predictor work of that phase referenced features through it (a Constitution-analogous rule the repository owner stated at the time). Because it lives in the frozen `wave2-analysis/` directory it is **not continuously maintained here**: the live sources of truth going forward are the code (`internal/features/**`, `internal/domain/**`) and the ADD's §14/§15/§16 feature lists — the same two sources every entry below is already traceable to. Read it as the Phase-2 reference it is, reconciling against those live sources. |
 | Method | Every feature below is grounded in either (a) real, verified code (`internal/features/**`, `internal/domain/**`) or (b) the ADD's own already-specified §14/§15/§16 feature lists. No feature is invented for this registry that isn't traceable to one of those two sources. |
 
 ## How to read this registry
@@ -27,7 +27,7 @@ for it today), **Unknown** (no code path produces it at all yet).
 ## 1. Prompt Features
 
 Source: `internal/features/prompt.go` (`PromptFeatures`, real,
-Wave 1-built, verified). Ground truth for none of these — every field is
+Phase 1-built, verified). Ground truth for none of these — every field is
 itself a derived signal *about* the prompt, not a fact the world confirms
 or denies independently.
 
@@ -86,7 +86,7 @@ producer exists yet** — see §0 caveat below).
 | `RecentChangedPathCount` | Recently-touched path count | int | (declared, not wired) | Unknown | 0.00 | No | Unknown | Medium |
 
 **§0 caveat, important:** this is the clearest case in the whole registry
-of a **wiring gap, not a data gap**. `internal/gitx` (Wave 1/2,
+of a **wiring gap, not a data gap**. `internal/gitx` (Phase 1/2,
 `checkpoint-b02`/`b03`) already computes dirty-file/line counts,
 worktree-vs-main detection, and a full status/numstat parse — real,
 tested, Observed-quality data. But no code path currently feeds that data
@@ -157,7 +157,7 @@ fixtures — never a live session).
 **The "Available (fixture-scoped only)" pattern recurs across this whole
 section and deserves one explicit, unambiguous statement:** `claude-provider`'s
 parsers and normalizer are real, tested, working code — verified
-independently by the lead during Wave 1/2 review, including privacy and
+independently by the lead during Phase 1/2 review, including privacy and
 idempotency tests. But every test they pass is against a hand-constructed
 JSON fixture, not a byte ever emitted by a real Claude Code session. This
 registry deliberately does not call that data "Available" in the
@@ -187,14 +187,14 @@ Source: `internal/domain/forecast.go` (`ScopeEstimate`, `TokenForecast`,
 
 | Feature | Description | Data type / Unit | Source | Provenance | Confidence | Ground Truth | Current Availability | Importance |
 |---|---|---|---|---|---|---|---|---|
-| `ScopeEstimate.FilesReadP50/P80/P90` | Predicted files-read quantiles | `*int64` ×3 | `RuleScopeEstimator` (real, Wave 2) | Estimated | Cold-start default or session-blend, never ground-truthed | No — this is a *prediction*, not an observation | Estimated | High |
+| `ScopeEstimate.FilesReadP50/P80/P90` | Predicted files-read quantiles | `*int64` ×3 | `RuleScopeEstimator` (real, Phase 2) | Estimated | Cold-start default or session-blend, never ground-truthed | No — this is a *prediction*, not an observation | Estimated | High |
 | `ScopeEstimate.FilesChangedP50/P80/P90` | Predicted files-changed quantiles | `*int64` ×3 | same | Estimated | same | No | Estimated | Critical |
 | `ScopeEstimate.LinesChangedP50/P80/P90` | Predicted lines-changed quantiles | `*int64` ×3 | same | Estimated | same | No | Estimated | Critical |
-| `ScopeEstimate.ToolCallsP50/P90`, `VerificationP50/P90`, `RetryLoopsP50/P90`, `DurationP50/P90` | Predicted tool/verification/retry/duration | `*int64` ×8 | same | Unknown | N/A | No | Unknown (deliberately left `nil` this wave — verified by `TestEstimateScopeUnknownFieldsStayNil`) | Medium |
+| `ScopeEstimate.ToolCallsP50/P90`, `VerificationP50/P90`, `RetryLoopsP50/P90`, `DurationP50/P90` | Predicted tool/verification/retry/duration | `*int64` ×8 | same | Unknown | N/A | No | Unknown (deliberately left `nil` this phase — verified by `TestEstimateScopeUnknownFieldsStayNil`) | Medium |
 | `ScopeEstimate.RequiresUnitTests/RequiresIntegration/CrossProject/MigrationLikely/SecuritySensitive` | Predicted boolean signals | bool ×5 | same | Estimated (keyword/heuristic-derived) | 0.50-0.60 | No | Available (populated, low confidence) | High |
-| `TokenForecast.TokensP50/P80/P90` | Predicted token cost | int64 ×3 | (not built — `predictor-05b`, deferred past Wave 2) | Unknown | 0.00 | No | Unknown | Critical |
-| `QuotaForecast.ProjectedQuotaUsedP90` / `ProjectedContextUsedP90` | Projected quota/context position | `*float64` ×2 | (not built — `predictor-05c`, deferred past Wave 2) | Unknown | 0.00 | No | Unknown | Critical |
-| `RunwayForecast.RiskScore` | 10-minute quota-hazard score | float64 | `internal/predictor/runway` (real, `predictor-06`) | Estimated (uncalibrated fallback per ADD §15.7) | Always uncalibrated this wave (verified by `TestScoreNeverCalibratedNeverPanics`) | No | Available (score only, not probability) | Critical |
+| `TokenForecast.TokensP50/P80/P90` | Predicted token cost | int64 ×3 | (not built — `predictor-05b`, deferred past Phase 2) | Unknown | 0.00 | No | Unknown | Critical |
+| `QuotaForecast.ProjectedQuotaUsedP90` / `ProjectedContextUsedP90` | Projected quota/context position | `*float64` ×2 | (not built — `predictor-05c`, deferred past Phase 2) | Unknown | 0.00 | No | Unknown | Critical |
+| `RunwayForecast.RiskScore` | 10-minute quota-hazard score | float64 | `internal/predictor/runway` (real, `predictor-06`) | Estimated (uncalibrated fallback per ADD §15.7) | Always uncalibrated this phase (verified by `TestScoreNeverCalibratedNeverPanics`) | No | Available (score only, not probability) | Critical |
 | `RunwayForecast.HitProbability` | Calibrated 10-minute hit probability | `*float64` | same | Unknown | 0.00 (ADR-026/ADD §15.6: correctly always `nil` until calibration gate passes) | No | Unknown (by design) | Critical |
 
 ### 5b. Suitability & Operations
@@ -252,7 +252,7 @@ pattern used throughout every forecast/observation type), ADD §15.6.
 | Feature | Description | Data type / Unit | Source | Provenance | Confidence | Ground Truth | Current Availability | Importance |
 |---|---|---|---|---|---|---|---|---|
 | `Confidence` enum (`Exact`/`High`/`Medium`/`Low`/`Unavailable`) | Per-observation trust tag | enum, 5 values | `internal/domain/measurement.go` (real, Bootstrap-frozen) | Observed (the enum itself is real code); Derived (any given instance's value is a judgment call by its producer) | N/A (a confidence value is not itself confidence-scored — this is intentional, not a gap) | No | Available | Critical |
-| `Calibrated` bool (present on `TokenForecast`, `QuotaForecast`, `RiskComponent`, `RunwayForecast`) | Whether a score has passed the calibration gate | bool | same pattern, real | Observed | N/A | No | Available (always `false` in every producer this wave, correctly) | Critical |
+| `Calibrated` bool (present on `TokenForecast`, `QuotaForecast`, `RiskComponent`, `RunwayForecast`) | Whether a score has passed the calibration gate | bool | same pattern, real | Observed | N/A | No | Available (always `false` in every producer this phase, correctly) | Critical |
 | ECE (Expected Calibration Error) | Calibration quality metric | float64, 0-1 | ADD §15.6 (specified, not implemented — needs ≥20 valid samples) | Unknown | 0.00 | Yes (once computed, it is a real statistic over real outcomes) | Unknown | Critical |
 | Brier score | Calibration quality metric | float64 | same | Unknown | 0.00 | Yes (once computed) | Unknown | High |
 

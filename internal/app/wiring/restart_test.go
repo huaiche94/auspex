@@ -38,12 +38,12 @@
 // pause.SQLiteStore, closing the gap five prior Part A nodes' own doc
 // comments named: "a real SQLite-backed PauseStore is a future integration
 // node's concern" — see sqlitestore.go), and the durable scheduler
-// (internal/scheduler.Store, runtime-a06, already real since Wave 5).
+// (internal/scheduler.Store, runtime-a06, already real since Phase 5).
 //
 // Still fake here: ProgressTreeService and GracefulPauseService. Both are
 // required non-nil fields on wiring.Services (New fails closed otherwise),
 // but NEITHER has a real, unified adapter anywhere in this repository as of
-// this wave — confirmed directly before writing this file: grepping the
+// this phase — confirmed directly before writing this file: grepping the
 // whole tree for `var _ app.ProgressTreeService =` and
 // `var _ app.GracefulPauseService =` matches only
 // internal/testutil/fakes/{progresstree,gracefulpause}.go. ProgressTree is

@@ -10,7 +10,7 @@
 // Auspex_Predictor_Design_Supplement.md's Evolution Roadmap
 // ("RuleQuotaForecaster — Version 1 — deterministic delta model, §15.3").
 //
-// No durable historical telemetry store exists yet this wave — the same
+// No durable historical telemetry store exists yet this phase — the same
 // gap already established for predictor-05/predictor-05b/predictor-06's
 // cold-start-only implementations, and explicitly anticipated by
 // CONTRACT_FREEZE.md's "Predictor pipeline ports (ADR-041)" section:
@@ -19,7 +19,7 @@
 // historical telemetry exists. This is not a stub to be later thrown
 // away; it is the correct first implementation under this frozen shape."
 // RuleQuotaForecaster therefore always returns Calibrated=false,
-// Confidence<=ConfidenceLow this wave: §15.3's "依 provider/model/task
+// Confidence<=ConfidenceLow this phase: §15.3's "依 provider/model/task
 // class 計算 empirical P50/P90" step (empirical delta quantiles) has no
 // samples to compute from, so every projection uses the documented
 // default-delta constants in coldstart.go instead, exactly as this node's

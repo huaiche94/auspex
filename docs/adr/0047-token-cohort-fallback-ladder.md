@@ -63,7 +63,7 @@ Two gaps remained for cohort mechanics:
    forecasts keep emitting `PREDICTION_COLD_START` unchanged. An unknown
    future rung value maps to the session-only code — the most conservative
    claim. Confidence semantics are unchanged (empirical ⇒ at most
-   ConfidenceMedium, never calibrated this wave).
+   ConfidenceMedium, never calibrated this phase).
 
 ## Honest scope
 
@@ -76,7 +76,7 @@ Two gaps remained for cohort mechanics:
 - **The ladder is dormant machinery today.** No payload carries
   `total_tokens` yet, so every rung yields zero samples and behavior is
   byte-identical to before (session rung, empty, cold-start default). When
-  a future wave adds the field, the ladder activates for free — the same
+  a future phase adds the field, the ladder activates for free — the same
   contract the pre-ladder query documented for itself.
 - **Effort matches on raw strings.** Claude is the only provider emitting
   effort today; the normalized cross-provider `effort_class` mapping is a

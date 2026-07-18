@@ -9,7 +9,7 @@
 // This file adds no new business logic: every real implementation it
 // constructs already exists, already has its own package's tests, and is
 // composed here exactly as each role's own "Final integration gate
-// corrective addition" wave built it to be composed (internal/progress.
+// corrective addition" phase built it to be composed (internal/progress.
 // Service, internal/statecheckpoint.Service, internal/repocheckpoint.
 // Service, internal/pause.Service, internal/evaluation.Service +
 // SQLDataSource). The only new code in this file is DTO-shape translation

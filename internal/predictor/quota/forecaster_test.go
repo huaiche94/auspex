@@ -68,7 +68,7 @@ func TestQuotaForecastNeverCalibratedThisWave(t *testing.T) {
 				t.Fatalf("ForecastQuota: %v", err)
 			}
 			if got.Calibrated {
-				t.Errorf("Calibrated = true, want false (cold-start-only this wave)")
+				t.Errorf("Calibrated = true, want false (cold-start-only this phase)")
 			}
 			if got.Confidence != domain.ConfidenceLow {
 				t.Errorf("Confidence = %q, want %q", got.Confidence, domain.ConfidenceLow)

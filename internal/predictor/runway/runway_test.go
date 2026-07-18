@@ -32,7 +32,7 @@ func assertRunwaySane(t *testing.T, label string, f domain.RunwayForecast) {
 		t.Fatalf("%s: RiskScore out of [0,1]: %v", label, f.RiskScore)
 	}
 	if f.Calibrated {
-		t.Fatalf("%s: Calibrated must be false this wave (no durable calibrated history exists)", label)
+		t.Fatalf("%s: Calibrated must be false this phase (no durable calibrated history exists)", label)
 	}
 	if f.HitProbability != nil {
 		t.Fatalf("%s: HitProbability must be nil while Calibrated is false (ADD principle 2 / Constitution §7 rule 7): got %v", label, *f.HitProbability)

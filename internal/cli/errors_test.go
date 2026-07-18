@@ -33,7 +33,7 @@ func TestNotImplementedShape(t *testing.T) {
 }
 
 // TestStubCommandsReturnNotImplemented drives every P0 command that has no
-// real implementation this wave and confirms it returns the typed stub
+// real implementation this phase and confirms it returns the typed stub
 // error rather than doing anything real or silently succeeding. `version`
 // is deliberately excluded — it is the one command in this tree that is
 // not a stub.

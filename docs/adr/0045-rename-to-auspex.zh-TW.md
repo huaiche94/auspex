@@ -37,4 +37,4 @@ ADR-001 將產品命名為 Preflight。issue #16 的 pre-release 命名稽核（
 
 - ADR-001 已被取代。ADD §4.4 的檢查清單現在追蹤的是 Auspex 的註冊確認事項；由於 auspex.dev 已被註冊，網域策略轉向複合網域（auspex.tools／getauspex.dev）。
 - Statusline 的圖示前綴由 `pf✈` 改為 `ax✈`（鳥的符號保留——auspicium 字面上的意思本來就是觀鳥占卜）。
-- 歷史性產物（issue 標題、`docs/archive/` 中 wave 時期的進度文件、commit 訊息）刻意仍維持 Preflight 這個名稱。
+- 歷史性產物（issue 標題、`docs/archive/` 中 phase 時期的進度文件、commit 訊息）刻意仍維持 Preflight 這個名稱。

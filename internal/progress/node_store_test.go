@@ -183,7 +183,7 @@ func TestNodeStore_TransitionStatus_StaleVersionConflict(t *testing.T) {
 
 // TestNodeStore_ConcurrentTransition_OnlyOneWins is the DAG's required
 // "concurrent completion race" test, scoped to the state-machine/store
-// layer per this wave's brief (the full CompleteNode atomic protocol with
+// layer per this phase's brief (the full CompleteNode atomic protocol with
 // artifact evidence is checkpoint-a04's job): many goroutines race to move
 // the SAME node out of in_progress via different valid target states;
 // exactly one transition must succeed and the rest must fail with a

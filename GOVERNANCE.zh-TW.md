@@ -23,7 +23,7 @@ Auspex 目前處於**Initial（初始）**治理階段
   `contract-integrator` role／架構負責人可以接受它。
 
 這反映的是專案今天實際所處的階段（早期、單一主導者、pre-1.0、
-vertical slice 仍在建置中——見 `README.md` 的 wave roadmap），而不是一種期望。
+vertical slice 仍在建置中——見 `README.md` 的 phase roadmap），而不是一種期望。
 
 ## 成熟階段（未來）
 

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Phase | 3.9 — Post Wave 2 Analysis |
+| Phase | 3.9 — Post Phase 2 Analysis |
 | Status | **Proposals only. None of these are approved. None are implemented. No file listed as "affected" has been touched by this document.** |
 | Source | Findings from `Feature_Registry.md`, `Feature_Gap_Report.md`, `Wave2_Lessons.md`, and this conversation's own independent verification work |
 
@@ -21,7 +21,7 @@ session-derived features to do useful work, but `app.EstimateScopeRequest`
 (the frozen contract) carries only IDs. The role worked around this with
 a package-local `FeatureSource` interface (`internal/predictor/scope/estimator.go`)
 rather than editing `internal/app/ports.go`, per instruction. This was the
-correct call under Wave 2's rules, but it means the feature-lookup
+correct call under Phase 2's rules, but it means the feature-lookup
 capability now lives entirely inside `predictor`'s own package, invisible
 to `internal/app`'s cross-component contract — any future predictor tier
 (Statistical, ML) or any other role needing the same repository/session
@@ -49,7 +49,7 @@ Constitution §3's "public CLI/API/protocol compatibility" ADR trigger, so
 it should be designed once, deliberately, not iterated in place after
 other roles depend on it.
 
-**Recommendation:** Worth a real ADR before Wave 3 assigns any node that
+**Recommendation:** Worth a real ADR before Phase 3 assigns any node that
 would consume this data (e.g., a future `predictor-05` follow-up, or
 `predictor-05b`/`-05c`). Low implementation cost (S per
 `Feature_Gap_Report.md`), meaningful leverage (closes the single
@@ -60,7 +60,7 @@ highest-ranked gap in that report).
 ## ADR-REC-02: Add duration and token-cost fields to the DAG task-table schema — or explicitly declare them permanently out of scope
 
 **Problem:** `docs/implementation/vertical-slice/EXECUTION_DAG.md` has never had a
-duration or token field, for any of its 84+ nodes, across two full waves.
+duration or token field, for any of its 84+ nodes, across two full phases.
 This was independently flagged as a gap by 4 of 5 lessons-learned files
 (`Wave2_Lessons.md` §1, issue #2) without those files having visibility
 into each other. `Prediction_Error_Report.md` could not compute a single
@@ -70,7 +70,7 @@ data exists at partial granularity, per that report).
 
 **Evidence:** `Prediction_Error_Report.md` §2 ("Nodes where
 `estimated_duration` exists at all: 0 of 19"), `Calibration_Report.md`
-§8 (names this as the #3 priority for improving future-wave confidence).
+§8 (names this as the #3 priority for improving future-phase confidence).
 
 **Affected packages:** None (this is a documentation/process artifact,
 `docs/implementation/vertical-slice/EXECUTION_DAG.md`, not Go code) — listed here
@@ -87,7 +87,7 @@ approximately, so the estimator has *something* to be checked against; or
 (b) explicitly document in the DAG's own header that duration/token are
 out of scope for this artifact by design (e.g., because they are provider-
 and model-dependent in a way LOC/files/complexity are not), which would
-at least stop the same gap being independently rediscovered every wave.
+at least stop the same gap being independently rediscovered every phase.
 Recommend (a) — a rough estimate that turns out wrong is more useful data
 than a permanently blank field, per this project's own "Unknown is a
 valid answer, but don't leave a gap uninvestigated" ethos.
@@ -104,7 +104,7 @@ command list, `docs/implementation/vertical-slice/EXECUTION_DAG.md`'s
 `Auspex_Parallel_Execution_Plan.md`'s demo script all
 independently use kebab-case (`auspex hook claude user-prompt-submit`).
 This was discovered by `claude-provider-06` and independently confirmed
-by the lead reading the ADD text directly during Wave 2 review — it is
+by the lead reading the ADD text directly during Phase 2 review — it is
 real, not a misread.
 
 **Evidence:** `Wave2_Lessons.md` §1, issue #4; the underlying text
@@ -147,7 +147,7 @@ which role ends up owning event storage.
 
 **Compatibility impact:** None yet (no migrations exist). Becomes a
 schema-versioning question once `foundation-06` ships migrations without
-an events table and a later wave wants to add one retroactively.
+an events table and a later phase wants to add one retroactively.
 
 **Recommendation:** Resolve before `foundation-06` is assigned, for the
 same "cheap now, expensive later" reason as ADR-REC-03. Two honest
@@ -163,7 +163,7 @@ be a stated decision, not a silent gap.
 
 **Problem:** ADD §15.5 explicitly discusses multiple quota windows
 ("多 windows 取 `P_any = 1 - Π(1 - P_i)`... v1 預設取 max") and
-`predictor-06`'s `CombineWindows` function (verified during Wave 2 review)
+`predictor-06`'s `CombineWindows` function (verified during Phase 2 review)
 already implements a `max()` combination across windows. But
 `domain.RunwayForecast` itself (ADR-041, frozen) is a single-window
 struct — `CombineWindows` operates on a caller-supplied slice of them,
@@ -171,9 +171,9 @@ not on a frozen multi-window type. Meanwhile `QuotaForecast` (also
 ADR-041) was deliberately kept to two scalar fields
 (`ProjectedQuotaUsedP90`, `ProjectedContextUsedP90`), not an array, per
 explicit instruction to avoid speculative multi-window complexity this
-wave.
+phase.
 
-**Evidence:** Direct code reading during Wave 2 verification
+**Evidence:** Direct code reading during Phase 2 verification
 (`internal/predictor/runway/runway.go`'s `CombineWindows`, `TestCombineWindowsTakesMax`).
 
 **Affected packages:** `internal/domain/usage.go` (`RunwayForecast`),
@@ -196,7 +196,7 @@ having chosen that outcome on purpose.
 | # | Recommendation | Urgency | Implementation cost if approved |
 |---|---|---|---|
 | REC-01 | Frozen feature-lookup port | Before next predictor node | S |
-| REC-02 | DAG duration/token fields | Before Wave 3 planning uses estimates | XS (schema) / ongoing (fill-in cost) |
+| REC-02 | DAG duration/token fields | Before Phase 3 planning uses estimates | XS (schema) / ongoing (fill-in cost) |
 | REC-03 | CLI casing resolution | Before `runtime-b01` | XS |
 | REC-04 | `events` table decision | Before `foundation-06` | XS (decision) / S (if adding the table) |
 | REC-05 | Multi-window Runway (open question) | No urgency — revisit opportunistically | Unknown, not scoped |

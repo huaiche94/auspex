@@ -98,7 +98,7 @@ type CaptureResult struct {
 //     (race detection — ADD §19.3 step 11: a repository mutated during
 //     capture makes the evidence inconsistent, so this is a hard failure
 //     here; the retry-once policy is checkpoint-b07's scope, per this
-//     wave's brief, so this function itself performs exactly one attempt
+//     phase's brief, so this function itself performs exactly one attempt
 //     and returns errIntegrity on a detected race for the caller to
 //     retry);
 //  6. write manifest.json + summary.md + patches + archive atomically

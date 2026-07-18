@@ -116,7 +116,7 @@ projections in one type since they share a delta-projection technique and
 both feed `RiskCombiner`), `RiskComponent` (`Score`, `Calibrated`,
 `Confidence`, `ReasonCodes`), `DataQuality`. `ReasonCode` is now a typed
 `string` enum backed by the ADD §16.4 constant list — `Evaluation.ReasonCodes`
-changed from `[]string` to `[]domain.ReasonCode` (safe: no Wave 1 code
+changed from `[]string` to `[]domain.ReasonCode` (safe: no Phase 1 code
 constructed or consumed that field).
 
 Terminology: `Auspex_Predictor_Design_Supplement.md` calls the third

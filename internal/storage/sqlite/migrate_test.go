@@ -747,7 +747,7 @@ func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 // distinguish a failure surfacing during Migrate itself (as opposed to
 // during Open, before Migrate is ever called) — both explicitly named in
 // agents/foundation.md's "Required tests" list. These tests close that
-// gap. Names are prefixed TestMigration_ (matching this wave's DAG
+// gap. Names are prefixed TestMigration_ (matching this phase's DAG
 // validation command `-run TestMigration`, distinct from the existing
 // TestMigrate_/TestCoreMigrations_ prefixes used by foundation-05/06).
 
@@ -767,7 +767,7 @@ func TestCoreMigrations_ReopenFromFile_AppliesOnce(t *testing.T) {
 // holding SQLite's write lock for the whole read-then-apply sequence so a
 // second concurrent Migrate call blocks (per busy_timeout) rather than
 // racing. This test is the regression guard for that fix — run with -race
-// per this wave's validation command to also catch any Go-level data race
+// per this phase's validation command to also catch any Go-level data race
 // in the harness itself, though the interesting bug here was a SQLite
 // transaction race, not a Go memory race.
 func TestMigration_ConcurrentReopen_SerializesAndConverges(t *testing.T) {

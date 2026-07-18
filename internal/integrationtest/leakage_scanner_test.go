@@ -642,7 +642,7 @@ func TestLeakageScanner_Falsifiability_DetectsPlantedSecretInRawFile(t *testing.
 //
 // NOTE: this test was updated based on a code review of
 // vertical-slice/checkpoint@f981bde's patchredact.go/capture.go (read via `git show`,
-// per this wave's instructions — checkpoint's branch was not merged into
+// per this phase's instructions — checkpoint's branch was not merged into
 // vertical-slice/qa). It cannot pass on this branch alone yet, since
 // internal/repocheckpoint/patchredact.go does not exist here until the
 // lead integrates vertical-slice/checkpoint into this branch. It is expected to pass

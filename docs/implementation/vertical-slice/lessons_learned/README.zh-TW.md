@@ -19,7 +19,7 @@
 | [`checkpoint.md`](checkpoint.md) | checkpoint-a01–a09 與 b01–b09，外加 `corrective-qa05` 修正（已追蹤檔案差異的遮蔽處理）。 |
 | [`predictor.md`](predictor.md) | predictor-01 到 -11（含 -05c 與最終的 DataSource 工作；沒有 -05b 這一列）。 |
 | [`runtime.md`](runtime.md) | 全部 21 個 runtime 節點（a01–a11、b01–b10），外加最後的 Graceful-Pause 服務一列。 |
-| [`qa.md`](qa.md) | 僅有 qa-01 與 qa-08（Wave 3）；qa 較後面的節點（qa-02–07、-09，Wave 7–12）在此並無對應紀錄。 |
+| [`qa.md`](qa.md) | 僅有 qa-01 與 qa-08（Phase 3）；qa 較後面的節點（qa-02–07、-09，Phase 7–12）在此並無對應紀錄。 |
 
 ## 相關文件
 

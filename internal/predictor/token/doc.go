@@ -8,11 +8,11 @@
 //
 // This is a Version 1 (rule-based/heuristic) implementation per
 // Auspex_Predictor_Design_Supplement.md's Evolution Roadmap. No durable
-// historical telemetry store exists yet this wave (the same gap already
+// historical telemetry store exists yet this phase (the same gap already
 // noted for predictor-05/predictor-06's cold-start-only implementations),
 // so RuleTokenForecaster's "count(similar) >= 8" branch is reachable only
 // when a caller's FeatureSource actually supplies >=8 session samples;
-// absent that, every result this wave is a cold-start default composed
+// absent that, every result this phase is a cold-start default composed
 // with the ADD §15.2 multiplier model, always Calibrated=false,
 // Confidence<=ConfidenceLow (mirrors the discipline already established by
 // predictor-04/predictor-05/predictor-06 and CONTRACT_FREEZE.md's

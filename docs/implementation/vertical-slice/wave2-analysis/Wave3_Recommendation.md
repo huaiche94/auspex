@@ -1,35 +1,35 @@
-# Wave 3 Recommendation
+# Phase 3 Recommendation
 
 > 🌐 English | [繁體中文](Wave3_Recommendation.zh-TW.md)
 
 | Field | Value |
 |---|---|
-| Phase | 3.10 — Post Wave 2 Analysis |
+| Phase | 3.10 — Post Phase 2 Analysis |
 | Status | **Recommendation only. No teammates assigned. No execution. Wait for approval.** |
-| Precondition assumed | This analysis treats Wave 2's four branches as if integrated (per DAG dependency semantics), since they were independently verified, validated, and are the immutable Wave 2 record per this phase's own framing. **They have not actually been merged into `main`** — that merge itself is a pending action this document does not perform and is not authorized to perform. |
+| Precondition assumed | This analysis treats Phase 2's four branches as if integrated (per DAG dependency semantics), since they were independently verified, validated, and are the immutable Phase 2 record per this phase's own framing. **They have not actually been merged into `main`** — that merge itself is a pending action this document does not perform and is not authorized to perform. |
 | Inputs used | `docs/implementation/vertical-slice/EXECUTION_DAG.md` (frozen), `Auspex_Predictor_Design_Supplement.md`, `Prediction_Error_Report.md`, `Missing_Telemetry_Report.md`, `Feature_Registry.md`, `Prediction_Confidence_Report.md`, `Feature_Gap_Report.md`, `ADR_Recommendations.md` |
 
 ## 1. Newly unlocked nodes
 
 Determined by checking every not-yet-completed DAG node's dependency
-list against the full set of completed nodes (Bootstrap + Wave 1 + Wave
+list against the full set of completed nodes (Bootstrap + Phase 1 + Phase
 2 = 19 nodes). Six nodes are newly or still-unassigned-but-unlocked:
 
-| Node | Dependencies | All satisfied? | Newly unlocked this wave, or unlocked earlier and never assigned? |
+| Node | Dependencies | All satisfied? | Newly unlocked this phase, or unlocked earlier and never assigned? |
 |---|---|---|---|
-| `foundation-06` | `foundation-05`, `contract-integrator-01` | Yes (`foundation-05` completed Wave 2) | Newly unlocked |
-| `foundation-08` | `foundation-02`, `foundation-03` | Yes (both completed Wave 2) | Newly unlocked |
-| `predictor-05b` | `predictor-05` | Yes (completed Wave 2) | Newly unlocked |
-| `runtime-b01` | `contract-integrator-07`, `foundation-01` | Yes (both completed **Wave 1**) | Unlocked since end of Wave 1 — never assigned because "runtime" was never one of the 4 named Wave 1/2 teammates |
-| `qa-01` | `foundation-09`, `contract-integrator-07` | Yes (`foundation-09` completed Wave 2) | Newly unlocked |
+| `foundation-06` | `foundation-05`, `contract-integrator-01` | Yes (`foundation-05` completed Phase 2) | Newly unlocked |
+| `foundation-08` | `foundation-02`, `foundation-03` | Yes (both completed Phase 2) | Newly unlocked |
+| `predictor-05b` | `predictor-05` | Yes (completed Phase 2) | Newly unlocked |
+| `runtime-b01` | `contract-integrator-07`, `foundation-01` | Yes (both completed **Phase 1**) | Unlocked since end of Phase 1 — never assigned because "runtime" was never one of the 4 named Phase 1/2 teammates |
+| `qa-01` | `foundation-09`, `contract-integrator-07` | Yes (`foundation-09` completed Phase 2) | Newly unlocked |
 | `qa-08` | — (no dependencies) | Yes (vacuously) | Unlocked since Bootstrap — never assigned because "qa" was never one of the 4 named teammates |
 
 **This is itself a finding worth surfacing plainly:** two nodes
-(`runtime-b01`, `qa-08`) have been executable since Wave 1 ended and were
+(`runtime-b01`, `qa-08`) have been executable since Phase 1 ended and were
 never picked up, purely because the team roster (4 teammates:
 `foundation`, `claude-provider`, `checkpoint`, `predictor`) never included
 `runtime` or `qa`. This is not a DAG problem — it is a team-composition
-decision the repository owner made deliberately for Waves 1-2 — but Wave 3
+decision the repository owner made deliberately for Phases 1-2 — but Phase 3
 planning should treat it as an explicit choice to make again, not an
 oversight to silently correct.
 
@@ -68,7 +68,7 @@ invented.
 | LOC | DAG estimate: 300. Calibration-adjusted: ~627 (300 × 2.089, `Calibration_Report.md` §2's mean LOC ratio) | DAG: Observed. Adjusted: Derived | Low-Medium (n=13 sample, 100% one-directional but wide individual spread) | Wide — this node's own risk flag ("load-bearing... schema mistakes cascade") suggests it may need more careful, hence longer, code than a typical M-node |
 | Duration | Unknown | Unknown | 0.0 | No DAG estimate exists (`Prediction_Error_Report.md` §0); no M-complexity reference class in this dataset with a *high-risk* flag comparable to this node — `foundation-05` (M, High risk, ~45 min self-reported) is the closest analog but is itself only one data point |
 | Token usage | Unknown | Unknown | 0.0 | No per-node token data exists at this granularity for any prior node except `foundation-01`/`checkpoint-b03`, neither a good analog for a High-risk migration-schema node |
-| Complexity | M (DAG) | Observed | High (DAG label) | Two independent lessons-learned entries (`foundation-05`, this wave's Calibration Report) suggest High-risk-flagged M nodes tend to run long relative to ordinary M nodes |
+| Complexity | M (DAG) | Observed | High (DAG label) | Two independent lessons-learned entries (`foundation-05`, this phase's Calibration Report) suggest High-risk-flagged M nodes tend to run long relative to ordinary M nodes |
 | Execution risk | High — DAG's own words: "every feature role's migrations FK into these tables... schema mistakes cascade to claude-provider/checkpoint/predictor/runtime migration ranges" | Observed (DAG text) | High confidence this is genuinely high-risk, not just labeled so — `foundation-05` (the closest analog, same author role, same subsystem) already proved out real pragma/transaction design care was needed | This is the single highest-leverage, highest-risk node in the unlocked set |
 
 ### foundation-08
@@ -78,10 +78,10 @@ invented.
 | Files changed | DAG: 4. Adjusted: ~6 (4 × 1.544) | Observed / Derived | Low-Medium | ±2 |
 | Files read | Unknown | Unknown | 0.0 | Same as all nodes |
 | LOC | DAG: 200. Adjusted: ~418 (200 × 2.089) | Observed / Derived | Low-Medium | Wide |
-| Duration | ~22 min (Derived reference-class mean from this wave's S-complexity self-reports: `foundation-01` ~25min, `foundation-02` ~20min, `foundation-04` ~20min) | Derived (weak — self-reported source data, n=3) | Low | ±10 min plausible |
-| Token usage | Unknown at per-node granularity (would share a Wave 3 invocation total with whatever else its teammate is assigned) | Unknown | 0.0 | N/A |
-| Complexity | S (DAG) | Observed | High (DAG label; this is a small, well-bounded precedence-test node, consistent with S in this wave's pattern of S-nodes holding their estimate) | Low |
-| Execution risk | Low — DAG's own text; explicitly cross-platform-test-dependent ("Needs Windows/macOS/Linux CI (qa-01) for full signal") | Observed | Medium — `Calibration_Report.md` §6 flags cross-platform work as a weak (n=2) hypothesis for hidden risk beyond the nominal label | This node's own DAG note names `qa-01` as a dependency for *full* signal, even though it isn't a hard blocking dependency — worth sequencing after `qa-01` if both are in the same wave |
+| Duration | ~22 min (Derived reference-class mean from this phase's S-complexity self-reports: `foundation-01` ~25min, `foundation-02` ~20min, `foundation-04` ~20min) | Derived (weak — self-reported source data, n=3) | Low | ±10 min plausible |
+| Token usage | Unknown at per-node granularity (would share a Phase 3 invocation total with whatever else its teammate is assigned) | Unknown | 0.0 | N/A |
+| Complexity | S (DAG) | Observed | High (DAG label; this is a small, well-bounded precedence-test node, consistent with S in this phase's pattern of S-nodes holding their estimate) | Low |
+| Execution risk | Low — DAG's own text; explicitly cross-platform-test-dependent ("Needs Windows/macOS/Linux CI (qa-01) for full signal") | Observed | Medium — `Calibration_Report.md` §6 flags cross-platform work as a weak (n=2) hypothesis for hidden risk beyond the nominal label | This node's own DAG note names `qa-01` as a dependency for *full* signal, even though it isn't a hard blocking dependency — worth sequencing after `qa-01` if both are in the same phase |
 
 ### predictor-05b (Token Forecaster)
 
@@ -102,7 +102,7 @@ invented.
 | Files changed | DAG: 6. Adjusted: ~9 (6 × 1.544) | Observed / Derived | Low-Medium | ±3 |
 | Files read | Unknown | Unknown | 0.0 | N/A |
 | LOC | DAG: 350. Adjusted: ~731 (350 × 2.089) | Observed / Derived | Low-Medium | Wide |
-| Duration | ~30 min (Derived reference-class mean from this wave's M-complexity self-reports: `foundation-03` ~25min, `foundation-05` ~45min, `checkpoint-b03` ~20min — wide spread, mean is a weak central estimate) | Derived (weak, n=3, spread 20-45min) | Low | ±15 min plausible — wider than the S-complexity reference class |
+| Duration | ~30 min (Derived reference-class mean from this phase's M-complexity self-reports: `foundation-03` ~25min, `foundation-05` ~45min, `checkpoint-b03` ~20min — wide spread, mean is a weak central estimate) | Derived (weak, n=3, spread 20-45min) | Low | ±15 min plausible — wider than the S-complexity reference class |
 | Token usage | Unknown | Unknown | 0.0 | N/A |
 | Complexity | M (DAG) | Observed | Medium | This node explicitly cannot touch `cmd/auspex/main.go` (owned by `contract-integrator`/`foundation` per the vertical-slice plan) — meaning its actual merge requires lead coordination beyond a typical single-role M node, a cost the DAG's complexity label doesn't capture |
 | Execution risk | Low — DAG's own text | Observed | Medium — the root-wiring-coordination requirement is a real, DAG-invisible integration risk even though the DAG's own risk column says "Low," similar to how `Calibration_Report.md` found DAG risk labels sometimes miss integration-shaped risk vs. implementation-shaped risk | Recommend treating this as Low-Medium, not simply Low |

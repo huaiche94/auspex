@@ -132,7 +132,7 @@ func TestEvaluate_JSONOutput_SchemaVersionedWithNullProbability(t *testing.T) {
 		t.Fatal("probability key absent — cold-start output must emit probability: null explicitly")
 	}
 	if prob != nil {
-		t.Fatalf("probability = %v, want null (nothing is calibrated this wave)", prob)
+		t.Fatalf("probability = %v, want null (nothing is calibrated this phase)", prob)
 	}
 	if decoded["calibrated"] != false {
 		t.Errorf("calibrated = %v, want false", decoded["calibrated"])

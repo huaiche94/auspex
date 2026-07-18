@@ -8,14 +8,14 @@ import (
 	"github.com/huaiche94/auspex/internal/domain"
 )
 
-// RuleQuotaForecaster is the Wave 4 (Version 1, deterministic/rule-based)
+// RuleQuotaForecaster is the Phase 4 (Version 1, deterministic/rule-based)
 // Stage-3 implementation of app.QuotaForecaster (ADR-041, predictor-05c).
 // It follows ADD §15.3's quota delta model
 // (projected_used_p90 = current_used_percent + predicted_delta_p90) and
 // §15.9's context projection
 // (projected_context_used_p90 = current_context_used + predicted_net_context_growth_p90),
 // using this package's documented cold-start default deltas (coldstart.go)
-// since no durable historical telemetry store exists yet this wave —
+// since no durable historical telemetry store exists yet this phase —
 // exactly the estimate CONTRACT_FREEZE.md's "Predictor pipeline ports
 // (ADR-041)" section anticipates and licenses ("QuotaForecaster
 // implementations MAY produce a deterministic current-observation-plus-
@@ -48,7 +48,7 @@ func (f *RuleQuotaForecaster) ForecastQuota(_ context.Context, req app.ForecastQ
 	reasons = append(reasons, quotaReasons...)
 	reasons = append(reasons, contextReasons...)
 
-	// Cold-start this wave, unconditionally (see doc.go): no empirical
+	// Cold-start this phase, unconditionally (see doc.go): no empirical
 	// per-provider/model/task-class delta distribution exists to satisfy
 	// ADD §15.3 step 5's calibration gate, so this is always the
 	// current-observation-plus-default-delta estimate, never a calibrated
@@ -124,7 +124,7 @@ func projectOneQuotaWindow(obs domain.QuotaObservation, tokenForecast domain.Tok
 	// delta past that reset — the projection stays at (a floor of) the
 	// current usage rather than compounding across a reset boundary that
 	// would zero it out in reality. No turn-duration estimate is wired up
-	// this wave, so "imminent" uses a conservative fixed look-ahead
+	// this phase, so "imminent" uses a conservative fixed look-ahead
 	// (turnHorizon) rather than a real duration forecast — documented
 	// assumption, mirrors runway's own DefaultHorizon precedent of a
 	// fixed default when no better signal exists.
@@ -248,7 +248,7 @@ const nominalTurnTokens = 6000.0
 
 // turnHorizon bounds how far ahead a quota window's ResetsAt is treated as
 // "imminent" for §15.8 reset-awareness (projectOneQuotaWindow). No
-// turn-duration forecast is wired up this wave; 10 minutes matches
+// turn-duration forecast is wired up this phase; 10 minutes matches
 // internal/predictor/runway.DefaultHorizon, the same default horizon this
 // codebase already uses elsewhere for "is something about to happen
 // within a typical turn's timeframe" questions.

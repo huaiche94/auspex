@@ -55,7 +55,7 @@
 // Constitution §7 rule 7 ("Uncalibrated risk scores are never labeled as
 // probabilities"): every domain.RiskComponent.Score this package produces
 // is a 0-1 risk score, not a probability, unless every contributing input
-// is itself Calibrated=true (unreachable this wave, since predictor-05's
+// is itself Calibrated=true (unreachable this phase, since predictor-05's
 // ScopeEstimator and predictor-05c's QuotaForecaster are both cold-start-
-// only implementations as of this wave — see their own doc.go files).
+// only implementations as of this phase — see their own doc.go files).
 package risk

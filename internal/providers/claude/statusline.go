@@ -2,8 +2,8 @@
 // provider-native payloads (status-line snapshots, hook payloads) into
 // intermediate Go structs. This package does not normalize into the frozen
 // pkg/protocol/v1.Event envelope — that is claude-provider-04's job. This
-// wave (claude-provider-01/02/03) only covers the parsing step (Constitution
-// §7 rule 10: implement one wave at a time).
+// phase (claude-provider-01/02/03) only covers the parsing step (Constitution
+// §7 rule 10: implement one phase at a time).
 package claude
 
 import (

@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Backlog / TODO** — recorded, not scheduled into an active wave |
+| Status | **Backlog / TODO** — recorded, not scheduled into an active phase |
 | Tracking | Issues [#65](https://github.com/huaiche94/auspex/issues/65) (Phase 1), [#66](https://github.com/huaiche94/auspex/issues/66) (Phase 2), [#67](https://github.com/huaiche94/auspex/issues/67) (Phase 3), [#68](https://github.com/huaiche94/auspex/issues/68) (Phase 4), filed 2026-07-14; sequenced after #11 (calibration), #13 (cost axis), #20 (provider/model/effort) |
 | Origin | Owner request, 2026-07-14: read arXiv:2604.22750 end-to-end and asked to fold its findings into the roadmap |
 | Related | `Auspex_ADD.md` §14–§17, `../design/Auspex_Predictor_Design_Supplement.md` ("External Evidence"), ADR-041 (forecast layer), ADR-043 (multi-resource runway / cost axis, #13), ADR-047 (cohort fallback ladder), issues #11, #14, #20, #42 |

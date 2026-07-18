@@ -4,10 +4,10 @@
 
 Role covers two internal sub-components (Part A: Progress Tree / State
 Checkpointing; Part B: Repository Checkpoint), kept separate per
-`agents/checkpoint.md`. This wave, only one node was unblocked and assigned:
+`agents/checkpoint.md`. This phase, only one node was unblocked and assigned:
 `checkpoint-b02`. `checkpoint-a01` and `checkpoint-b01` remain queued behind
 `foundation-06` (core SQLite migration harness), which was not complete this
-wave — per the frozen `EXECUTION_DAG.md`, both were correctly withheld
+phase — per the frozen `EXECUTION_DAG.md`, both were correctly withheld
 rather than started against an incomplete dependency.
 
 ```yaml
@@ -29,22 +29,22 @@ validation:
   - "go test ./internal/gitx/... -race -v                                       # PASS"
   - "go build ./... && go vet ./...                                             # whole-repo build/vet unaffected"
 commit: 9b222d0
-next_action: superseded by the Wave 2 entry below
+next_action: superseded by the Phase 2 entry below
 assumptions:
   - "Status() pins --branch --untracked-files=all --find-renames on top of --porcelain=v2 -z so output is deterministic regardless of the caller's git config (status.renames, status.showUntrackedFiles). This is additive to the exact flag string in the DAG's validation command and does not change the parser's contract."
   - "ParsePorcelainV2 fails closed (returns a domain.Error with ErrCodeValidation) on any record shape it doesn't recognize, rather than silently skipping it — this parser feeds the Repository Checkpoint integrity boundary (Constitution §6), so an unintelligible status must not be treated as 'no changes.'"
   - "ResolveRepo requires git >= 2.31 for `rev-parse --path-format=absolute`; not verified against older git in this environment. Local git version used for tests: 2.37.3."
-  - "Unmerged (conflict) entries and ignored entries are parsed by the porcelain layer (fixture-tested) but have no live-repo integration test in this wave, since provoking a real merge conflict/ignore rule in a throwaway temp repo added setup complexity out of proportion to checkpoint-b02's scope; they are covered by TestParsePorcelainV2Fixtures instead. checkpoint-b03/b04 should add a live-repo conflict case if the fingerprint or checkpoint-create logic branches on unmerged state."
+  - "Unmerged (conflict) entries and ignored entries are parsed by the porcelain layer (fixture-tested) but have no live-repo integration test in this phase, since provoking a real merge conflict/ignore rule in a throwaway temp repo added setup complexity out of proportion to checkpoint-b02's scope; they are covered by TestParsePorcelainV2Fixtures instead. checkpoint-b03/b04 should add a live-repo conflict case if the fingerprint or checkpoint-create logic branches on unmerged state."
 blockers:
-  - "checkpoint-a01 and checkpoint-b01 blocked pending foundation-06 (core SQLite migration harness) — not started this wave, per explicit wave assignment."
+  - "checkpoint-a01 and checkpoint-b01 blocked pending foundation-06 (core SQLite migration harness) — not started this phase, per explicit phase assignment."
 ```
 
 ---
 
-## Wave 2
+## Phase 2
 
-Assigned node this wave: `checkpoint-b03` (Snapshot fingerprint), dependency
-`checkpoint-b02` satisfied on this branch. Per explicit wave instruction, no
+Assigned node this phase: `checkpoint-b03` (Snapshot fingerprint), dependency
+`checkpoint-b02` satisfied on this branch. Per explicit phase instruction, no
 merge/rebase onto main was performed (ADR-041 touches only predictor domain
 types, nothing `internal/gitx` depends on). `checkpoint-a01`, `checkpoint-b01`,
 and `checkpoint-b04` remain unstarted, per assignment.
@@ -64,7 +64,7 @@ validation:
   - "go test ./internal/gitx/... -race                   # PASS, full existing suite unchanged (no regressions)"
   - "go build ./... && go vet ./...                      # whole-repo build/vet unaffected"
 commit: 0281b97
-next_action: checkpoint-b04 (Repository Checkpoint create/verify) is now unblocked on the b03 side but still gated on checkpoint-b01 (migrations 0030-0039, itself gated on foundation-06) — not started this wave, per assignment
+next_action: checkpoint-b04 (Repository Checkpoint create/verify) is now unblocked on the b03 side but still gated on checkpoint-b01 (migrations 0030-0039, itself gated on foundation-06) — not started this phase, per assignment
 assumptions:
   - "Digest scope: covers FingerprintSchema, WorktreeRoot, CommonDir, IsLinkedWorktree, HeadOID, Branch, UntrackedPolicy, sorted status Entries, and sorted index/worktree numstat. Upstream/Ahead/Behind are carried as informational fields but deliberately EXCLUDED from the digest: they move on `git fetch` (remote-tracking refs), which does not change the local worktree/index/HEAD state that FR-149 resume validation protects — a background fetch must not invalidate a resume. If checkpoint-b04 or runtime needs remote-divergence in the identity, that is an additive schema bump (auspex.gitx.fingerprint.v2), not a breaking change."
   - "Canonical encoding is netstring-style length-prefixed fields hashed in fixed order, with Entries/numstat sorted by (Path, OrigPath[, Kind]) before hashing — digest is independent of git's emission order and immune to path-content boundary forgery (spaces/tabs/newlines in paths are covered by tests)."
@@ -73,16 +73,16 @@ assumptions:
   - "`git diff --cached --numstat` on an unborn branch (no commits) diffs against the empty tree — verified against git 2.37.3 and covered by TestFingerprintUnbornBranch, so fingerprinting a freshly-initialized staged repo works."
   - "app.Authorization.SnapshotFingerprint (frozen ports.go) is a plain string; Fingerprint.Digest (sha256 hex) satisfies it directly. No contract gap found; no ports.go change requested."
 blockers:
-  - "checkpoint-a01, checkpoint-b01 still blocked on foundation-06; checkpoint-b04 additionally on checkpoint-b01. None started this wave, per explicit assignment."
+  - "checkpoint-a01, checkpoint-b01 still blocked on foundation-06; checkpoint-b04 additionally on checkpoint-b01. None started this phase, per explicit assignment."
 ```
 
 Final commit for checkpoint-b03: `0281b97` (code + docs), with this SHA
-recorded in a follow-up commit, same pattern as Wave 1's `9b222d0`/`94be461`.
+recorded in a follow-up commit, same pattern as Phase 1's `9b222d0`/`94be461`.
 
 ## Corrective commit (cross-role lint finding, not a new DAG node)
 
 A full-tree integration lint pass (golangci-lint, errorlint) over the merged
-Wave 2 tree flagged one issue in checkpoint-owned code:
+Phase 2 tree flagged one issue in checkpoint-owned code:
 `internal/gitx/resolver_test.go:128` used a direct type assertion
 (`err.(*domain.Error)`) inside the `asDomainError` helper, which would fail on
 wrapped errors. The helper now delegates to `errors.As`, preserving the exact
@@ -96,12 +96,12 @@ fixed per errorlint's rule. No other files touched; no DAG node started.
 
 ---
 
-## Wave 4
+## Phase 4
 
-Assigned nodes this wave: `checkpoint-a01` (Part A: Progress Tree core
+Assigned nodes this phase: `checkpoint-a01` (Part A: Progress Tree core
 migrations, 0020-0022) and `checkpoint-b01` (Part B: Repository Checkpoint
 core migration, 0030). First Part A work for this role. Pre-step: merged
-main (`ca7062f`, Wave 3 integration) into `vertical-slice/checkpoint` — clean
+main (`ca7062f`, Phase 3 integration) into `vertical-slice/checkpoint` — clean
 fast-forward, whole repo built and tested green before any new work.
 
 ### CROSS-ROLE CHANGE REQUEST (Constitution §4.4) — foundation, please fix
@@ -124,7 +124,7 @@ present, with no change needed here"). Requested fix (foundation-owned, one
 mechanical edit): filter assertions to foundation's range, e.g. assert the
 0001-0009 subset of `AllMigrations()` equals the expected four, and assert
 `CurrentVersion >= 4` (or compute the expected max from `AllMigrations()`).
-Per Constitution §4 and this wave's explicit instruction ("do NOT touch any
+Per Constitution §4 and this phase's explicit instruction ("do NOT touch any
 other role's paths"), checkpoint did NOT edit `migrate_test.go`; the three
 failures are left in place and flagged here for foundation /
 contract-integrator at integration time. checkpoint's own validation
@@ -144,9 +144,9 @@ validation:
   - "gofmt -l internal/storage/sqlite -> empty"
   - "go test ./internal/storage/sqlite/... -run Migration0020 -v -> PASS (11 tests: range presence in AllMigrations, table+index creation from empty DB, task-cascade, parent-subtree-cascade, sibling-ordinal uniqueness, unknown-task FK rejection, duplicate-edge PK rejection, edge node-cascade + unknown-endpoint rejection, artifact detach-on-node-delete + cascade-on-task-delete, duplicate-evidence rejection with different-digest-distinct, artifact unknown-task rejection)"
   - "golangci-lint run ./... (whole repo) -> 0 issues"
-next_action: checkpoint-a02/a03 (Progress Tree service + artifact validators) — now unblocked, NOT started this wave per explicit assignment
+next_action: checkpoint-a02/a03 (Progress Tree service + artifact validators) — now unblocked, NOT started this phase per explicit assignment
 assumptions:
-  - "Only progress_nodes/progress_edges/artifacts land in this node, per the wave instruction. state_checkpoints (also §12.2, also range 0020-0029) is deferred to the wave that implements the State Checkpoint manifest (checkpoint-a05); it will take 0023+. The §12.3 index idx_state_checkpoints_task_created defers with it."
+  - "Only progress_nodes/progress_edges/artifacts land in this node, per the phase instruction. state_checkpoints (also §12.2, also range 0020-0029) is deferred to the phase that implements the State Checkpoint manifest (checkpoint-a05); it will take 0023+. The §12.3 index idx_state_checkpoints_task_created defers with it."
   - "Test file location: migrations_checkpoint_a_test.go lives in foundation's internal/storage/sqlite directory (package sqlite_test) because the DAG's frozen validation command targets ./internal/storage/sqlite/... — the tests cannot live anywhere else and still be selected. It is a NEW, clearly checkpoint-named file; no foundation file was edited. It reuses foundation's openTemp helper (same external test package). If contract-integrator prefers a different convention for per-role migration tests, this file moves wholesale."
   - "All test names carry the Migration0020 selector (the range lower bound stands for the whole a01 migration set) so the DAG's `-run Migration0020` command selects exactly these tests, including the 0021/0022 coverage."
   - "Enum-bearing TEXT columns (progress_nodes.status/kind, progress_edges.edge_kind, artifacts.validation_status) intentionally carry no CHECK constraints: released migrations are immutable (ADD §12.5), so enum vocabulary enforcement belongs to the service layer (checkpoint-a02/a03), not DDL."
@@ -168,35 +168,35 @@ validation:
   - "go test ./internal/storage/sqlite/... -run Migration0030 -v -> PASS (6 tests: range presence in AllMigrations, table creation from empty DB, unknown-worktree FK rejection, worktree-cascade + task-detach, turn_id plain-pointer writability without turns table, total_bytes NULL-means-unknown)"
   - "go build ./... && go vet ./... -> clean"
   - "golangci-lint run ./... (whole repo) -> 0 issues"
-  - "go test ./... -> green everywhere EXCEPT the 3 pre-documented foundation exact-count tests (see the §4.4 change request at the top of this Wave 4 section; failure message is now 'len(migrations) = 8, want 4')"
-next_action: checkpoint-b04 (Repository Checkpoint create/verify) — now unblocked on the b01 side (b03 already done), NOT started this wave per explicit assignment
+  - "go test ./... -> green everywhere EXCEPT the 3 pre-documented foundation exact-count tests (see the §4.4 change request at the top of this Phase 4 section; failure message is now 'len(migrations) = 8, want 4')"
+next_action: checkpoint-b04 (Repository Checkpoint create/verify) — now unblocked on the b01 side (b03 already done), NOT started this phase per explicit assignment
 assumptions:
   - "DOCUMENTED SCHEMA DEVIATION: §12.2 declares turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL, but turns belongs to claude-provider's 0010-0019 range and does not exist yet; an FK to a missing table makes every write to repository_checkpoints fail under PRAGMA foreign_keys=ON until another role ships its schema. turn_id is therefore a plain nullable TEXT pointer, following foundation's identical precedent for tasks.active_node_id (0004_tasks.sql header). Converting it to a real FK later requires a new migration in this range once turns exists (released migrations are immutable, ADD §12.5) — recorded so checkpoint-b04 and contract-integrator's final review both see it."
-  - "Only repository_checkpoints lands in this node, per the wave instruction. repository_snapshots and file_changes (which foundation's notes place in the 0030-0039 range) defer to whichever Part B node first needs them (file_changes also FKs turns, so it is doubly blocked); they will take 0031+."
+  - "Only repository_checkpoints lands in this node, per the phase instruction. repository_snapshots and file_changes (which foundation's notes place in the 0030-0039 range) defer to whichever Part B node first needs them (file_changes also FKs turns, so it is doubly blocked); they will take 0031+."
   - "Same no-CHECK-constraint stance as 0020-0022 for status/recoverability enum columns; vocabulary belongs to checkpoint-b04's service layer."
 blockers:
-  - "Same three foundation exact-count test failures as checkpoint-a01 — single root cause, single requested fix, filed once at the top of this Wave 4 section."
+  - "Same three foundation exact-count test failures as checkpoint-a01 — single root cause, single requested fix, filed once at the top of this Phase 4 section."
 ```
 
-Wave 4 pre-step note: the main merge (`git merge main`) resolved as a clean
+Phase 4 pre-step note: the main merge (`git merge main`) resolved as a clean
 fast-forward to `ca7062f` (this branch's prior work was already fully
 integrated), and the whole repo built and tested green at that point —
 the only test regressions on this branch afterward are the three
-pre-documented foundation exact-count tests triggered by this wave's own
+pre-documented foundation exact-count tests triggered by this phase's own
 migration files, exactly as analyzed above.
 
 ---
 
-## Wave 5
+## Phase 5
 
-Assigned nodes this wave: `checkpoint-a02` (Part A: node state machine +
+Assigned nodes this phase: `checkpoint-a02` (Part A: node state machine +
 Progress Tree Go-level stores), `checkpoint-a03` (Part A: artifact
 validators), `checkpoint-b04` (Part B: Repository Checkpoint create/verify)
 — done sequentially with an independent validate+commit after each, per
-explicit wave instruction. Pre-step: `git fetch origin && git merge
-origin/main` — clean fast-forward to `5470e4d` (Wave 4's integrated state,
+explicit phase instruction. Pre-step: `git fetch origin && git merge
+origin/main` — clean fast-forward to `5470e4d` (Phase 4's integrated state,
 including foundation's fix for the exact-count migration test conflict this
-role flagged in its Wave 4 entry above — confirmed resolved: `go test ./...`
+role flagged in its Phase 4 entry above — confirmed resolved: `go test ./...`
 was green immediately after the merge, before any new work started).
 
 ### checkpoint-a02: Progress Tree node state machine and stores
@@ -223,11 +223,11 @@ validation:
   - "go test ./internal/progress/... -race -v -> PASS (all tests, including the DAG's required invalid-transition-rejected and concurrent-completion-race)"
   - "golangci-lint run ./internal/progress/... -> 0 issues"
 commit: 3557e61
-next_action: checkpoint-a04 (CompleteNode atomic protocol) — the single highest-risk DAG node — is now unblocked on the a02 side (also needs a03 + contract-integrator-04); NOT started this wave per explicit assignment
+next_action: checkpoint-a04 (CompleteNode atomic protocol) — the single highest-risk DAG node — is now unblocked on the a02 side (also needs a03 + contract-integrator-04); NOT started this phase per explicit assignment
 assumptions:
-  - "a01 shipped migrations only (0020-0022 SQL, per its own DAG validation command targeting ./internal/storage/sqlite/...); internal/progress did not exist before this node. a02 is therefore the first Go-level domain package over those tables, exactly as the wave brief anticipated."
+  - "a01 shipped migrations only (0020-0022 SQL, per its own DAG validation command targeting ./internal/storage/sqlite/...); internal/progress did not exist before this node. a02 is therefore the first Go-level domain package over those tables, exactly as the phase brief anticipated."
   - "State machine extends CONTRACT_FREEZE.md's frozen backbone (pending->ready->in_progress->checkpointing->{completed|failed}) with documented, narrow additions only: pending/ready/paused/blocked -> skipped or blocked as side states; checkpointing -> in_progress for ADD §18.4's validation-fails recovery path; failed -> in_progress as the one explicit retry edge. completed and skipped are the only fully terminal states; failed has exactly one outbound edge (retry), which IsTerminal's doc comment states explicitly rather than leaving implicit."
-  - "TransitionStatus's optimistic-concurrency guard (UPDATE ... WHERE status=? AND version=?) is deliberately NOT the full CompleteNode atomic protocol (stage/verify artifact evidence + node update + State Checkpoint creation in one transaction) — that orchestration, and its crash-injection tests, is checkpoint-a04's explicitly scoped job per the wave brief. This node's own concurrent-race test (20 goroutines) validates the store's own concurrency primitive in isolation, not the full completion protocol."
+  - "TransitionStatus's optimistic-concurrency guard (UPDATE ... WHERE status=? AND version=?) is deliberately NOT the full CompleteNode atomic protocol (stage/verify artifact evidence + node update + State Checkpoint creation in one transaction) — that orchestration, and its crash-injection tests, is checkpoint-a04's explicitly scoped job per the phase brief. This node's own concurrent-race test (20 goroutines) validates the store's own concurrency primitive in isolation, not the full completion protocol."
   - "ArtifactStore.Insert's duplicate-evidence conflict only fires on an EXACT (progress_node_id, uri, sha256) repeat (0022's own UNIQUE constraint); a different sha256 for the same (node, uri) is accepted at the store layer by design — surfacing THAT as a completion conflict is Constitution §6.6's concern and checkpoint-a04's job, not this store's. Locked by TestArtifactStore_DifferentSHA256_NotBlockedByStore so a04 doesn't have to rediscover the boundary."
 blockers: none
 ```
@@ -255,10 +255,10 @@ validation:
   - "go test ./internal/artifacts/... -race -v -> PASS (all tests, including missing-heading-rejected and unbalanced-fence-rejected against the REAL fixtures, and validators-all-pass-together on the real valid fixture)"
   - "golangci-lint run ./internal/artifacts/... -> 0 issues"
 commit: f34f12c
-next_action: checkpoint-a04 — unblocked on the a03 side (also needs a02 + contract-integrator-04); NOT started this wave per explicit assignment
+next_action: checkpoint-a04 — unblocked on the a03 side (also needs a02 + contract-integrator-04); NOT started this phase per explicit assignment
 assumptions:
   - "Per the DAG note ('Needs real ADD-section fixtures'), fixtures are Auspex_ADD.md §18 transcribed verbatim via `sed`, not synthetic toy Markdown — the negative fixtures are targeted single-line mutations of that same real content, so the validators are proven against real-world Markdown structure (mixed yaml/mermaid/text fences, Chinese-language headings, nested list/prose structure), not a simplified stand-in."
-  - "'Valid Markdown section completes and checkpoints' (required test) is scoped, per the wave brief, to 'validator returns success' — TestRegistry_ValidMarkdownSection_CompletesValidation runs file_exists+heading_exists+fence_balance together against the real fixture and asserts all three pass. The full completes-AND-checkpoints protocol (State Checkpoint creation) is checkpoint-a04's job."
+  - "'Valid Markdown section completes and checkpoints' (required test) is scoped, per the phase brief, to 'validator returns success' — TestRegistry_ValidMarkdownSection_CompletesValidation runs file_exists+heading_exists+fence_balance together against the real fixture and asserts all three pass. The full completes-AND-checkpoints protocol (State Checkpoint creation) is checkpoint-a04's job."
   - "HeadingExistsValidator and FenceBalanceValidator share fence-tracking logic (the `fence{char,n}` type and CommonMark's >=-run-length close rule) to guarantee both validators agree on what counts as 'inside a fence' — verified by TestHeadingExists_HeadingTextInsideFence_NotCountedAsHeading, which would fail if the two validators disagreed."
 blockers: none
 ```
@@ -291,30 +291,30 @@ validation:
   - "golangci-lint run ./internal/repocheckpoint/... ./internal/gitx/... -> 0 issues"
   - "go test ./... -race -> green whole-repo, zero regressions from the internal/gitx addition"
 commit: d692fd6
-next_action: checkpoint-b05 (binary-safe patch edge cases), checkpoint-b06 (untracked archive + redact/secret-scan), checkpoint-b07 (atomic write -race hardening) — all now unblocked on b04; NOT started this wave per explicit assignment. Deliberately left as TODOs for those nodes (do NOT under-deliver b04's own scope, but do not duplicate theirs either):
+next_action: checkpoint-b05 (binary-safe patch edge cases), checkpoint-b06 (untracked archive + redact/secret-scan), checkpoint-b07 (atomic write -race hardening) — all now unblocked on b04; NOT started this phase per explicit assignment. Deliberately left as TODOs for those nodes (do NOT under-deliver b04's own scope, but do not duplicate theirs either):
   - "b05: DiffPatch's binary-safety is exercised by one test (TestCapture_BinaryFile / TestDiffPatch_BinaryFile_UsesBinaryDirective) proving the GIT-binary-patch directive appears; b05's own deeper edge cases (e.g. very large binary diffs, mixed binary+text in one patch, apply-round-trip verification) are NOT built here."
   - "b06: untracked archive policy here is STRUCTURAL only (size/path/symlink caps) — no content-based secret scanning exists yet (internal/redact/** is still an empty exclusive-path placeholder). skipped-files.json + Recoverability.Warnings give b06 a ready extension point (add a new SkipReason + a scan step in buildUntrackedArchive) rather than a redesign."
   - "b07: atomic write here is single-process-safe (temp-dir + fsync + atomic rename, verified by TestCapture_TempCleanup_NoOrphanOnFailure) but does NOT include cross-process crash-injection tests or a startup orphan-temp-dir scan — that hardening, and its own -race-named test target, is b07's explicit DAG scope."
 assumptions:
   - "Capture never issues a Git subcommand capable of mutating repository state — grepped for write verbs; only Status/Fingerprint/DiffNumstat/DiffPatch/ListUntracked are called, all read-only. TestCapture_NeverMutatesActiveBranch asserts `git rev-parse HEAD` and `git status --porcelain` are byte-identical before and after a Capture call, as a regression guard on this exact invariant (Constitution §7 rule 6, this node's own DAG risk note)."
-  - "Race detection (ADD §19.3 step 11) compares initial vs. final gitx.Fingerprint and fails closed (errIntegrity, ErrCodeIntegrity, Retryable:false) on any difference; the retry-once policy the ADD step also describes is explicitly left to checkpoint-b07 per the wave brief's scoping guidance, so this function performs exactly one attempt."
+  - "Race detection (ADD §19.3 step 11) compares initial vs. final gitx.Fingerprint and fails closed (errIntegrity, ErrCodeIntegrity, Retryable:false) on any difference; the retry-once policy the ADD step also describes is explicitly left to checkpoint-b07 per the phase brief's scoping guidance, so this function performs exactly one attempt."
   - "Cross-platform directory-fsync handling (dirsync_unix.go/dirsync_windows.go, build-tag split) was added because Auspex's own ADD §30.4 release targets include windows/amd64+arm64, and a naive syscall.ENOTSUP reference would not compile there — verified via GOOS=windows go build ./... in addition to the native darwin build."
-  - "Service.resolveWorktree is an injected callback (WorktreeLocation) rather than this package reaching into foundation's worktrees table directly — internal/repocheckpoint does not own that table and the wave's cross-part-boundary note (agents/checkpoint.md) already establishes that Part B does not reach into other roles' storage directly; the runtime role (or a future checkpoint node) supplies the real resolver."
+  - "Service.resolveWorktree is an injected callback (WorktreeLocation) rather than this package reaching into foundation's worktrees table directly — internal/repocheckpoint does not own that table and the phase's cross-part-boundary note (agents/checkpoint.md) already establishes that Part B does not reach into other roles' storage directly; the runtime role (or a future checkpoint node) supplies the real resolver."
 blockers: none
 ```
 
 ---
 
-## Wave 6
+## Phase 6
 
-Assigned nodes this wave: `checkpoint-a04` (Part A: CompleteNode atomic
+Assigned nodes this phase: `checkpoint-a04` (Part A: CompleteNode atomic
 protocol — the single most consequential node in the whole DAG),
 `checkpoint-b05` (Part B: binary-safe patch generation edge cases),
 `checkpoint-b06` (Part B: untracked file policy secret filters +
 `internal/redact`) — done sequentially with an independent validate+commit
-after each, per explicit wave instruction, with a04 given the fullest
+after each, per explicit phase instruction, with a04 given the fullest
 attention per the DAG's own risk annotation. Pre-step: `git fetch origin &&
-git merge origin/main` — clean fast-forward to `abce1d0` (Wave 5's
+git merge origin/main` — clean fast-forward to `abce1d0` (Phase 5's
 integrated state: predictor/runtime/orchestrator/pause/scheduler work from
 other roles, nothing touching this role's paths); `go test ./...` was green
 immediately after the merge, before any new work started.
@@ -349,7 +349,7 @@ validation:
   - "go test ./... -race -> green whole-repo, zero regressions"
   - "golangci-lint run ./... -> 0 issues"
 commit: 7eff177
-next_action: checkpoint-a05 (State Checkpoint manifest — NOTE much of a05's nominal scope (manifest serialization/checksum) was ALREADY built here since CompleteNode structurally required it; a05 should verify what remains, likely just Snapshot/verify-API polish), checkpoint-a06/a07/a08/a09 — NOT started this wave per explicit assignment
+next_action: checkpoint-a05 (State Checkpoint manifest — NOTE much of a05's nominal scope (manifest serialization/checksum) was ALREADY built here since CompleteNode structurally required it; a05 should verify what remains, likely just Snapshot/verify-API polish), checkpoint-a06/a07/a08/a09 — NOT started this phase per explicit assignment
 assumptions:
   - "internal/app/ports.go has no EventPublisher/EventSink port yet (grepped: none exists anywhere in internal/app or pkg/protocol) — adding one is contract-integrator's call per Constitution §4, not this role's to make unilaterally. CompleteNode therefore declares its OWN narrow EventPublisher interface (internal/progress, satisfied trivially by NoopPublisher) rather than blocking on a contract change or reaching past the frozen ports.go; if a future contract freeze adds a matching app.EventPublisher port, this interface's method set is designed to be satisfied by it unchanged."
   - "State Checkpoint manifest lives in a NEW package (internal/statecheckpoint, exclusive path already granted to this role in agents/checkpoint.md) rather than inside internal/progress — mirrors the existing internal/artifacts seam CompleteNode also calls into, keeping 'orchestration' (internal/progress) separate from 'the thing being orchestrated' (manifest assembly/serialization) as two independently testable packages, per this role's own established pattern from a02/a03."
@@ -375,7 +375,7 @@ validation:
   - "go test ./internal/repocheckpoint/... ./internal/gitx/... -race -> PASS, zero regressions"
   - "golangci-lint run ./internal/repocheckpoint/... ./internal/gitx/... -> 0 issues"
 commit: e571480
-next_action: checkpoint-b07 (atomic write -race hardening, cross-process crash-injection) — NOT started this wave per explicit assignment
+next_action: checkpoint-b07 (atomic write -race hardening, cross-process crash-injection) — NOT started this phase per explicit assignment
 assumptions:
   - "The required 'apply round-trip' test (generate a patch, apply it to a fresh checkout, verify the result matches) is proven by cloning the source repo (via argv-only `git clone`/`git apply`, never a shell string) into a separate temp directory checked out at the SAME base commit the patch was diffed against, then comparing file bytes — a filesystem COPY rather than a real clone would not exercise `git apply`'s actual blob-resolution logic (--full-index's whole point) the same way."
   - "'Large diffs' is interpreted as two distinct shapes per this node's own brief ('very large binary diffs' implies large-content, and the DAG note separately says 'many files'): a many-files-many-lines changeset (50 files x 200 lines, patch header count asserted exactly) AND a single very-large-file diff (5000 changed lines) — both proven to apply cleanly, since a many-file bug (ordering/truncation across files) and a single-large-file bug (hunk-boundary miscalculation) are different failure modes."
@@ -407,7 +407,7 @@ validation:
   - "go test ./... -race -> green whole-repo"
   - "golangci-lint run ./... -> 0 issues"
 commit: ef59034
-next_action: checkpoint-b07/b08/b09 — NOT started this wave per explicit assignment. Nothing else deliberately deferred from this node's own scope: filename + content detection are both real (not stubbed), wired into the actual archive path (not just a standalone library nobody calls), and the documented boundary (doc.go) tells qa-05 exactly what this layer does and does not catch.
+next_action: checkpoint-b07/b08/b09 — NOT started this phase per explicit assignment. Nothing else deliberately deferred from this node's own scope: filename + content detection are both real (not stubbed), wired into the actual archive path (not just a standalone library nobody calls), and the documented boundary (doc.go) tells qa-05 exactly what this layer does and does not catch.
 assumptions:
   - "internal/redact implements EXACTLY Auspex_ADD.md §27.8's two lists (name patterns, content detectors) — transcribed, not invented or extended, so there is a single source of truth for what 'the secret filter policy' means and no drift between this package and the ADD. Detector regexes were validated against realistic-length synthetic fixtures (e.g. an 88-char base64 Azure key, matching Azure's real key length) rather than hand-wavy short placeholders, after an initial manual sanity check caught a too-short test fixture silently under-testing the Azure detector."
   - "Content scanning is capped at 1 MiB per file and skips content identified as binary via Git's own NUL-byte heuristic — both documented as explicit, non-silent boundaries in doc.go, not just implementation details; a secret past the cap or inside binary content is a known gap, not an unstated one."
@@ -416,22 +416,22 @@ assumptions:
 blockers: none
 ```
 
-Final validation after all three Wave 6 nodes together: `golangci-lint run
+Final validation after all three Phase 6 nodes together: `golangci-lint run
 ./...` (whole repo) → 0 issues; `go build ./...` → OK; `go test ./... -race`
-→ green across every package, zero regressions from any of this wave's
+→ green across every package, zero regressions from any of this phase's
 three nodes.
 
 ---
 
-## Wave 7
+## Phase 7
 
-Assigned nodes this wave: `checkpoint-a05` (Part A: StateCheckpointService
+Assigned nodes this phase: `checkpoint-a05` (Part A: StateCheckpointService
 implementation), `checkpoint-a07` (Part A: duplicate/out-of-order provider
 event handling), `checkpoint-b07` (Part B: atomic-write cross-process crash
 injection + startup orphan-temp-dir scan) — done sequentially with an
-independent validate+commit after each, per explicit wave instruction.
+independent validate+commit after each, per explicit phase instruction.
 Pre-step: `git fetch origin && git merge origin/main` — clean fast-forward
-to `1440f4c` (Wave 6's integrated state, including predictor/runtime's
+to `1440f4c` (Phase 6's integrated state, including predictor/runtime's
 pause/policy/scheduler work from other roles, nothing touching this role's
 paths); `go test ./...` was green immediately after the merge, before any
 new work started.
@@ -452,7 +452,7 @@ validation:
   - "golangci-lint run ./internal/statecheckpoint/... -> 0 issues"
   - "go test ./... -race -> green whole-repo, zero regressions"
 commit: 26c6496
-next_action: checkpoint-a06/a08/a09 — NOT started this wave per explicit assignment
+next_action: checkpoint-a06/a08/a09 — NOT started this phase per explicit assignment
 assumptions:
   - "checkpoint-a04's own lessons-learned note anticipated this exactly: 'much of a05's nominal scope (manifest serialization/checksum) was ALREADY built here since CompleteNode structurally required it; a05 should verify what remains, likely just Snapshot/verify-API polish.' Confirmed on inspection: manifest.go/serialize.go/build.go/store.go (a04) already fully implement the manifest shape, digest, and CRUD; this node's actual scope was exactly the frozen app.StateCheckpointService port implementation itself, which did not exist as a concrete type yet."
   - "Create is a NEW, standalone ad hoc snapshot entry point (Service.Create), deliberately separate from CompleteNode's own inline checkpoint-on-completion transaction (complete_node.go, unchanged) — it exists for callers (e.g. a manual 'checkpoint now' request, or a future runtime persist-phase wiring) that need a checkpoint of the CURRENT Progress Tree state without also completing a node. Reuses the exact same Build/Seal/Marshal/Store primitives CompleteNode already proved correct."
@@ -481,9 +481,9 @@ validation:
   - "golangci-lint run ./internal/progress/... -> 0 issues"
   - "go test ./... -race -> green whole-repo"
 commit: 49efd06
-next_action: feeds qa-04 (duplicate/out-of-order test) directly — public API is CompleteNode.Run itself (no new exported surface needed); qa-04 can drive the exact same scenarios (different-key-same-evidence redelivery, child-before-parent-started) through this same entry point. checkpoint-a06/a08/a09 NOT started this wave per explicit assignment.
+next_action: feeds qa-04 (duplicate/out-of-order test) directly — public API is CompleteNode.Run itself (no new exported surface needed); qa-04 can drive the exact same scenarios (different-key-same-evidence redelivery, child-before-parent-started) through this same entry point. checkpoint-a06/a08/a09 NOT started this phase per explicit assignment.
 assumptions:
-  - "Scope boundary versus a04: a04 already fully proved idempotency-KEY matching (same key -> same result; conflicting payload under the same key -> rejected) — NOT re-tested here, per the wave brief's explicit instruction. a07's genuine increment is two things a04 did not cover: (1) duplicate detection independent of key (a provider redelivering the same event through a different channel that derives its own key), and (2) parent/child ordering (a04 only checked depends_on edges via checkDependencies, never parent_id)."
+  - "Scope boundary versus a04: a04 already fully proved idempotency-KEY matching (same key -> same result; conflicting payload under the same key -> rejected) — NOT re-tested here, per the phase brief's explicit instruction. a07's genuine increment is two things a04 did not cover: (1) duplicate detection independent of key (a provider redelivering the same event through a different channel that derives its own key), and (2) parent/child ordering (a04 only checked depends_on edges via checkDependencies, never parent_id)."
   - "Constitution §6.6 says 'duplicate completion with CONFLICTING evidence is rejected' — read literally, this means duplicate completion with IDENTICAL evidence is NOT a conflict, regardless of which idempotency key arrived with it. checkDuplicateProviderEvent implements exactly this: a key mismatch alone no longer auto-rejects; the evidence digest is compared first, and only a genuine digest mismatch rejects as a conflict. This is a real, deliberate behavior change from a04's original always-reject-on-key-mismatch posture, not a bug — a04's own test asserting the old behavior (TestCompleteNode_AlreadyCompleted_DifferentKey_Rejected) used IDENTICAL evidence for both calls, which was actually the correct fixture for the NEW test's assertion (replay, not reject) rather than the old one; renamed and given genuinely different evidence so it still exercises the real conflict path it was meant to guard."
   - "checkParentOrdering treats in_progress/checkpointing/completed/failed/paused as 'parent has started'; only pending/ready/blocked count as 'not started yet' and trigger the out-of-order rejection. Deliberately does NOT enforce strict start-then-finish ordering between parent and child (a parent legitimately completing slightly before a straggling child's own evidence finishes staging is an allowed race per the existing state machine, proven by TestCompleteNode_ChildCompletes_ParentAlreadyCompleted_Allowed) — the check is specifically about a parent that never started at all, matching the DAG's own framing ('before its parent's in-progress transition is recorded')."
   - "Out-of-order rejection uses ErrCodeConflict with Retryable:true (unlike the dependency-policy and idempotency-conflict rejections elsewhere in this file, which are Retryable:false) — a genuinely out-of-order signal is expected to resolve itself once the parent's own in-progress event catches up, so a caller retrying later is the correct, expected recovery path, not a permanent failure."
@@ -511,36 +511,36 @@ validation:
   - "golangci-lint run ./internal/repocheckpoint/... -> 0 issues"
   - "go test ./... -race -> green whole-repo"
 commit: 5f853d9
-next_action: checkpoint-b08 (RestoreDryRun), checkpoint-b09 (path traversal/symlink security gate) — NOT started this wave per explicit assignment
+next_action: checkpoint-b08 (RestoreDryRun), checkpoint-b09 (path traversal/symlink security gate) — NOT started this phase per explicit assignment
 assumptions:
   - "Crash injection follows internal/progress's CompleteNode.HaltAfter/HaltError pattern (checkpoint-a04) exactly, adapted from a struct field (CompleteNode is a long-lived service value) to a function parameter (writeArtifactDir is a free function with no receiver) — same 'named phase + halt hook as a first-class testing seam' philosophy, not a redesign."
   - "The existing error-path cleanup in writeArtifactDir (the `defer os.RemoveAll(tempDir)` on a non-halt error) is explicitly NOT triggered by a halt — a writeArtifactDirHaltError is a SIMULATED crash (the point is that real production code never gets a chance to run its own cleanup when genuinely killed), so the halt path skips that defer's cleanup on purpose, leaving a real orphan on disk for orphanscan.go to find, exactly mirroring what a real kill -9 would leave behind."
   - "ScanOrphanedTempDirs takes an explicit minAge + now(time.Time) rather than hardcoding a duration or using time.Now() internally, so (1) a startup check can use minAge=0 (nothing is in flight yet, process just started) while a long-running daemon integration can use a conservative minAge (e.g. a few minutes) to avoid racing a live capture, and (2) tests get deterministic, non-flaky age comparisons. This mirrors this role's own established Clock-injection discipline (domain.Clock everywhere else in this codebase) applied to a plain time.Time parameter here since this package doesn't thread domain.Clock through its free functions."
   - "Every temp directory is unconditionally safe to remove once past minAge: by construction, nothing durable (no DB row via internal/repocheckpoint.Store, no manifest.json under a FINAL path) ever references a .checkpoint-tmp-* path — only the post-rename finalDir is ever recorded anywhere durable. This was verified by inspection of every writer of repository_checkpoints and every reader of ArtifactsRoot in this package, not merely assumed."
   - "Retry-after-crash (TestAtomicWrite_RetryAfterCrash_SucceedsCleanly) confirms writeArtifactDir's existing finalDir-collision guard (checkpoint-b04) does not also block on a stale sibling temp dir — each call gets its own os.MkdirTemp-randomized name, so an orphan from a prior crash never prevents a fresh, correct retry for the same checkpoint ID. This is a load-bearing property orphanscan.go's cleanup depends on: retries must keep working even before a cleanup sweep ever runs."
-  - "Out of this node's explicit scope, confirmed by re-reading capture.go's own doc comment: the retry-ONCE-on-race-detected POLICY (distinct from this node's crash/orphan scope) that an earlier draft of capture.go's comment also attributed to checkpoint-b07 is NOT built here — this wave's assignment prompt scoped b07 explicitly to 'atomic-write cross-process crash-injection and startup orphan-temp-dir scanning' only, matching checkpoint-b04's own lessons-learned note precisely. Flagging this for whichever later node (b08/b09, or a follow-up) is meant to own the race-retry-policy, since capture.go's in-code comment currently points at a b07 that did not build it."
+  - "Out of this node's explicit scope, confirmed by re-reading capture.go's own doc comment: the retry-ONCE-on-race-detected POLICY (distinct from this node's crash/orphan scope) that an earlier draft of capture.go's comment also attributed to checkpoint-b07 is NOT built here — this phase's assignment prompt scoped b07 explicitly to 'atomic-write cross-process crash-injection and startup orphan-temp-dir scanning' only, matching checkpoint-b04's own lessons-learned note precisely. Flagging this for whichever later node (b08/b09, or a follow-up) is meant to own the race-retry-policy, since capture.go's in-code comment currently points at a b07 that did not build it."
 blockers: none
 ```
 
-Final validation after all three Wave 7 nodes together: `golangci-lint run
+Final validation after all three Phase 7 nodes together: `golangci-lint run
 ./...` (whole repo) → 0 issues; `go build ./...` → OK; `go vet ./...` → OK;
 `go test ./... -race` → green across every package, zero regressions from
-any of this wave's three nodes.
+any of this phase's three nodes.
 
 ---
 
-## Wave 8
+## Phase 8
 
 Pre-step: `git fetch origin && git merge origin/main` — clean fast-forward
-to `2b7c29c` (Wave 7's integrated state, including `qa`'s leakage-scanner
+to `2b7c29c` (Phase 7's integrated state, including `qa`'s leakage-scanner
 integration test suite and `predictor`/`runtime`'s evaluation/pause work
 from other roles, nothing touching this role's own paths ahead of time).
 
-Assigned this wave: one corrective fix (qa-05's `TestLeakageScanner_KnownGap_
+Assigned this phase: one corrective fix (qa-05's `TestLeakageScanner_KnownGap_
 SecretInTrackedFileDiffIsNotFiltered` finding, which independently confirmed
 this role's own `untracked_test.go` boundary note) plus three new DAG nodes
 — `checkpoint-a06`, `checkpoint-a08`, `checkpoint-b08` — done sequentially
-with an independent validate+commit after each, per explicit wave
+with an independent validate+commit after each, per explicit phase
 instruction.
 
 ### Corrective fix: extend secret scanning to tracked-file diff content
@@ -561,7 +561,7 @@ validation:
   - "golangci-lint run ./... (whole repo, run after all 4 items) -> 0 issues"
   - "go test ./internal/integrationtest/... -run LeakageScanner -race -v (read-only sanity check, qa-owned package not modified) -> TestLeakageScanner_KnownGap_SecretInTrackedFileDiffIsNotFiltered now FAILS as expected per its own comment ('if this now fails, either the gap has been fixed upstream ... do not silently adjust the assertion') — every other LeakageScanner test still passes. The gap that test documents is closed; updating its assertion is qa's to do in a future node, not this role's to touch."
 commit: f981bde
-next_action: checkpoint-a06 (this wave's Node 1)
+next_action: checkpoint-a06 (this phase's Node 1)
 assumptions:
   - "Design choice — redact-in-place, not skip-with-manifest-annotation. ADD §19.3's Capture sequence places 'secret/size/symlink filters' (step 8) generally between diff generation (5-6) and archival (9), not scoped narrowly to untracked files the way §19.5's own 'Untracked policy' section states its secret-scan bullet — read as license to close the gap for patch content too, not to treat the boundary as fixed. Redaction was chosen over skip-with-annotation because: (1) §19.6 Restore (dry-run and any future real restore) needs `git apply --check` against the staged/unstaged patches — skipping the whole patch on one detected secret line would leave NOTHING to restore-check for that entire scope, not just the sensitive line; (2) a staged/unstaged diff is one unified patch blob per side (unlike untracked files, individually excludable candidates in a zip), so skipping it would discard every unrelated legitimate change in the same patch, a much larger evidence loss than the untracked path's per-file skip."
   - "Redaction scope is deliberately narrow: only '+'/'-' line BODIES that individually match internal/redact's content detectors are replaced with a fixed placeholder; context lines (leading space) and all header lines (diff --git/index/---/+++/@@ hunk headers) are never touched, because context lines must match the target file exactly for `git apply` to locate a hunk — rewriting one would silently corrupt the patch's own applicability. This was verified, not just reasoned about: patch_test.go's existing apply-round-trip tests (checkpoint-b05, unmodified by this fix) still pass unchanged, proving ordinary (non-secret) patches round-trip exactly as before."
@@ -588,7 +588,7 @@ validation:
   - "golangci-lint run ./... (whole repo, after all 4 items + 1 follow-up copyloopvar fix) -> 0 issues"
   - "go test ./... -race -> green whole-repo"
 commit: 8ecc0cc (copyloopvar lint fix: 2ecd8f6)
-next_action: checkpoint-a08 (this wave's Node 2)
+next_action: checkpoint-a08 (this phase's Node 2)
 assumptions:
   - "Traced exactly which crash windows exist in Create's own sequence rather than assuming a generic 'staged-artifact-vs-DB' shape (that is internal/progress.Reconciler's DIFFERENT, already-solved problem for CompleteNode, checkpoint-a04): Create has exactly ONE phase where durable state exists at all (PhaseInsert, a single SQL statement SQLite commits atomically — no half-inserted-row state is reachable, unlike internal/repocheckpoint's multi-file artifact writes). PhaseReadTree and PhaseSeal are both pure no-ops from a durability standpoint: nothing to reconcile because nothing was written."
   - "Reconcile is therefore a read-only integrity SCAN, not a repair mechanism — there is nothing for it to fix, by construction, since the only durable-state phase is one atomic statement. This mirrors internal/repocheckpoint.Verify and internal/progress.Reconciler both being diagnostic-only, never self-healing writers."
@@ -614,9 +614,9 @@ validation:
   - "golangci-lint run ./... (whole repo) -> 0 issues"
   - "go test ./... -race -> green whole-repo"
 commit: 905c298
-next_action: checkpoint-b08 (this wave's Node 3)
+next_action: checkpoint-b08 (this phase's Node 3)
 assumptions:
-  - "Checked what a05 already delivered before assuming greenfield scope, per this wave's explicit instruction: LoadLatest and Verify were both already fully implemented and tested (checkpoint-a05). The genuine incremental gap this node's own validation filter (Snapshot|LoadLatest|Verify) implies is a 'give me the full state as of checkpoint X' point-in-time read by ID — neither existing method answers that (LoadLatest is task-scoped and always the newest row; Verify returns only {ID, Valid}, no reconstructed manifest)."
+  - "Checked what a05 already delivered before assuming greenfield scope, per this phase's explicit instruction: LoadLatest and Verify were both already fully implemented and tested (checkpoint-a05). The genuine incremental gap this node's own validation filter (Snapshot|LoadLatest|Verify) implies is a 'give me the full state as of checkpoint X' point-in-time read by ID — neither existing method answers that (LoadLatest is task-scoped and always the newest row; Verify returns only {ID, Valid}, no reconstructed manifest)."
   - "Snapshot is NOT part of the frozen app.StateCheckpointService interface (Create/LoadLatest/Verify only) — added as a package-level method on the concrete *Service type instead, the same way Reconciler/NewReconciler (checkpoint-a06) are additions outside the frozen port. ports.go was not touched."
   - "Snapshot is a plain read, like LoadLatest — it does not itself recompute/verify the integrity digest; a caller wanting the fail-closed guarantee calls Verify separately against the same ID. Proven explicitly by a dedicated consistency test."
 blockers: none
@@ -643,7 +643,7 @@ validation:
   - "golangci-lint run ./... (whole repo) -> 0 issues"
   - "go test ./... -race -> green whole-repo"
 commit: bedd7a7
-next_action: checkpoint-b09 (path traversal/symlink security gate) — NOT started this wave per explicit assignment; real restore (mutating) remains explicitly out of vertical-slice scope per this node's own DAG risk note
+next_action: checkpoint-b09 (path traversal/symlink security gate) — NOT started this phase per explicit assignment; real restore (mutating) remains explicitly out of vertical-slice scope per this node's own DAG risk note
 assumptions:
   - "git apply --check semantics required a genuine correction mid-node: an initial test wrote a patch, then immediately ran ApplyCheck against the SAME already-staged index the patch was generated from — which fails, correctly, because the index has already moved PAST the patch's own pre-image ('before' state no longer exists to match against). This is not a bug in ApplyCheck; it is the realistic restore scenario being asked the wrong question. Fixed by resetting the index/working tree back to the patch's own base before dry-running the check — the actual scenario a restore dry-run answers ('if the target were at the patch's base, would this still apply'), verified against real `git apply --check` behavior in a scratch repo before committing to the permanent test suite."
   - "RepositoryIdentityMatch checks manifest.Repository.RepositoryID against a caller-supplied expectedRepositoryID (freshly resolved for the SAME WorktreeID via the same resolveWorktree seam Service.Create uses), NOT GitHead — HEAD legitimately moves between capture and a later restore attempt, and a stale HEAD is exactly what the apply-check step already covers; conflating the two would make ordinary, expected drift look like an identity problem."
@@ -653,34 +653,34 @@ assumptions:
 blockers: none
 ```
 
-Final validation after the corrective fix and all three Wave 8 nodes together:
+Final validation after the corrective fix and all three Phase 8 nodes together:
 `golangci-lint run ./...` (whole repo) → 0 issues; `go build ./...` → OK;
 `go vet ./...` → OK; `go test ./... -race` → green across every package
 except `internal/integrationtest`'s `TestLeakageScanner_KnownGap_
 SecretInTrackedFileDiffIsNotFiltered`, which now fails — expected and
-intentional, since this wave's corrective fix closes the exact gap that
+intentional, since this phase's corrective fix closes the exact gap that
 test documents; per that test's own comment, updating its assertion is
 qa's to do in a future node, not this role's to touch (the file is
-qa-owned and was only read, never edited, this wave).
+qa-owned and was only read, never edited, this phase).
 
 ---
 
-## Wave 9 — final gate nodes: checkpoint-a09, checkpoint-b09
+## Phase 9 — final gate nodes: checkpoint-a09, checkpoint-b09
 
 Pre-step: `git fetch origin && git merge origin/main` — clean fast-forward
-to `36e7ffb` (Wave 8's integrated state, including `qa`'s update to the
+to `36e7ffb` (Phase 8's integrated state, including `qa`'s update to the
 LeakageScanner test reflecting this role's own tracked-diff redaction fix,
-and `predictor`/`runtime` Wave 8 work from other roles, nothing touching
+and `predictor`/`runtime` Phase 8 work from other roles, nothing touching
 this role's own paths). `go test ./... -race` was green immediately after
 the merge (including the previously-expected-failing LeakageScanner test,
 now passing since qa updated its assertion), before any new work started.
 
-Assigned this wave: `checkpoint-a09` (Part A final integration gate) then
+Assigned this phase: `checkpoint-a09` (Part A final integration gate) then
 `checkpoint-b09` (Part B final security gate) — the last two DAG nodes
 assigned to this role, done sequentially with an independent
-validate+commit after each, per explicit wave instruction. Both are
+validate+commit after each, per explicit phase instruction. Both are
 explicitly framed by `agents/checkpoint.md`/`EXECUTION_DAG.md` as
-cross-cutting proofs that the full stack already built in Waves 1-8 holds
+cross-cutting proofs that the full stack already built in Phases 1-8 holds
 together end to end, not new features — completing them closes out this
 role's ENTIRE assigned DAG scope (a01-a09, b01-b09).
 
@@ -700,14 +700,14 @@ validation:
   - "go test ./... -race -> green whole-repo, zero regressions"
   - "golangci-lint run ./internal/progress/... ./internal/statecheckpoint/... -> 0 issues"
 commit: (recorded below)
-next_action: checkpoint-b09 (this wave's second and final node)
+next_action: checkpoint-b09 (this phase's second and final node)
 assumptions:
   - "Pure test-only node, deliberately: every earlier a04-a08 node already built the real production mechanism (CompleteNode's atomic protocol, Service.Create/Snapshot/LoadLatest/Verify, both packages' own Reconcilers); a09's job per its own DAG framing is proving those pieces compose correctly end to end using the REAL implementations, not adding a new one. No file outside this single new test file was touched."
   - "realTreeReader (test-local, in complete_node_integration_test.go, NOT production code) adapts the REAL *progress.NodeStore/*progress.ArtifactStore to statecheckpoint.TreeReader, deliberately replacing service_test.go's in-memory fakeTreeReader for this file's own tests — the whole point of this node is exercising the actual stack, not a stand-in. This is exactly the 'production wiring layer' internal/statecheckpoint's own doc comments (checkpoint-a05) anticipated a later integration step would supply; this node IS that integration proof, kept test-local since no wiring package/cmd exists yet in this role's own paths to hold it permanently."
   - "Proof 1 (100-node extension): reused the exact same 100-sequential-nodes shape as checkpoint-a04's original required test, but added a second pass over all 100 resulting checkpoint IDs calling Service.Snapshot (a08) and Service.Verify (a05) on each — a04's original test only called the package-level statecheckpoint.Unmarshal/Verify functions directly against the raw store row, never exercising the Service layer's own API surface a real caller (runtime, or a future CLI) would actually use. Also cross-checked LoadLatest agrees with the 100th checkpoint, and ran both Reconcilers once over the resulting history as a baseline (non-crash) sanity check reused by proof 3's crash scenario."
   - "Proof 2 (cross-package concurrent race): deliberately DIFFERENT nodes per writer goroutine (30 workers), not the same node — checkpoint-a04's own race tests already fully proved the same-node case (optimistic-concurrency arbitration via NodeStore.TransitionStatus). The genuine new shape here is concurrent completions of DISTINCT nodes racing against CONCURRENT reads: a background goroutine repeatedly calls both packages' Reconcilers AND Service.LoadLatest+Verify against the same, growing state_checkpoints table while writes are still landing. Every read either observes a consistent snapshot (zero violations, a Verify()-able latest checkpoint) or the frozen not-found error for 'no checkpoints yet' — asserted to never see a torn/inconsistent read across the whole run, then re-verified once more after wg.Wait() as a final, definitely-quiesced check."
   - "Proof 3 (two-reconciler-agreement): halts CompleteNode.Run via HaltAfter=PhaseVerifyArtifacts (evidence staged to disk, DB transaction never opened) after first completing 3 nodes cleanly, giving both Reconcilers real pre-existing history to reason about rather than an empty task. Constructs FRESH Reconciler struct values bound to the same *sqlite.DB/evidence dir after the halt (not reusing the harness's original struct values) to model a genuine process restart rather than the same long-lived object happening to still be around. internal/progress's Reconciler correctly finds exactly 1 orphaned staged artifact and 0 integrity violations; internal/statecheckpoint's Reconciler correctly reports CheckpointsScanned=3 (not 4 — the crash victim's row was never inserted) and 0 violations. Both conclusions describe the SAME crash window from two different vantage points (filesystem+artifacts table vs. state_checkpoints rows) without either reconciler knowing the other exists, and neither one falsely reports either a phantom 4th checkpoint or a broken pre-existing one. A subsequent retry with identical evidence content (proving FileStager's content-addressed idempotency) succeeds, and both reconcilers then re-converge to 0 orphans / 4 scanned / 0 violations, proving recovery is not merely non-contradictory but actually reaches a fully-reconciled end state."
-  - "Genuine bug caught while building proof 3: the test's first draft used IDENTICAL literal Markdown content ('# X\\n\\nprose\\n') for every node's artifact, which meant every node's FileStager-staged evidence hashed to the SAME sha256 — the crash victim's own staged file was already 'referenced' by the 3 earlier checkpoints' manifests purely by content coincidence, so the orphan-detection assertion passed for the wrong reason (actually: failed with 0 orphans found, catching the flaw immediately). Fixed by a small uniqueMarkdown(nodeSuffix) helper giving every node's evidence genuinely distinct content/digest, which is exactly the kind of fixture-quality issue this role's own Wave 6 lessons-learned note (redact package's too-short Azure key fixture) already flagged as a recurring risk category worth calling out explicitly rather than silently patching."
+  - "Genuine bug caught while building proof 3: the test's first draft used IDENTICAL literal Markdown content ('# X\\n\\nprose\\n') for every node's artifact, which meant every node's FileStager-staged evidence hashed to the SAME sha256 — the crash victim's own staged file was already 'referenced' by the 3 earlier checkpoints' manifests purely by content coincidence, so the orphan-detection assertion passed for the wrong reason (actually: failed with 0 orphans found, catching the flaw immediately). Fixed by a small uniqueMarkdown(nodeSuffix) helper giving every node's evidence genuinely distinct content/digest, which is exactly the kind of fixture-quality issue this role's own Phase 6 lessons-learned note (redact package's too-short Azure key fixture) already flagged as a recurring risk category worth calling out explicitly rather than silently patching."
   - "No cross-role contract gap found; no ports.go change requested. No production code in internal/progress or internal/statecheckpoint needed any change — every mechanism this node exercises (CompleteNode.Run, Service.Create/Snapshot/LoadLatest/Verify, both Reconcile methods) was already correct; this node's entire value is the proof, not a fix."
 blockers: none
 ```
@@ -744,7 +744,7 @@ assumptions:
 blockers: none
 ```
 
-Final validation after both Wave 9 nodes together: `golangci-lint run ./...`
+Final validation after both Phase 9 nodes together: `golangci-lint run ./...`
 (whole repo) → 0 issues; `go build ./...` → OK; `go vet ./...` → OK;
 `go test ./... -race` → green across every package, zero regressions. This
 completes every DAG node ever assigned to the `checkpoint` role — Part A
@@ -753,10 +753,10 @@ remain in this role's scope per `EXECUTION_DAG.md`.
 
 ---
 
-## Corrective addition (post-Wave 12, Final integration gate): real `app.ProgressTreeService` adapter
+## Corrective addition (post-Phase 12, Final integration gate): real `app.ProgressTreeService` adapter
 
 Not a numbered DAG node — this role's entire assigned DAG scope (a01-a09,
-b01-b09) was already complete as of the Wave 9 entry above. This entry
+b01-b09) was already complete as of the Phase 9 entry above. This entry
 records a finding from the **Final integration gate review**
 (`contract-integrator-final`) that was routed to this role because it is
 squarely this role's exclusive-path work, not the lead's to implement

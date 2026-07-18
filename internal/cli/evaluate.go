@@ -236,7 +236,7 @@ func buildEvaluateOutput(result orchestrator.EvaluatePromptResult) evaluateOutpu
 		PolicyAction:  string(result.Decision.Action),
 		Label:         evaluateUncalibratedLabel,
 		Calibrated:    result.Evaluation.Calibrated,
-		Probability:   nil, // null until a calibration wave persists one — Constitution principle #2
+		Probability:   nil, // null until a calibration phase persists one — Constitution principle #2
 		Confidence:    string(result.Evaluation.Confidence),
 		ReasonCodes:   reasonCodeStrings(result.Evaluation.ReasonCodes),
 		CardAvailable: result.Card != nil,

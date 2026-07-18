@@ -63,11 +63,11 @@
 // node, predictor-10 ("One-time authorization", deps: predictor-09,
 // validation `go test ./internal/evaluation/... -run Authorization`), and
 // migration 0044_authorizations.sql's own comment (written by this role in
-// an earlier wave) says exactly-once consumption is "enforced by
+// an earlier phase) says exactly-once consumption is "enforced by
 // predictor-10's service logic." This node's assignment nonetheless
 // requires ConsumeAuthorization to exist, compile against the frozen
 // interface, and behave correctly (agents/predictor.md deliverable #12 is
-// listed as in-scope reading material for this wave, and app.
+// listed as in-scope reading material for this phase, and app.
 // EvaluationService cannot be partially implemented — Go interfaces are
 // all-or-nothing). Rather than leaving a stub that would violate
 // Constitution §7 rule 11 ("does not declare a task complete without
@@ -80,16 +80,16 @@
 // enforced at the storage layer inside a single WithTx call — but treats
 // predictor-10's own dedicated `-run Authorization` validation gate and
 // replay-focused hardening pass as still the authoritative place a future
-// wave re-verifies and extends this behavior (e.g. against
+// phase re-verifies and extends this behavior (e.g. against
 // runtime-a08/runtime-b06's real integration needs), per Constitution §4's
 // "if a role needs a change to a file it doesn't own ... it works around
-// the gap with a documented assumption." This wave's own required-tests
+// the gap with a documented assumption." This phase's own required-tests
 // list (deterministic output, consume-exactly-once, stale/wrong-prompt/
 // wrong-session rejection, clock-bound expiry) is implemented and passing
 // here; predictor-10 is not started, stubbed, or scaffolded beyond what
 // already had to exist for this interface to compile.
 //
-// Addendum (predictor-10, later wave): the dedicated hardening/re-verification
+// Addendum (predictor-10, later phase): the dedicated hardening/re-verification
 // pass named above has now run. It found and fixed one real gap — the
 // prompt-hash binding check used to key off whether the REQUEST supplied a
 // PromptHash rather than whether the authorization ROW was actually issued
@@ -97,7 +97,7 @@
 // entirely (see service.go's inline comment on that check, and
 // authorization_test.go's "Section 2: prompt/session binding hardening" for
 // the adversarial test that caught it). Every other adversarial scenario
-// exercised this wave — higher-contention concurrent replay, tight
+// exercised this phase — higher-contention concurrent replay, tight
 // sequential replay loops, replay racing the expiry boundary,
 // nanosecond-adjacent expiry boundaries, whitespace/case/unicode-
 // normalization variants on the binding fields — passed against predictor-09's

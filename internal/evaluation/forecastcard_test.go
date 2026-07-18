@@ -66,7 +66,7 @@ func TestForecastCard_ReadsBackPersistedEvaluation(t *testing.T) {
 		t.Errorf("Cost.ModelFamily = %q, want %q (prediction rows persist no model column)", card.Cost.ModelFamily, pricing.DefaultFamily)
 	}
 	if card.Calibrated {
-		t.Error("Calibrated = true, want false (no calibration exists this wave)")
+		t.Error("Calibrated = true, want false (no calibration exists this phase)")
 	}
 	if card.Probability != nil {
 		t.Errorf("Probability = %v, want nil — Constitution principle #2: cold-start/uncalibrated emits probability null, never a number", *card.Probability)

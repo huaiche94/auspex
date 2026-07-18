@@ -26,7 +26,7 @@
 | [`design/`](design/README.md) | 三份權威設計文件：ADD（架構／需求規格）、predictor 設計補充文件，以及垂直切片並行執行計畫。 |
 | [`adr/`](adr/README.md) | 已核准的 Architecture Decision Record，以 `NNNN-title.md` 編號。一旦核准即不可變更；由更新的 ADR 取代，但絕不修改原文。 |
 | [`DECISION_LOG.md`](DECISION_LOG.md) | 每一項擁有者層級（owner-level）的決策，皆以 `D-##` 條目記錄，並附決策樹：考慮過的選項、最終選擇、後果、可逆性。以繁體中文撰寫。 |
-| [`implementation/`](implementation/README.md) | 垂直切片實際的建置過程：執行 DAG、各角色的進度紀錄、合約凍結、經驗教訓，以及各波次（wave）後的分析。屬於歷史紀錄——適合考古，而非現行指引。 |
+| [`implementation/`](implementation/README.md) | 垂直切片實際的建置過程：執行 DAG、各角色的進度紀錄、合約凍結、經驗教訓，以及各波次（phase）後的分析。屬於歷史紀錄——適合考古，而非現行指引。 |
 | [`methodology/`](methodology/README.md) | 本儲存庫所採用的多 agent、以證據為基礎的開發方法論，經提煉後可用於其他專案。 |
 | [`backlog/`](backlog/README.md) | 已核准但尚未排程之工作的設計筆記，每項皆連結至一個追蹤 issue。 |
 | [`archive/`](archive/README.md) | 已被取代、僅供歷史參考的文件。絕非現行實作指引。 |

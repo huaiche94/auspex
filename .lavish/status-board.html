@@ -1,0 +1,374 @@
+<title>Auspex — 已實作 vs 尚未接線</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "base", securityLevel: "strict",
+    themeVariables: {
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+      lineColor: "#9a8a66", primaryTextColor: "#e8e0cf",
+      primaryColor: "#2b2b2b", primaryBorderColor: "#6b6250"
+    }
+  });
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, .badge) { overflow-wrap: anywhere; }
+  :where(img, svg) { max-width: 100%; height: auto; }
+  .mermaid { display: flex; justify-content: center; }
+  .tier-bar { width: 4px; border-radius: 9999px; align-self: stretch; }
+</style>
+
+<html data-theme="luxury">
+<main class="mx-auto max-w-5xl p-5 sm:p-8 space-y-8">
+
+  <!-- Header: name the decision -->
+  <header class="space-y-3">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-soft badge-neutral">Auspex · README §Scope</span>
+      <span class="badge badge-soft badge-info">review surface</span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-bold text-primary">已實作 vs 尚未接線</h1>
+    <p class="text-base-content/70 max-w-3xl leading-relaxed">
+      決策面與證據閘<strong class="text-base-content">今天就是真實且持久化的</strong>；
+      把它們變成<strong class="text-base-content">自動 hook</strong> 則分成兩層尚未落地。
+      這頁把 README 的措辭攤成三個狀態層，方便你在瀏覽器裡圈選、修改、或標記要調整的字句。
+    </p>
+  </header>
+
+  <!-- Tier summary -->
+  <section class="stats stats-vertical sm:stats-horizontal w-full shadow bg-base-200">
+    <div class="stat">
+      <div class="stat-figure text-success text-2xl">●</div>
+      <div class="stat-title">已接線且通過測試</div>
+      <div class="stat-value text-success">5</div>
+      <div class="stat-desc">shipped 在二進位檔中</div>
+    </div>
+    <div class="stat">
+      <div class="stat-figure text-warning text-2xl">◐</div>
+      <div class="stat-title">Vertical slice</div>
+      <div class="stat-value text-warning">2</div>
+      <div class="stat-desc">已建置＋單元測試，未端到端接線</div>
+    </div>
+    <div class="stat">
+      <div class="stat-figure text-info text-2xl">○</div>
+      <div class="stat-title">已設計・在 roadmap</div>
+      <div class="stat-value text-info">4</div>
+      <div class="stat-desc">M4 / M10，尚未接線</div>
+    </div>
+  </section>
+
+  <!-- Legend -->
+  <div class="flex flex-wrap gap-3 text-sm">
+    <span class="inline-flex items-center gap-2"><span class="tier-bar bg-success" style="height:1rem"></span> Wired &amp; tested</span>
+    <span class="inline-flex items-center gap-2"><span class="tier-bar bg-warning" style="height:1rem"></span> Vertical slice（未接線）</span>
+    <span class="inline-flex items-center gap-2"><span class="tier-bar bg-info" style="height:1rem"></span> Designed（roadmap）</span>
+  </div>
+
+  <!-- Lifecycle diagram: where each hook sits in a turn -->
+  <section class="space-y-3">
+    <h2 class="text-xl font-semibold">一個 turn 的生命週期：hook 落點與狀態</h2>
+    <p class="text-base-content/60 text-sm">綠 = 現在就跑；藍 = 已設計未接線；琥珀 = slice 未接線。虛線 = 條件觸發。</p>
+    <div class="rounded-box border border-base-content/10 bg-base-100 p-4 overflow-x-auto">
+      <pre class="mermaid">
+flowchart TD
+  START([turn 開始])
+  START --> C116["#116 · pre-turn checkpoint (CHECKPOINT_AND_RUN)"]
+  C116 --> LOOP["Agentic loop · policy RUN / BLOCK（決策面：真實・已持久化）"]
+  LOOP --> STOP["#115 · Stop：證據閘 reconciliation"]
+  LOOP -. 接近 context 上限 .-> C114["#114 · PreCompact checkpoint"]
+  C114 -.-> LOOP
+  LOOP -. quota 見底 .-> TRIG["自動 quota-runway 觸發器"]
+  TRIG --> PAUSE["Graceful Pause 核心：checkpoint → wake job(SQLite) → daemon 重驗後 resume"]
+  PAUSE -. quota 回來 .-> LOOP
+
+  classDef wired fill:#1c7c46,stroke:#0f5c30,color:#eafff2;
+  classDef slice fill:#a8690a,stroke:#7a4c06,color:#fff7e8;
+  classDef designed fill:#1f5f8b,stroke:#164863,color:#e8f4ff;
+  classDef neutral fill:#2b2b2b,stroke:#6b6250,color:#e8e0cf;
+  class LOOP,PAUSE wired;
+  class TRIG slice;
+  class C116,STOP,C114 designed;
+  class START neutral;
+      </pre>
+    </div>
+  </section>
+
+  <!-- Tier 1 -->
+  <section class="space-y-3">
+    <div class="flex items-center gap-3">
+      <span class="tier-bar bg-success" style="height:1.5rem"></span>
+      <h2 class="text-xl font-semibold">Tier 1 — 已接線且通過測試（今天就在 shipped binary）</h2>
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th class="w-1/4">能力</th><th>證據 / 為何算數</th><th class="w-24">參照</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">決策面 Decision surface</td>
+            <td>policy engine 產生並<strong>記錄</strong> <code class="text-warning">CHECKPOINT_AND_RUN</code> 等決策（WARN · REQUIRE_CONFIRMATION · SPLIT · PAUSE · PAUSE_AND_AUTO_RESUME · BLOCK），透過 hook response 回傳給 agent。</td>
+            <td><span class="badge badge-soft badge-success">real</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">證據閘 Evidence gate</td>
+            <td>work unit 沒有<strong>驗證過的證據</strong>（file / DB / checksum / Git snapshot）就不算完成；「agent 說做完了」永遠不算。閘門活在 context window 之外，不會遺忘。</td>
+            <td><span class="badge badge-soft badge-success">real</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Progress Tree</td>
+            <td>canonical、durable 的任務狀態；節點需 validator 檢查過的證據才能標記完成。</td>
+            <td><span class="badge badge-soft badge-success">real</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">State + repository checkpoints</td>
+            <td>每次節點完成 atomically 寫入 state checkpoint；repo checkpoint 擷取 worktree、做 secret redaction、<strong>從不 commit 你的分支</strong>。</td>
+            <td><span class="badge badge-soft badge-success">real</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Graceful Pause 核心</td>
+            <td>durable 持久化 + 無人值守 daemon loop（<code>auspex daemon</code>）+ 四路重驗 resume（repo · quota · session · authorization）—— implemented &amp; tested。</td>
+            <td><span class="badge badge-soft badge-success">tested</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Tier 2 -->
+  <section class="space-y-3">
+    <div class="flex items-center gap-3">
+      <span class="tier-bar bg-warning" style="height:1.5rem"></span>
+      <h2 class="text-xl font-semibold">Tier 2 — Vertical slice（已建置＋單元測試，未端到端接線）</h2>
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th class="w-1/4">能力</th><th>狀態</th><th class="w-24">參照</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">自動 quota-runway 觸發器</td>
+            <td>讓 Graceful Pause <strong>hands-free</strong> 觸發 —— built + unit-tested，<strong>尚未</strong>在 shipped binary 端到端接線。</td>
+            <td><span class="badge badge-soft badge-warning">slice</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Provider turn-interrupt</td>
+            <td>供應商層的 turn 中斷，用來 hands-free 觸發 pause —— 同上，slice 未接線。</td>
+            <td><span class="badge badge-soft badge-warning">slice</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Tier 3 -->
+  <section class="space-y-3">
+    <div class="flex items-center gap-3">
+      <span class="tier-bar bg-info" style="height:1.5rem"></span>
+      <h2 class="text-xl font-semibold">Tier 3 — 已設計・在 M4/M10 roadmap（尚未接線）</h2>
+    </div>
+    <p class="text-base-content/60 text-sm">設計出處：ADD §13.6 / §18.9。這一層就是「把真實決策接成自動 hook」。</p>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th class="w-1/4">要接的 hook</th><th>作用</th><th class="w-20">Issue</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">Pre-turn checkpoint</td>
+            <td>把 <code class="text-warning">CHECKPOINT_AND_RUN</code> 決策接成 turn 前的自動 checkpoint，讓壞掉的 turn 可以 roll back。</td>
+            <td><span class="badge badge-soft badge-info">#116</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Stop hook reconcile</td>
+            <td>turn 後在 Stop 做證據閘 reconciliation（Progress Tree / artifact 對帳）。</td>
+            <td><span class="badge badge-soft badge-info">#115</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">PreCompact checkpoint</td>
+            <td>壓縮前自動 checkpoint，讓「supervises compaction」字面成真。</td>
+            <td><span class="badge badge-soft badge-info">#114</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Quota → Pause 轉換</td>
+            <td>把 quota 中斷轉成 pause —— 與 Tier 2 的 slice 同一片。</td>
+            <td><span class="badge badge-soft badge-neutral">同片</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ Full milestone map (answer to the annotated follow-up) ============ -->
+  <section class="space-y-4 border-t-2 border-primary/30 pt-8">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="badge badge-primary">你問的</span>
+      <h2 class="text-2xl font-bold text-primary">全部 Milestones（M0–M15）：哪些做了 / 沒做</h2>
+    </div>
+    <p class="text-base-content/70 max-w-3xl leading-relaxed">
+      來源：<code>docs/design/Auspex_ADD.md §31</code> 的 M0–M15 路線圖。重點先講：Auspex 是一條
+      <strong class="text-base-content">穿過多個 milestone 的 vertical slice（85/85 DAG 節點整合進 <code>main</code>）</strong>，
+      不是逐個 M 依序完工。因此下面的「已交付」＝<strong class="text-base-content">已整合進 main</strong>，
+      <strong class="text-warning">不等於已發版</strong> —— ADD 標的 release marker（M4 的 <code>v0.1.0</code>…M15 的 <code>v1.0.0</code>）
+      <strong class="text-warning">目前一個 git tag 都還沒 stamp</strong>。
+    </p>
+
+    <!-- milestone status summary -->
+    <div class="stats stats-vertical sm:stats-horizontal w-full shadow bg-base-200">
+      <div class="stat">
+        <div class="stat-title">✅ 已交付（在 main）</div>
+        <div class="stat-value text-success">8</div>
+        <div class="stat-desc">M0 M1 M2 M3 M5 M6 M8 M9</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">◐ 部分（核心到、尾巴缺）</div>
+        <div class="stat-value text-warning">4</div>
+        <div class="stat-desc">M4 M7 M10 M12</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">○ 未開始</div>
+        <div class="stat-value text-base-content/50">4</div>
+        <div class="stat-desc">M11 M13 M14 M15</div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 text-sm">
+      <span class="inline-flex items-center gap-2"><span class="badge badge-soft badge-success">✅ 已交付</span> 整合進 main（未必發版）</span>
+      <span class="inline-flex items-center gap-2"><span class="badge badge-soft badge-warning">◐ 部分</span> 核心可用，有具名尾巴</span>
+      <span class="inline-flex items-center gap-2"><span class="badge badge-soft badge-ghost">○ 未開始</span></span>
+    </div>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra table-sm">
+        <thead>
+          <tr>
+            <th class="w-12">M</th>
+            <th class="min-w-40">名稱</th>
+            <th class="w-20">狀態</th>
+            <th>做了什麼 · 還缺什麼</th>
+            <th class="w-28">Release marker</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-mono">M0</td><td>Repository bootstrap</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>Go module、<code>cmd/auspex</code>、version/build info、Taskfile/Makefile、lint/CI、Apache-2.0、governance/security/contribution、ADD/AGENTS.md 全到位。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M1</td><td>Domain · paths · config · SQLite</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>IDs/enums、clock/id 注入、OS paths、YAML config 優先序、schemas、SQLite 連線/migrations、repo/worktree/session/turn/task stores、<code>paths</code>/<code>config</code> 指令。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M2</td><td>Git observer + Repository Checkpoint</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>porcelain v2 parser、snapshot fingerprint、checkpoint create/list/show/verify、<strong>真實 restore（#6 已補）</strong>、binary patch、untracked archive、secret/path 過濾。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M3</td><td>Event protocol + telemetry ingestion</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>event envelope/store、batch API、idempotency/out-of-order、normalized usage/tool/file/quota/context、de-identified export、tiered retention（ADR-046）。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M4</td><td>Progress Tree + State Checkpointing</td>
+            <td><span class="badge badge-soft badge-warning">◐</span></td>
+            <td>Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、<code>progress</code>/<code>state</code> CLI 都在。<strong class="text-warning">缺：</strong>把決策接成自動 hook（pre-turn <strong>#116</strong>、Stop reconcile <strong>#115</strong>、PreCompact <strong>#114</strong>）；<code>progress</code> inspect 也未接。<span class="text-base-content/50">← 就是本頁上半的 Tier 3。</span></td>
+            <td><span class="badge badge-ghost badge-sm">v0.1.0 未 tag</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">M5</td><td>Feature extraction · predictor · policy</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>task classifier、Go/.NET topology、feature v1、empirical quantiles、token/scope 估計、risk、reason codes、policy rules、<code>evaluate</code>/<code>decide</code>。<strong class="text-warning">注意：</strong>全為 <strong>cold-start 規則</strong>，校準屬 M13（資料未到）。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M6</td><td>Daemon · local API · durable scheduler</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>daemon（#7）、loopback auth、v1 endpoints、SSE、in-process fallback、wake job lease/recovery、doctor baseline、session-status API。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M7</td><td>Codex managed adapter</td>
+            <td><span class="badge badge-soft badge-warning">◐</span></td>
+            <td>偵測/capability、managed <code>run --provider codex</code>（走 <code>codex exec --json</code>）、exec JSONL fallback、fixtures 已到。<strong class="text-warning">缺（#9 Phase 2）：</strong>App Server 訂閱、graceful interrupt、<code>codex exec resume</code>。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M8</td><td>Codex native hooks</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td><code>auspex hook codex &lt;event&gt;</code>、UserPromptSubmit、pre/post compact、tool/stop、native block、doctor checks。<strong class="text-warning">注意：</strong>compact 前自動 state checkpoint 的一般化接線與 <strong>#114</strong> 同片，仍在收尾。</td>
+            <td><span class="badge badge-ghost badge-sm">v0.2.0 未 tag</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">M9</td><td>Claude managed + native integration</td>
+            <td><span class="badge badge-soft badge-success">✅</span></td>
+            <td>plugin、hooks、TaskCreated/Completed mapping、statusline wrapper、context/quota telemetry、stream-json runner、resume、native-hook session bootstrap（#17）、<code>watch codex</code>（#92）。</td>
+            <td><span class="badge badge-ghost badge-sm">v0.3.0 未 tag</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">M10</td><td>Runway Forecaster + Graceful Pause</td>
+            <td><span class="badge badge-soft badge-warning">◐</span></td>
+            <td>live burn-rate、runway forecast、uncalibrated fallback、statusline runway、safe-point coordinator、pause state machine、state/repo checkpoint 整合、durable wake schedule、四路 resume validation、CLI pause/resume/scheduler 都在且測過。<strong class="text-warning">缺：</strong>自動 quota-runway 觸發器＋provider turn-interrupt（hands-free 觸發）。<span class="text-base-content/50">← 本頁 Tier 2。</span></td>
+            <td><span class="badge badge-ghost badge-sm">v0.4.0 未 tag</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">M11</td><td>Managed shell + UX hardening</td>
+            <td><span class="badge badge-soft badge-ghost">○</span></td>
+            <td><code>auspex shell</code> <strong>尚不存在</strong>（<code>cmd/</code> 無 shell）；互動面板、pause UI、Ctrl+C、history/status、no-TTY policy 都未做。是 M7 Phase 2 之後的下一塊 net-new。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M12</td><td>VS Code extension</td>
+            <td><span class="badge badge-soft badge-warning">◐</span></td>
+            <td>daemon client/SSE、status bar、views、guarded prompt、progress tree、pause/resume/conflict UI、binary resolution 都在（#10，吃 session-status API）。<strong class="text-warning">缺：</strong>Marketplace/Open VSX 發佈（publisher 未註冊 #18，目前跑 source/VSIX）。</td>
+            <td><span class="badge badge-ghost badge-sm">v0.5.0 未 tag</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">M13</td><td>Predictor research + personalization</td>
+            <td><span class="badge badge-soft badge-ghost">○</span></td>
+            <td>backtesting、outcome labels、quantile models、runway calibration、model registry、Python research package、reports 都未做。<strong class="text-info">資料閘：</strong>等 telemetry 累積（2026-07-17 起 parked）—— 這是把預測從 cold-start 變 <strong>calibrated</strong> 的關鍵。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M14</td><td>External provider protocol</td>
+            <td><span class="badge badge-soft badge-ghost">○</span></td>
+            <td>manifest、JSONL handshake、registry、capability negotiation、fake plugin、security limits —— 全未開始。</td>
+            <td class="text-base-content/40">—</td>
+          </tr>
+          <tr>
+            <td class="font-mono">M15</td><td>1.0 hardening</td>
+            <td><span class="badge badge-soft badge-ghost">○</span></td>
+            <td>perf SLO、security review、migration review、support bundle、docs site、packages、signed artifacts、SBOM/provenance、provider matrix、governance finalization —— 全未開始。<strong class="text-warning">目前無任何 release tag。</strong></td>
+            <td><span class="badge badge-ghost badge-sm">v1.0.0 未 tag</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div role="alert" class="alert alert-soft alert-warning">
+      <span>兩件事別搞混：<strong>①</strong> 前 10 個 M 的功能大多已在 <code>main</code>，但<strong>沒有一個 release marker 被 tag</strong>（vertical slice 先打穿深度，發版留待 M15 hardening）。<strong>②</strong> 剩下真正「未動」的是 <strong>M11 shell、M13 校準、M14 外部 provider、M15 1.0 hardening</strong> —— 其中 M13 卡在資料，其餘是 net-new 工程。</span>
+    </div>
+  </section>
+
+  <!-- One-line framing that the README leans on -->
+  <div role="alert" class="alert alert-soft alert-info">
+    <span>一句話收斂：<strong>決策與證據是真的；自動接線還沒好。</strong> README §Scope 與 capability 段落現行措辭即照此三層敘述。</span>
+  </div>
+
+  <!-- Annotation invitation -->
+  <footer class="text-sm text-base-content/60 border-t border-base-content/10 pt-4 space-y-1">
+    <p>👉 在瀏覽器裡<strong>圈選任一格或文字</strong>加註解，或排一個 prompt 說要改哪層 / 哪句措辭；我會從 <code>lavish-axi poll</code> 收到後回改。</p>
+    <p>設計來源：無 web design system 可對齊（Auspex 是 Go CLI），採 Lavish 推薦的 Tailwind + DaisyUI CDN fallback（theme: luxury）。</p>
+  </footer>
+
+</main>
+</html>

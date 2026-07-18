@@ -21,7 +21,7 @@ import (
 
 // EvaluationReader is the narrow slice of evaluation.SQLDataSource this
 // package reads: session→task resolution plus the three per-session reads
-// that layer already exposes and the risk read this wave added.
+// that layer already exposes and the risk read this phase added.
 type EvaluationReader interface {
 	Resolve(ctx context.Context, sessionID domain.SessionID) (evaluation.ResolvedSession, error)
 	RunwayForecast(ctx context.Context, sessionID domain.SessionID) (domain.RunwayForecast, bool, error)

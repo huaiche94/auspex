@@ -12,10 +12,10 @@ import (
 //
 // Per the DAG's own note ("Can start against fakes for checkpoint; no
 // concrete store required to begin") and consistent with what
-// runtime-b05 already did last wave for the identical reason
+// runtime-b05 already did last phase for the identical reason
 // (internal/orchestrator/checkpoint_test.go), these fakes live local to
 // this test file rather than in internal/testutil/fakes (a Part B path
-// this wave's task brief does not authorize touching) or against the
+// this phase's task brief does not authorize touching) or against the
 // frozen app.StateCheckpointService/app.TurnInterrupter directly (this
 // node's CheckpointPersister/Interrupter seams are intentionally narrower
 // — see safepoint.go's doc comments).

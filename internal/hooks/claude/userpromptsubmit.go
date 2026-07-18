@@ -1,7 +1,7 @@
 // Package claude parses Claude Code's native lifecycle-hook stdin payloads
 // (UserPromptSubmit, Stop, StopFailure) and encodes the provider-compatible
 // stdout responses those hooks expect back. Like internal/providers/claude,
-// this package stops at the parsing/encoding step for this wave; producing
+// this package stops at the parsing/encoding step for this phase; producing
 // the frozen pkg/protocol/v1.Event envelope is claude-provider-04's job.
 package claude
 

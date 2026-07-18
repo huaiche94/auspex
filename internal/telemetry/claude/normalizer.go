@@ -28,12 +28,12 @@ import (
 // produced event's Event.Provider field.
 const Provider = "claude"
 
-// Normalizer turns Wave-1 parsed Claude Code structs into frozen
+// Normalizer turns Phase-1 parsed Claude Code structs into frozen
 // pkg/protocol/v1.Event values. It depends only on the frozen
 // domain.Clock/domain.IDGenerator ports (internal/domain/clock.go) so tests
 // can supply deterministic fakes rather than this package reaching for
 // time.Now/crypto/rand itself or depending on foundation's concrete
-// internal/idgen implementation, which is out of scope for this wave
+// internal/idgen implementation, which is out of scope for this phase
 // (claude-provider-04 depends on claude-provider-01/02/03 and
 // contract-integrator-04 only — not foundation-06).
 type Normalizer struct {

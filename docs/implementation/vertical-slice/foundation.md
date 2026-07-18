@@ -92,7 +92,7 @@ validation:
   - "go test ./internal/clock/... ./internal/idgen/... ./cmd/auspex/... -v   # all PASS"
   - "go build -o auspex ./cmd/auspex && ./auspex version   # prints 0.0.0-dev"
 commit: 797c450
-next_action: foundation-02 (blocked - not started this wave; OS-correct config/data/cache/runtime paths)
+next_action: foundation-02 (blocked - not started this phase; OS-correct config/data/cache/runtime paths)
 assumptions:
   - "internal/buildinfo.Version is a hardcoded \"0.0.0-dev\" string constant,
     not wired to ldflags/git describe. agents/foundation.md explicitly
@@ -242,7 +242,7 @@ node: foundation-04
 scope_note: >
   REDUCED SCOPE per task instruction. The DAG's original foundation-04 row
   ("Clock/IDGen/lock impls") is only partially this node's work: clock and
-  idgen were already fully implemented under foundation-01 in Wave 1 (see
+  idgen were already fully implemented under foundation-01 in Phase 1 (see
   that node's log above) and are NOT touched or reimplemented here. This
   node's actual new work is internal/lock only.
 status: completed
@@ -315,7 +315,7 @@ validation:
   - "go test ./internal/storage/sqlite/...   # PASS, 24 test cases"
 commit: b0ef5a0
 next_action: foundation-09 (Makefile/Taskfile/lint config) — foundation-06
-  (actual migration .sql files) is explicitly NOT in this wave's scope
+  (actual migration .sql files) is explicitly NOT in this phase's scope
 assumptions:
   - "Pragmas (ADD SS12.1 / CONTRACT_FREEZE.md) are applied TWICE, by
     design, not redundantly by accident: (1) encoded as _pragma DSN query
@@ -364,7 +364,7 @@ assumptions:
     this errs toward refusing to proceed rather than guessing intent."
   - "No internal/storage/sqlite/migrations/ directory and no actual .sql
     files were created — that is foundation-06's scope (Core migrations
-    0000-0009), explicitly NOT assigned to foundation this wave per the
+    0000-0009), explicitly NOT assigned to foundation this phase per the
     task instruction. Migrate()/LoadMigrationsFS() are fully implemented
     and tested against synthetic in-test migrations (via testing/fstest
     and inline Migration structs) so foundation-06 has a ready, proven
@@ -403,7 +403,7 @@ validation:
   - "task test    # go test -race ./... -> all packages PASS"
   - "make lint && make build   # Makefile mirror verified equivalent to Taskfile"
 commit: 2eac579
-next_action: none — this was the last node assigned this wave (foundation-06,
+next_action: none — this was the last node assigned this phase (foundation-06,
   -07, -08 are explicitly out of scope; STOP per task instruction)
 assumptions:
   - "Taskfile.yml is the richer/primary task runner (default task runs
@@ -431,14 +431,14 @@ assumptions:
     and is what actually ran during validation — an older v1-schema config
     would not have been validated against a real tool run."
   - "Running golangci-lint surfaced 16 real, fixable issues across files
-    from THIS wave's earlier nodes (foundation-02 through -05) plus two
-    from foundation-01 (Wave 1): unchecked defer'd Close()/Release()
+    from THIS phase's earlier nodes (foundation-02 through -05) plus two
+    from foundation-01 (Phase 1): unchecked defer'd Close()/Release()
     errors (errcheck), %v used where %w should wrap an error (errorlint),
     a direct == comparison on a sentinel error instead of errors.Is
     (errorlint), a deliberate-but-linter-suspicious nil return after a
     non-nil err check in internal/lock (nilerr, suppressed with a
     documented nolint since the behavior is intentional, not a bug), and
-    two staticcheck QF1011 hints on Wave-1 test files where an explicit
+    two staticcheck QF1011 hints on Phase-1 test files where an explicit
     interface type on a var declaration is redundant with the RHS
     function's return type (suppressed with nolint since the explicit
     type is the test's documentation value, not an oversight). All were
@@ -449,11 +449,11 @@ assumptions:
     foundation's exclusive-paths list and are currently missing from the
     repository entirely. This task's node list (foundation-02 through
     foundation-09) never assigns LICENSE/NOTICE creation to any node in
-    this wave, and foundation-09's own validation command (`task lint &&
+    this phase, and foundation-09's own validation command (`task lint &&
     task build`) does not depend on them existing. Creating them now
     would be scope creep beyond the assigned nodes, not a natural
     byproduct of Makefile/Taskfile/.golangci.yml work — flagged here so a
-    future wave assigns it explicitly (owning role is foundation per the
+    future phase assigns it explicitly (owning role is foundation per the
     exclusive-paths list) rather than it being silently done or silently
     forgotten."
   - "bin/ (the build output directory task build/make build creates) is
@@ -465,7 +465,7 @@ assumptions:
 blockers: []
 ```
 
-## Wave 3
+## Phase 3
 
 ### foundation-06: SQLite core-schema migrations (0001-0004)
 
@@ -514,7 +514,7 @@ validation:
   - "golangci-lint run ./... (whole repo) -> 0 issues"
 commit: b79df6b
 next_action: foundation-08 (path/config precedence tests) — foundation-07
-  explicitly out of scope this wave per task instruction
+  explicitly out of scope this phase per task instruction
 assumptions:
   - "Migration numbering starts at 0001, not 0000, matching ADD §12.5's
     literal documented example (\"Migration file: 0001_name.sql\") and
@@ -618,9 +618,9 @@ validation:
   - "go vet ./... -> clean"
   - "golangci-lint run ./... (whole repo) -> 0 issues"
 commit: 13e05ae
-next_action: none — this was the last node assigned this wave (per task
+next_action: none — this was the last node assigned this phase (per task
   instruction: STOP immediately once both nodes are Validated; foundation-07
-  is explicitly out of scope, a Wave 4 decision)
+  is explicitly out of scope, a Phase 4 decision)
 assumptions:
   - "internal/paths' own fakeEnv (fake_env_test.go) is unexported to
     package paths_test and cannot be reused from internal/config's test
@@ -628,7 +628,7 @@ assumptions:
     satisfying the exported paths.Env interface was defined instead
     inside precedence_paths_test.go rather than exporting paths' fake or
     promoting it to a shared testutil package — the latter would be a
-    new abstraction/package this wave's scope does not call for
+    new abstraction/package this phase's scope does not call for
     (Constitution §7 rule 10), and duplicating ~10 lines of trivial fake
     is cheaper than either alternative."
   - "The new test file lives under internal/config/ (one of foundation's
@@ -652,11 +652,11 @@ assumptions:
 blockers: []
 ```
 
-## Wave 4
+## Phase 4
 
 ### foundation-07: migration test harness hardening
 
-Scope per the Wave 4 DAG's foundation-07 row and the task instruction:
+Scope per the Phase 4 DAG's foundation-07 row and the task instruction:
 strengthen `internal/storage/sqlite`'s migration test harness with
 additional race-condition and reliability coverage beyond foundation-05/06,
 specifically the three `agents/foundation.md` "Required tests" bullets not
@@ -750,7 +750,7 @@ validation:
   - "gofmt -l internal/storage/sqlite -> empty output"
   - "golangci-lint run ./... (whole repo) -> 0 issues"
 commit: 042ed54
-next_action: none — foundation-07 was this wave's sole assigned node; STOP
+next_action: none — foundation-07 was this phase's sole assigned node; STOP
   per task instruction once Validated
 assumptions:
   - "Fixing the two real bugs found (Migrate's TOCTOU race, applyPragmas'
@@ -804,7 +804,7 @@ assumptions:
     (180 executions of the concurrent-reopen test) after the fix."
   - "Test names are prefixed TestMigration_ (not TestMigrate_ or
     TestCoreMigrations_, both already used by foundation-05/06) so this
-    wave's DAG validation command (`-run TestMigration`) actually selects
+    phase's DAG validation command (`-run TestMigration`) actually selects
     them — verified before writing any test that the literal validation
     command in the task matched ZERO existing tests (Go's -run is
     unanchored regex, so `-run Migration` alone would have matched all 28
@@ -834,10 +834,10 @@ blockers: []
 
 Not a new DAG node — a corrective fix to foundation's own `migrate_test.go`,
 requested directly (not via the normal DAG) after being independently
-confirmed by five separate sources in the same wave: the lead (twice, via
-direct verification) and three sibling Wave 4 roles (claude-provider,
+confirmed by five separate sources in the same phase: the lead (twice, via
+direct verification) and three sibling Phase 4 roles (claude-provider,
 checkpoint, predictor, runtime), each of whom hit the identical failure
-while building their own Wave 4 migrations and filed it as a change request
+while building their own Phase 4 migrations and filed it as a change request
 against foundation rather than editing a file outside their own exclusive
 paths.
 
@@ -854,7 +854,7 @@ runtime 0050-0059, per `CONTRACT_FREEZE.md`). "Exactly 4" was only ever true
 while foundation's own 0001-0004 were the sole files on disk — true for
 foundation-05 through foundation-07's own branch, but false the instant any
 one sibling branch's migration merges into the same tree, which is exactly
-what Wave 4 integration does across four branches simultaneously.
+what Phase 4 integration does across four branches simultaneously.
 
 Fix applied (all four via the "assert at-least, not exactly" path — no
 test's actual intent, per its name/comments, was "verify 0001-0004 apply
@@ -889,12 +889,12 @@ scoped-to-own-range rewrite would have been redundant):
 node: foundation-07-correction
 status: completed
 type: corrective_fix
-reason: "Cross-role-confirmed (5 independent reports this wave: lead x2,
+reason: "Cross-role-confirmed (5 independent reports this phase: lead x2,
   claude-provider, checkpoint, predictor, runtime) test brittleness in
   migrate_test.go — three tests hardcoded CurrentVersion/len(migrations) ==
   4, which only held while foundation's own migrations were the only files
   under internal/storage/sqlite/migrations/. Breaks the instant any sibling
-  role's Wave 4 migration lands in the same tree, blocking Wave 4
+  role's Phase 4 migration lands in the same tree, blocking Phase 4
   integration entirely since every role's tests run against the same
   merged migrations/ directory."
 artifacts:
@@ -935,7 +935,7 @@ assumptions:
     coverage while making the AllMigrations()-based tests worse at their
     actual job: proving the real embedded loader and a real multi-role
     schema converge correctly, which is precisely the integration-time
-    behavior Wave 4 needs verified now that sibling migrations exist."
+    behavior Phase 4 needs verified now that sibling migrations exist."
   - "TestMigration_ConcurrentReopen_NoDuplicateSchemaMigrationsRows was
     inspected and left unchanged: its row-count assertion already compares
     against len(migrations) (the dynamic slice returned by AllMigrations()

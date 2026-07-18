@@ -99,7 +99,7 @@ const (
 // Field set mirrors ADD §14.1 exactly. Unlike the ADD's own pseudocode
 // (which used plain int), numeric quantile fields are pointer-typed so a
 // genuinely-unknown estimate is never silently reported as zero (ADD
-// principle 1, "Unknown is not zero"; Constitution §7). A Wave 2
+// principle 1, "Unknown is not zero"; Constitution §7). A Phase 2
 // implementation of ScopeEstimator MAY populate only a subset of these
 // fields (e.g. files/lines) and leave the rest nil — that is an explicit,
 // visible degradation, not a contract violation.
@@ -160,7 +160,7 @@ type TokenForecast struct {
 	// ~153:1 input:output MAGNITUDE is external SWE-bench evidence that is
 	// NEVER imported as an Auspex coefficient. Because this split is
 	// uncalibrated, Calibrated stays false whenever it is populated this
-	// wave (Constitution principle #2: score is not probability).
+	// phase (Constitution principle #2: score is not probability).
 	//
 	// Only P50/P90 per axis (no P80): the decomposition is rendered and
 	// consumed as a P50-P90 range, matching the scope and duration bands

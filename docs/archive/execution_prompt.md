@@ -1,5 +1,5 @@
 > **ARCHIVED — obsolete.** This early draft kickoff prompt specifies a
-> four-teammate, two-wave team structure that conflicts with the approved
+> four-teammate, two-phase team structure that conflicts with the approved
 > nine-agent (A00–A08) topology in `Preflight_Day1_Parallel_Execution_Plan.md`
 > and `agent-packets/`. It also predates the current directive not to spawn
 > teammates during Phase 0. Kept for historical reference only; do not
@@ -28,21 +28,21 @@ Read these files before creating tasks:
 - docs/implementation/day1/CONTRACT_FREEZE.md
 - AGENTS.md
 
-Create two execution waves.
+Create two execution phases.
 
-Wave 1:
+Phase 1:
 - foundation: A01 Foundation, Config, Paths, SQLite
 - claude-adapter: A02 Claude Telemetry and Hooks
 - state-checkpoint: A03 Progress Tree and State Checkpointing
 - repository-checkpoint: A04 Git Observer and Repository Checkpoint
 
-Wave 2:
+Phase 2:
 - foundation handles A05 Predictor and Policy
 - claude-adapter handles A06 Graceful Pause and Scheduler
 - state-checkpoint handles A07 CLI and Application Orchestration
 - repository-checkpoint handles A08 QA, Security, Reliability, and CI
 
-Wave 2 tasks must remain blocked until their required Wave 1
+Phase 2 tasks must remain blocked until their required Phase 1
 dependencies are completed.
 
 Strict ownership rules:
@@ -59,7 +59,7 @@ Strict ownership rules:
    validation commands pass.
 9. If a shared contract is insufficient, message the lead instead of
    changing it.
-10. Wait for all Wave 1 teammates before integrating or starting Wave 2.
+10. Wait for all Phase 1 teammates before integrating or starting Phase 2.
 
 Before implementation, create the complete shared task graph and show me:
 

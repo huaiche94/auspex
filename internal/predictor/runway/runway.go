@@ -45,7 +45,7 @@ const staleAfter = 5 * time.Minute
 
 // sanityCapPercentPerMinute is the ADD §15.4 "rate > provider-specific
 // sanity cap => mark anomaly" rule. No provider-specific cap is available
-// yet (no live telemetry wired up this wave), so this package uses a
+// yet (no live telemetry wired up this phase), so this package uses a
 // single conservative default: more than 50 percentage-points of quota
 // burned in one minute is treated as an anomaly rather than a real
 // sustained burn rate.
@@ -76,7 +76,7 @@ type ScoreRequest struct {
 // Scorer computes ten-minute (or caller-configured horizon) runway
 // forecasts per ADD §15.4-15.5, using the uncalibrated deterministic
 // fallback (§15.7) since no durable calibrated burn-rate history exists
-// yet this wave (§15.6's calibration gate is never met by construction).
+// yet this phase (§15.6's calibration gate is never met by construction).
 type Scorer struct{}
 
 // NewScorer constructs a Scorer. It is stateless — all history must be
@@ -106,8 +106,8 @@ func (s *Scorer) Score(req ScoreRequest) domain.RunwayForecast {
 	forecast := domain.RunwayForecast{
 		LimitID:         req.Current.LimitID,
 		HorizonSeconds:  int64(horizon.Seconds()),
-		Calibrated:      false, // never true this wave — see doc.go cold-start contract
-		HitProbability:  nil,   // only meaningful once Calibrated; never populated this wave
+		Calibrated:      false, // never true this phase — see doc.go cold-start contract
+		HitProbability:  nil,   // only meaningful once Calibrated; never populated this phase
 		QuotaObservedAt: observedAtPtr(req.Current),
 	}
 
@@ -226,7 +226,7 @@ func estimateBurnRate(req ScoreRequest, now time.Time) (*float64, *float64, int,
 	}
 
 	// With exactly one interval available (no durable multi-sample
-	// history this wave — that requires the storage layer another role
+	// history this phase — that requires the storage layer another role
 	// owns), P50 and P90 both collapse to the single observed rate: a
 	// single-sample "distribution" has no spread to report, so reporting
 	// the same value for both is more honest than fabricating a spread.
@@ -285,9 +285,9 @@ func uncalibratedFallbackScore(currentUsed float64, projectedUsedP90 *float64, r
 // confidenceFor derives an overall Confidence label from sample
 // availability and sample freshness. Never ConfidenceExact (this package
 // never has ground truth, only an estimate); never higher than
-// ConfidenceMedium without a calibrated model, which this wave does not
+// ConfidenceMedium without a calibrated model, which this phase does not
 // have (mirrors the ScoreExact-is-never-claimed discipline already used
-// elsewhere in this role's Wave 1 code, e.g. features.ClassifyTask).
+// elsewhere in this role's Phase 1 code, e.g. features.ClassifyTask).
 func confidenceFor(sampleCount int, current domain.QuotaObservation, now time.Time) domain.Confidence {
 	if sampleCount == 0 {
 		return domain.ConfidenceLow

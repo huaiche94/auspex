@@ -450,3 +450,44 @@ architecture. When any other document disagrees with them, those two win
 Go 1.26.5 single static binary with SQLite (WAL) · TypeScript only in the
 VS Code extension · Python 3.12+ for offline research only · Apache-2.0
 (see [`LICENSE`](LICENSE), [`NOTICE`](NOTICE)).
+
+## Milestone status (M0–M15)
+
+Source: the M0–M15 roadmap in
+[`docs/design/Auspex_ADD.md`](docs/design/Auspex_ADD.md) §31. Read the
+framing first: Auspex is a **vertical slice that cuts through many
+milestones** (85/85 DAG nodes integrated on `main`), not a
+milestone-by-milestone sequential build. So **delivered means integrated
+on `main`, not released** — the ADD's release markers (`v0.1.0` at M4
+through `v1.0.0` at M15) are **not yet stamped as git tags**. Of the
+sixteen milestones, eight are delivered, four are partial (core landed, a
+named tail remains), and four are not started.
+
+Legend — ✅ delivered (on `main`, not necessarily released) · ◐ partial
+(core usable, named tail remaining) · ○ not started.
+
+| M | Name | Status | Delivered · remaining | Release marker |
+|---|---|---|---|---|
+| M0 | Repository bootstrap | ✅ | Go module, `cmd/auspex`, version/build info, Taskfile/Makefile, lint/CI, Apache-2.0, governance/security/contribution files, ADD/AGENTS.md. | — |
+| M1 | Domain · paths · config · SQLite | ✅ | IDs/enums, clock/id injection, OS paths, YAML config precedence, schemas, SQLite connection/migrations, repo/worktree/session/turn/task stores, `paths`/`config` commands. | — |
+| M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser, snapshot fingerprint, checkpoint create/list/show/verify, real restore ([#6](https://github.com/huaiche94/auspex/issues/6)), binary patches, untracked archive, secret/path filters. | — |
+| M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store, batch API, idempotency/out-of-order, normalized usage/tool/file/quota/context, de-identified export, tiered retention (ADR-046). | — |
+| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree, node state machine, validators, state checkpoint manifest, atomic staged commit, reconciliation, `progress`/`state` CLI. **Remaining:** wire the decisions into automatic hooks — pre-turn ([#116](https://github.com/huaiche94/auspex/issues/116)), Stop reconcile ([#115](https://github.com/huaiche94/auspex/issues/115)), PreCompact ([#114](https://github.com/huaiche94/auspex/issues/114)); `progress` inspect not yet wired. | `v0.1.0` (untagged) |
+| M5 | Feature extraction · predictor · policy | ✅ | task classifier, Go/.NET topology, feature v1, empirical quantiles, token/scope estimates, risk components, reason codes, policy rules, `evaluate`/`decide`. **Note:** all cold-start rules; calibration is M13 (data-gated). | — |
+| M6 | Daemon · local API · durable scheduler | ✅ | daemon ([#7](https://github.com/huaiche94/auspex/issues/7)), loopback auth, v1 endpoints, SSE, in-process fallback, wake-job lease/recovery, doctor baseline, session-status API. | — |
+| M7 | Codex managed adapter | ◐ | detection/capability, managed `run --provider codex` (over `codex exec --json`), exec JSONL fallback, fixtures. **Remaining ([#9](https://github.com/huaiche94/auspex/issues/9) Phase 2):** App Server subscription, graceful interrupt, `codex exec resume`. | — |
+| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`, UserPromptSubmit, pre/post compact, tool/stop, native block, doctor checks. **Note:** the generalized auto state-checkpoint-on-compact wiring shares the [#114](https://github.com/huaiche94/auspex/issues/114) slice, still being finished. | `v0.2.0` (untagged) |
+| M9 | Claude managed + native integration | ✅ | plugin, hooks, TaskCreated/Completed mapping, statusline wrapper, context/quota telemetry, stream-json runner, resume, native-hook session bootstrap ([#17](https://github.com/huaiche94/auspex/issues/17)), `watch codex` ([#92](https://github.com/huaiche94/auspex/issues/92)). | `v0.3.0` (untagged) |
+| M10 | Runway Forecaster + Graceful Pause | ◐ | live burn-rate, runway forecast, uncalibrated fallback, statusline runway, safe-point coordinator, pause state machine, state/repo checkpoint integration, durable wake schedule, four-way resume validation, CLI pause/resume/scheduler — implemented and tested. **Remaining:** the automatic quota-runway trigger and provider turn-interrupt that fire the pause hands-free. | `v0.4.0` (untagged) |
+| M11 | Managed shell + UX hardening | ○ | `auspex shell` does not exist yet; interactive panels, pause UI, Ctrl+C, history/status, and the no-TTY policy are all unbuilt. The next net-new after M7 Phase 2. | — |
+| M12 | VS Code extension | ◐ | daemon client/SSE, status bar, views, guarded prompt, progress tree, pause/resume/conflict UI, binary resolution ([#10](https://github.com/huaiche94/auspex/issues/10), fed by the session-status API). **Remaining:** Marketplace/Open VSX publishing (publisher not yet registered, [#18](https://github.com/huaiche94/auspex/issues/18); runs from source/VSIX today). | `v0.5.0` (untagged) |
+| M13 | Predictor research + personalization | ○ | backtesting, outcome labels, quantile models, runway calibration, model registry, Python research package, reports — all unbuilt. **Data-gated:** awaiting telemetry accumulation; this is what turns the forecast from cold-start into calibrated. | — |
+| M14 | External provider protocol | ○ | manifest, JSONL handshake, registry, capability negotiation, fake plugin, security limits — not started. | — |
+| M15 | 1.0 hardening | ○ | perf SLO, security review, migration review, support bundle, docs site, packages, signed artifacts, SBOM/provenance, provider matrix, governance finalization — not started. **No release tag exists yet.** | `v1.0.0` (untagged) |
+
+Two things not to conflate: **(1)** most of the first ten milestones'
+functionality is already on `main`, but **no release marker is tagged** —
+the vertical slice drove depth first, leaving versioned releases to the
+M15 hardening pass. **(2)** The genuinely untouched work is **M11 (shell),
+M13 (calibration), M14 (external providers), and M15 (1.0 hardening)** —
+of which M13 is data-gated and the rest are net-new engineering.

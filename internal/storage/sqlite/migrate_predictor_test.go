@@ -123,6 +123,9 @@ func TestMigration0040_TablesHaveExpectedColumns(t *testing.T) {
 			"projected_context_used_p90",
 			// 0047 (#62 Phase 1): per-turn wall-clock duration forecast.
 			"duration_p50", "duration_p90",
+			// 0063 (#65 Phase 1, ADR-0053): input/output token split.
+			"token_input_p50", "token_input_p90",
+			"token_output_p50", "token_output_p90",
 		}},
 		{"runway_forecasts", []string{
 			"id", "session_id", "turn_id", "task_id", "limit_id", "horizon_seconds",

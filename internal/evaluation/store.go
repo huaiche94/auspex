@@ -83,8 +83,17 @@ type predictionRow struct {
 	// DurationP50/P90 are the Phase-1 wall-clock duration forecast in
 	// nanoseconds (#62, migration 0047), nil when the scope estimator left
 	// duration unknown or the row predates #62 — unknown is not zero.
-	DurationP50          *int64
-	DurationP90          *int64
+	DurationP50 *int64
+	DurationP90 *int64
+	// TokenInput/OutputP50/P90 are the #65 Phase-1 input/output token
+	// decomposition (migration 0063): the split domain.TokenForecast now
+	// carries alongside the authoritative total, the input interval
+	// structurally wider than the output interval (ADR-0053). nil when the
+	// forecaster did not split or the row predates #65 — unknown is not zero.
+	TokenInputP50        *int64
+	TokenInputP90        *int64
+	TokenOutputP50       *int64
+	TokenOutputP90       *int64
 	QuotaRiskScore       float64
 	ContextRiskScore     float64
 	CompletionRiskScore  float64
@@ -123,8 +132,9 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 			projected_context_used_p90,
 			provider, model_id, model_family, effort,
 			duration_p50, duration_p90,
+			token_input_p50, token_input_p90, token_output_p50, token_output_p90,
 			confidence, calibrated, reason_codes_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(r.ID), string(r.TurnID), r.PredictorID, r.PredictorVersion, r.FeatureSetVersion,
 		nullableInt64(r.TokenP50), nullableInt64(r.TokenP80), nullableInt64(r.TokenP90),
 		nullableInt64(r.FilesReadP50), nullableInt64(r.FilesReadP90),
@@ -135,6 +145,8 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 		nullableFloat64(r.ProjectedContextUsedP90),
 		nullableString(r.Provider), nullableString(r.ModelID), nullableString(r.ModelFamily), nullableString(r.Effort),
 		nullableInt64(r.DurationP50), nullableInt64(r.DurationP90),
+		nullableInt64(r.TokenInputP50), nullableInt64(r.TokenInputP90),
+		nullableInt64(r.TokenOutputP50), nullableInt64(r.TokenOutputP90),
 		string(r.Confidence), boolToInt(r.Calibrated), r.ReasonCodesJSON, r.CreatedAt,
 	)
 	if err != nil {
@@ -156,6 +168,7 @@ func getPrediction(ctx context.Context, db *sqlite.DB, id domain.EvaluationID) (
 		       projected_context_used_p90,
 		       provider, model_id, model_family, effort,
 		       duration_p50, duration_p90,
+		       token_input_p50, token_input_p90, token_output_p50, token_output_p90,
 		       confidence, calibrated, reason_codes_json, created_at
 		FROM predictions WHERE id = ?`, string(id))
 	r, err := scanPrediction(row)
@@ -181,6 +194,8 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		projectedContextUsedP90                         sql.NullFloat64
 		provider, modelID, modelFamily, effort          sql.NullString
 		durationP50, durationP90                        sql.NullInt64
+		tokenInputP50, tokenInputP90                    sql.NullInt64
+		tokenOutputP50, tokenOutputP90                  sql.NullInt64
 	)
 	if err := row.Scan(
 		&id, &turnID, &predID, &predVersion, &featureVersion,
@@ -193,6 +208,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		&projectedContextUsedP90,
 		&provider, &modelID, &modelFamily, &effort,
 		&durationP50, &durationP90,
+		&tokenInputP50, &tokenInputP90, &tokenOutputP50, &tokenOutputP90,
 		&confidence, &calibrated, &reasonCodesJSON, &createdAt,
 	); err != nil {
 		return predictionRow{}, err
@@ -218,6 +234,10 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 	r.Effort = nullStringPtr(effort)
 	r.DurationP50 = nullInt64Ptr(durationP50)
 	r.DurationP90 = nullInt64Ptr(durationP90)
+	r.TokenInputP50 = nullInt64Ptr(tokenInputP50)
+	r.TokenInputP90 = nullInt64Ptr(tokenInputP90)
+	r.TokenOutputP50 = nullInt64Ptr(tokenOutputP50)
+	r.TokenOutputP90 = nullInt64Ptr(tokenOutputP90)
 	r.Confidence = domain.Confidence(confidence)
 	r.Calibrated = calibrated != 0
 	r.ReasonCodesJSON = reasonCodesJSON

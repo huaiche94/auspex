@@ -169,6 +169,17 @@ type evaluateTokensOutput struct {
 	P50 *int64 `json:"p50"`
 	P80 *int64 `json:"p80"`
 	P90 *int64 `json:"p90"`
+	// Input/output decomposition (#65 Phase 1, ADR-0053): distinct input
+	// and output P50/P90 ranges, the input range structurally WIDER than
+	// the output range (models predict input tokens worse — Bai et al.
+	// 2026 direction only). Each is nil (explicit JSON null) when the
+	// prediction carried no split — unknown is not zero. The widening is an
+	// uncalibrated structural default, inheriting the card's uncalibrated
+	// label; never a fitted coefficient.
+	InputP50  *int64 `json:"input_p50"`
+	InputP90  *int64 `json:"input_p90"`
+	OutputP50 *int64 `json:"output_p50"`
+	OutputP90 *int64 `json:"output_p90"`
 }
 
 // evaluateDurationOutput is the #62 Phase-1 wall-clock forecast. Exposed in
@@ -247,7 +258,11 @@ func buildEvaluateOutput(result orchestrator.EvaluatePromptResult) evaluateOutpu
 		LinesChangedP50: card.LinesChangedP50,
 		LinesChangedP90: card.LinesChangedP90,
 	}
-	out.Tokens = &evaluateTokensOutput{P50: card.TokensP50, P80: card.TokensP80, P90: card.TokensP90}
+	out.Tokens = &evaluateTokensOutput{
+		P50: card.TokensP50, P80: card.TokensP80, P90: card.TokensP90,
+		InputP50: card.InputTokensP50, InputP90: card.InputTokensP90,
+		OutputP50: card.OutputTokensP50, OutputP90: card.OutputTokensP90,
+	}
 	out.Duration = &evaluateDurationOutput{
 		P50Seconds: nanosToSeconds(card.DurationP50),
 		P90Seconds: nanosToSeconds(card.DurationP90),

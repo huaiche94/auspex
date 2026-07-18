@@ -209,6 +209,23 @@ strings）由 `internal/domain/status_test.go` 驗證）：
 
 ## 修訂紀錄（Amendments）
 
+- **2026-07-17 — ADR-0053（#65 第一階段）：`TokenForecast` 新增
+  input/output 拆分。** `domain.TokenForecast`（由 ADR-041 凍結）新增四個
+  附加性（additive）pointer 欄位——`InputTokensP50/P90`、
+  `OutputTokensP50/P90`——將即將發生的 turn 的 token 拆解為兩個相異的區間，
+  其中 **input 區間在結構上比 output 區間更寬**（僅採 Bai et al. 2026 的
+  方向：模型預測 input token 較差）。凍結的 total（`TokensP50/P80/P90`）維持
+  不變且仍具權威性；`nil` 代表預測器未拆分（unknown 不等於 zero）。純附加式：
+  所有建構點維持可編譯。相對加寬幅度（`inputIntervalWideningFactor`）與中心
+  切分（`defaultInputTokenShare`）都是受 #11 把關的未校準結構性預設值——絕非
+  擬合係數，且論文的 ~153:1 input:output 比值絕不引入（grounding 紀律）。此
+  拆分絕不把 `Calibrated` 翻成 true（Constitution 原則 #2）。以附加方式持久化
+  於 `predictions`（migration `0063`：`token_input_p50/p90`、
+  `token_output_p50/p90`，皆可為 NULL），讓 forecast card 得以讀回；此 slice
+  不傳播到 research export（該拆分是已 export 之 total 的確定性轉換，故無
+  unlabeled-history 破口——延後到「校準後預測器獨立估計兩軸」的 wave）。完整
+  設計見 ADR-0053。
+
 - **2026-07-14 — ADR-048（#6）：真正的儲存庫檢查點還原（repository
   checkpoint restore）。** `app.RestoreRepositoryCheckpointRequest` 新
   增了附加性（additive）欄位 `Apply bool`（零值時完全保留

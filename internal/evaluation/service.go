@@ -250,8 +250,16 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 			Effort:      effort,
 			// #62 Phase 1 wall-clock duration forecast (migration 0047); nil
 			// stays NULL — unknown is not zero.
-			DurationP50:     result.scope.DurationP50,
-			DurationP90:     result.scope.DurationP90,
+			DurationP50: result.scope.DurationP50,
+			DurationP90: result.scope.DurationP90,
+			// #65 Phase 1 input/output token split (migration 0063, ADR-0053):
+			// the input interval is structurally wider than the output
+			// interval, an uncalibrated structural default. nil (forecaster
+			// did not split) stays NULL — unknown is not zero.
+			TokenInputP50:   result.tokens.InputTokensP50,
+			TokenInputP90:   result.tokens.InputTokensP90,
+			TokenOutputP50:  result.tokens.OutputTokensP50,
+			TokenOutputP90:  result.tokens.OutputTokensP90,
 			Confidence:      result.risk.OverallRisk.Confidence,
 			Calibrated:      result.risk.OverallRisk.Calibrated,
 			ReasonCodesJSON: predictionReasons,

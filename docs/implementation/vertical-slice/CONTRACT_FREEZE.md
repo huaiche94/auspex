@@ -146,6 +146,27 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
 
 ## Amendments
 
+- **2026-07-17 — ADR-0053 (#65 Phase 1): `TokenForecast` gains an
+  input/output split.** `domain.TokenForecast` (frozen by ADR-041) gains
+  four additive pointer fields — `InputTokensP50/P90`,
+  `OutputTokensP50/P90` — decomposing the upcoming turn's tokens into two
+  distinct intervals, the **input interval structurally wider** than the
+  output interval (Bai et al. 2026's DIRECTION only: models predict input
+  tokens worse). The frozen total (`TokensP50/P80/P90`) is unchanged and
+  stays authoritative; `nil` means the forecaster does not split (unknown
+  is not zero). Purely additive: every construction site keeps compiling.
+  The relative widening (`inputIntervalWideningFactor`) and central split
+  (`defaultInputTokenShare`) are UNCALIBRATED STRUCTURAL DEFAULTS gated on
+  #11 — never fitted coefficients, and the paper's ~153:1 input:output
+  ratio is never imported (grounding discipline). The split never flips
+  `Calibrated` to true (Constitution principle #2). Persisted additively
+  in `predictions` (migration `0063`: `token_input_p50/p90`,
+  `token_output_p50/p90`, all nullable) so the forecast card reads it back;
+  NOT propagated to the research export this slice (the split is a
+  deterministic transform of the already-exported total, so no
+  unlabeled-history hole — deferred to a calibrated forecaster that
+  estimates the axes independently). See ADR-0053 for the full design.
+
 - **2026-07-14 — ADR-048 (#6): real repository checkpoint restore.**
   `app.RestoreRepositoryCheckpointRequest` gains additive `Apply bool`
   (zero value preserves checkpoint-b08's dry-run-only semantics exactly);

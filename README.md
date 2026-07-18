@@ -11,9 +11,12 @@ runtime.
 
 Everything runs locally: one static Go binary, one SQLite database under
 the OS user-data directory, no cloud services. Raw prompt text and tool
-output are never persisted by default — only extracted features and
-counts. File paths are never stored in any form, hashes included
-(ADR-051/052).
+output are never persisted — hashed and reduced to features and counts at
+the parse boundary (ADR-051). The file paths the agent operates on are not
+stored either: they are interned to in-memory ordinals and dropped,
+leaving only per-turn operation counts (ADR-052). Operational locations —
+repository root, worktree, and checkpoint artifacts, plus the turn's
+working directory — are stored as plaintext metadata.
 
 ## Not a harness — a layer around one
 
@@ -221,8 +224,8 @@ per-prompt gate, Auspex maintains:
 
 The split comes from our own field data, and it matches external research
 (Bai et al., [arXiv:2604.22750](https://arxiv.org/abs/2604.22750): token
-use varies up to 30× across identical runs; models predict their own cost
-with correlation ≤ 0.39):
+use varies up to 30× across identical runs; models predict their own token
+use with correlation ≤ 0.39):
 
 | Surface | Nature | Trustworthiness |
 |---|---|---|
@@ -259,8 +262,8 @@ To wire it into Claude Code, follow
 [`integrations/claude/`](integrations/claude/README.md). It ships the
 `hooks.json`/`plugin.json` examples that route Claude Code's
 UserPromptSubmit / Stop / StopFailure / PostToolUse / statusline events
-through `auspex hook claude <event>`, plus `auspex init` to register the
-current repository. Codex CLI wires the same way:
+through `auspex hook claude <event>`; the hooks register the current
+repository/session automatically on first use. Codex CLI wires the same way:
 [`integrations/codex/hooks.json`](integrations/codex/hooks.json) routes
 its SessionStart / UserPromptSubmit / Stop events through
 `auspex hook codex <event>` (hook argv is kebab-case, ADR-050). In both
@@ -277,16 +280,16 @@ auspex report                 your usage, mirrored back: spend, tokens by class,
                               model×effort split, cache hygiene, quota incidents,
                               costliest turns (--window 7d, --json)
 auspex evaluate               estimate a prompt before running it (--json)
-auspex decision allow|deny    consume a one-time authorization (replays rejected)
+auspex decision allow|deny    one-time authorization — not yet wired (#119)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
-auspex progress ...           inspect the Progress Tree; evidence-gated completion
+auspex progress ...           evidence-gated completion; inspect not yet wired
 auspex pause request|cancel   request or cancel a pause (records intent)
 auspex resume                 resume a paused run (verdict via flags)
-auspex scheduler run-once     execute due wake jobs without the daemon
+auspex scheduler run-once     claim one due wake job without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
 auspex run ...                one-shot prompt under the managed gate (claude|codex)
-auspex init                   register the current repository/session
-auspex status | doctor        session/checkpoint/pause state; capture health
+auspex init                   register repo/session — not yet wired (#118)
+auspex status | doctor        session + progress-tree state; capture health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis
 auspex hook claude <event>    the hook entrypoints Claude Code calls
@@ -294,9 +297,10 @@ auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
 auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
 ```
 
-Every command speaks schema-versioned JSON on stdout (`--json`, FR-160)
-and fails with one typed error shape, so both humans and agents can
-consume it:
+Every command speaks schema-versioned JSON on stdout and fails with one
+typed error shape, so both humans and agents can consume it (FR-160; a
+`--json` flag on `report` / `evaluate` / `progress complete`, unconditional
+elsewhere):
 
 ```json
 {"schema_version":"auspex.error.v1","code":"validation",
@@ -325,7 +329,9 @@ tiered telemetry retention (ADR-046), real repository-checkpoint restore
 ([#6](https://github.com/huaiche94/auspex/issues/6)), and the VS Code
 companion ([#10](https://github.com/huaiche94/auspex/issues/10)), now fed
 by a daemon session-status API (`GET /v1/session/status`,
-`auspex.daemon.session_status.v1`).
+`auspex.daemon.session_status.v1`). The rollout-tailing watcher
+`auspex watch codex`, which captures IDE-plugin and subagent threads, has
+since shipped too ([#92](https://github.com/huaiche94/auspex/issues/92)).
 
 Codex CLI is a first-class second provider
 ([#9](https://github.com/huaiche94/auspex/issues/9)). Both native hooks
@@ -373,10 +379,9 @@ research-derived forecast upgrades
 ([#65](https://github.com/huaiche94/auspex/issues/65), the forecast half
 of [#66](https://github.com/huaiche94/auspex/issues/66),
 [#42](https://github.com/huaiche94/auspex/issues/42),
-[#20](https://github.com/huaiche94/auspex/issues/20) — data-gated); the
-rollout-tailing watcher that captures IDE-plugin and subagent threads
-([#92](https://github.com/huaiche94/auspex/issues/92)); and the team
-usage rollup ([#91](https://github.com/huaiche94/auspex/issues/91)). The
+[#20](https://github.com/huaiche94/auspex/issues/20) — data-gated); and
+the team usage rollup
+([#91](https://github.com/huaiche94/auspex/issues/91)). The
 [issue tracker](https://github.com/huaiche94/auspex/issues) is the live
 backlog. Work is milestone-gated: nothing is implemented ahead of its
 milestone (`docs/design/Auspex_ADD.md` §31).

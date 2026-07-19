@@ -4411,6 +4411,7 @@ state_checkpointing:
   on_node_completion: required
   on_architecture_decision: true
   on_pre_compact: true
+  on_checkpoint_and_run: true   # ADR-0054：CHECKPOINT_AND_RUN 決策自動建立 pre-turn checkpoint（false = 僅建議）
   document_sections:
     require_persisted_artifact: true
     minimum_bytes: 500
@@ -5916,6 +5917,22 @@ PR #73/duration rail 的免 ADR 先例、解釋 ADR-051 的必要性（新來源
 max_ops_on_one_file）、observations 白名單擴充。隱私：路徑永不持久化
 （含 hash），行程內序號化計數後即丟棄。詳見
 `docs/adr/0052-additive-payload-adr-triggers.md`。
+
+## ADR-0054 — 對 CHECKPOINT_AND_RUN 採取行動：自動 pre-turn checkpoint、config 可關、fail-open
+
+**Decision：** policy 決策為 `CHECKPOINT_AND_RUN` 且
+`state_checkpointing.on_checkpoint_and_run`（新鍵，預設 `true`）開啟時，
+Auspex 在該 turn 繼續之前自動建立 checkpoint 對（state 先、repository 後，
+重用 `CheckpointCreate` 的凍結順序），接線於兩個決策面：UserPromptSubmit
+hook 與 managed runner。checkpoint ID 走既有
+`DecisionAllowRequest.RepositoryCheckpointID` → authorization 機制
+（issue 後立即 consume，作為「此 turn 在此決策下、綁此 checkpoint、恰進行
+一次」的稽核紀錄）。任何失敗 fail-open：放行 turn、記警告——與操作者主動
+要求 checkpoint 的 fail-closed 契約（§17.5/§20.15）刻意相反。`false` 恢復
+明確 advisory（#116 之前的行為）。與 PreCompact 自動 checkpoint（#114）
+互補：一個在 context 邊界無條件固化、一個在 per-turn 風險決策時固化。
+就此動作取代 ADR-043/D-08 的「僅建議」定調。詳見
+`docs/adr/0054-auto-checkpoint-and-run.md`。
 
 ---
 

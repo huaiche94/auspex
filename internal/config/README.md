@@ -23,7 +23,12 @@ reads would violate Constitution §7 rule 10. What it does own:
   `UnknownFieldPolicy`);
 - a documented merge/precedence algorithm exposed through `Config.Raw` — a decoded
   map, not yet field-mapped into structs — that later roles build their own typed
-  config sections on top of.
+  config sections on top of;
+- typed decodes for sections that have gained a production consumer — the first
+  is `state_checkpointing` (`statecheckpointing.go`: `StateCheckpointingSection`,
+  `DefaultsLayer`), carrying ADR-0054's `on_checkpoint_and_run` gate for the
+  automatic pre-turn checkpoint (default `true`; consumed by `cmd/auspex`'s
+  composition root, fail-open to the defaults on any load error).
 
 Neighbors: global-user-config file *locations* come from
 [`../paths`](../paths/README.md); repository-local `.auspex/*` paths are resolved

@@ -342,6 +342,21 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// ADR-043's config override is a documented follow-up, see
 			// internal/pricing's package comment).
 			Forecast: evaluationService,
+			// ADR-0054 (issue #116): the automatic pre-turn checkpoint for
+			// CHECKPOINT_AND_RUN decisions, gated by the layered YAML
+			// config's state_checkpointing.on_checkpoint_and_run (default
+			// enabled; nil when disabled = the advisory pre-#116
+			// behavior). Reuses only already-constructed instances — see
+			// cmd/auspex/autocheckpoint.go for the composition and the
+			// fail-open config-loading contract.
+			//
+			// FLAG (composition-root reconciliation): appended line only —
+			// reuses already-constructed instances; merges cleanly with
+			// any other agent's additive edit to this literal.
+			AutoCheckpoint: composeAutoCheckpointer(
+				loadStateCheckpointingConfig(dirs).OnCheckpointAndRun,
+				db, evaluationService, stateCheckpointService, repositoryCheckpointService, dataSource,
+			),
 		},
 		Diagnostics: wiring.DiagnosticsSupport{
 			DB: db,

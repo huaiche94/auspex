@@ -107,11 +107,18 @@ type DecisionAllowRequest struct {
 	// threaded verbatim into app.Authorization on issuance. Per
 	// CONTRACT_FREEZE.md's transaction-boundary note on
 	// GracefulPauseService's persist phase (an analogous "sequence, not
-	// one flat transaction" discipline) — a decision that resulted in
-	// PolicyCheckpointAndRun is expected to have already run `checkpoint
-	// create` (this package's own CheckpointCreate) upstream of this call,
-	// and the caller threads that checkpoint's own ID through here; this
-	// command does not itself create a checkpoint (that would blur two
+	// one flat transaction" discipline) — the checkpoint a
+	// PolicyCheckpointAndRun decision calls for is created upstream of
+	// this call, and the caller threads that checkpoint's own ID through
+	// here. Since ADR-0054 (issue #116) that upstream step is normally
+	// AUTOMATIC: AutoCheckpointer.Run (autocheckpoint.go) creates the
+	// pair via this package's own CheckpointCreate and then drives this
+	// command's issue+consume flows itself, binding the fresh repository
+	// checkpoint ID; with the config gate off
+	// (`state_checkpointing.on_checkpoint_and_run: false`) the decision
+	// is explicitly advisory and the operator runs `auspex checkpoint
+	// create` by hand before calling this. Either way, this command does
+	// not itself create a checkpoint (that would blur two
 	// separately-owned steps into one, the same anti-pattern
 	// CheckpointCreate's own doc comment warns against for its two
 	// sub-steps).

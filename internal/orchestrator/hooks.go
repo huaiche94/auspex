@@ -166,6 +166,21 @@ type HookDeps struct {
 	// nil-is-a-documented-degrade convention every optional field here
 	// follows.
 	ToolOps ToolOpScratch
+
+	// StopReconcile optionally enables the issue-#115 post-turn Progress
+	// Tree/Git/artifact reconciliation + evidence-gate outcome labeling
+	// (M4, ADD §22.4/§13.6/§18.9; stopreconcile.go): when non-nil, each
+	// Claude Stop reconciles the session's task after the turn's own
+	// events are persisted and emits one progress.tree.reconciled event
+	// that FLAGS (never blocks — Stop fires after the turn, and hooks fail
+	// open) any completion claimed without verified artifact evidence. nil
+	// disables the step entirely — exactly the pre-#115 telemetry-only
+	// Stop — the same nil-is-a-documented-degrade convention every
+	// optional field here follows.
+	//
+	// FLAG (composition-root reconciliation, #115): appended field only —
+	// additive, merges cleanly with any other agent's additive edit here.
+	StopReconcile StopReconciler
 }
 
 // OpenTurnResolver resolves a session's latest started turn. ok=false
@@ -598,13 +613,11 @@ type StopResult struct {
 }
 
 // HandleStop implements `auspex hook claude stop`: parse, normalize a
-// provider.turn.completed event, best-effort persist. Full Progress
-// Tree/Git/artifact reconciliation (ADD §22.4: "Stop 時 reconcile Progress
-// Tree、Git、artifacts") is outcome labeling depth beyond this node's
-// scope (agents/runtime.md Part B pipeline step 12, "Observe actual
-// outcome," and step 9's checkpoint orchestration are runtime-b05's and a
-// later node's concern) — this handler covers the telemetry half only,
-// matching what claude-provider-04's Normalizer actually emits today.
+// provider.turn.completed event, best-effort persist, then run the
+// post-turn Progress Tree/Git/artifact reconciliation + evidence-gate
+// outcome labeling (ADD §22.4: "Stop 時 reconcile Progress Tree、Git、
+// artifacts"; issue #115, stopreconcile.go) — fail-open and flag-not-
+// block, like every other seam this handler drives.
 func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, error) {
 	parsed, err := claudehooks.ParseStop(stdin)
 	if err != nil {
@@ -641,6 +654,10 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 	// quota telemetry (runwaydrive.go). Fail-open — never fails the Stop
 	// hook, and in native-hook mode records only (no forced pause, §8.8).
 	deps.driveRunway(ctx, parsed.SessionID)
+	// Issue #115 (M4): post-turn Progress Tree/Git/artifact reconciliation
+	// + evidence-gate outcome labeling (stopreconcile.go). Fail-open and
+	// record-only: FLAG, never block — Stop fires after the turn.
+	deps.reconcileAtStop(ctx, claudetelemetry.Provider, parsed.SessionID, parsed.CWD)
 	return StopResult{EventsNormalized: 1, Persisted: persisted}, nil
 }
 

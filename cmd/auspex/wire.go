@@ -294,6 +294,24 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// reuses already-constructed db/clk instances; merges cleanly
 			// with any other agent's additive edit to this literal.
 			ToolOps: &orchestrator.ToolOpScratchStore{DB: db, Clock: clk},
+			// Issue #115 (M4): the post-turn Stop reconciliation +
+			// evidence-gate outcome labeling, composed from the SAME
+			// already-constructed pieces — dataSource (session→task), the
+			// Progress Tree service (snapshot), the progress Reconciler
+			// (the M4 crash-window scan, REUSED not rebuilt), and the gitx
+			// client (worktree fingerprint). Flag-not-block by design: it
+			// records one progress.tree.reconciled event per turn and
+			// never mutates the tree or fails the hook.
+			//
+			// FLAG (composition-root reconciliation, #115): appended field
+			// only — reuses already-constructed instances; merges cleanly
+			// with any other agent's additive edit to this literal.
+			StopReconcile: &orchestrator.TurnReconcileService{
+				Sessions:   dataSource,
+				Progress:   progressTreeService,
+				Reconciler: reconciler,
+				Git:        gitClient,
+			},
 			// The REAL evaluation.Service doubles as the issue-#14
 			// forecast-card source (it satisfies orchestrator.
 			// ForecastCardSource — ForecastCard/LatestForecastCard read

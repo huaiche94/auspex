@@ -5,14 +5,13 @@
 //	> global user config > defaults
 //
 // This package deliberately does NOT model every field in ADD §26.4's
-// illustrative default configuration as a typed Go struct. As of this node,
-// no other package in this repository consumes a single configuration
-// field — runtime, predictor, policy, and checkpoint business logic are all
-// out of scope for `foundation` (agents/foundation.md "Out of scope") and
-// have not been implemented yet. Modeling the full ADD §26.4 tree now would
-// invent fields nothing reads, which Constitution §7 rule 10 forbids
-// ("does not add abstractions a later milestone would need but the current
-// one doesn't").
+// illustrative default configuration as a typed Go struct. Sections gain a
+// typed decode only when a production consumer exists — the first is
+// `state_checkpointing` (statecheckpointing.go, ADR-0054's
+// on_checkpoint_and_run gate; consumed by cmd/auspex's composition root).
+// Modeling the rest of the ADD §26.4 tree now would invent fields nothing
+// reads, which Constitution §7 rule 10 forbids ("does not add abstractions
+// a later milestone would need but the current one doesn't").
 //
 // What this package DOES own, because the day-one vertical slice genuinely
 // needs it: the schema_version envelope, layered YAML loading in the

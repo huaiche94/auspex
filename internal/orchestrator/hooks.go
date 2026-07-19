@@ -166,6 +166,24 @@ type HookDeps struct {
 	// nil-is-a-documented-degrade convention every optional field here
 	// follows.
 	ToolOps ToolOpScratch
+
+	// AutoCheckpoint optionally enables the ADR-0054 automatic pre-turn
+	// checkpoint for CHECKPOINT_AND_RUN decisions (issue #116, M4;
+	// autocheckpoint.go): when non-nil, HandleUserPromptSubmit (and the
+	// managed runner, which shares this deps bundle) creates the state +
+	// repository checkpoint pair BEFORE the turn proceeds and records the
+	// binding via the existing decision-allow authorization machinery —
+	// consulted ONLY on the rare CHECKPOINT_AND_RUN branch, never on the
+	// ordinary-prompt hot path. nil keeps the decision advisory (the
+	// pre-#116 behavior, and the config gate
+	// `state_checkpointing.on_checkpoint_and_run: false`'s off position) —
+	// the same nil-is-a-documented-degrade convention every optional field
+	// here follows. Failures inside the checkpointer itself are fail-open
+	// by its own contract (Run never errors, only warns).
+	//
+	// FLAG (composition-root reconciliation, #116): appended field —
+	// additive only, no existing field moved or retyped.
+	AutoCheckpoint *AutoCheckpointer
 }
 
 // OpenTurnResolver resolves a session's latest started turn. ok=false
@@ -421,6 +439,12 @@ type UserPromptSubmitResult struct {
 	// evaluation ERROR, which also degrades to allow but is recorded
 	// differently — see the source).
 	Evaluated bool
+	// AutoCheckpoint reports the ADR-0054 automatic pre-turn checkpoint
+	// outcome when the decision was CHECKPOINT_AND_RUN and an
+	// AutoCheckpointer was wired (issue #116; autocheckpoint.go). nil in
+	// every other case — including the disabled gate — so pre-#116
+	// results are unchanged when the feature is off.
+	AutoCheckpoint *AutoCheckpointOutcome
 }
 
 // HandleUserPromptSubmit implements `auspex hook claude
@@ -438,6 +462,14 @@ type UserPromptSubmitResult struct {
 // allow response — again fail-open, matching HandleStatusLine, because a
 // Auspex bug must never be the reason a user's prompt is silently
 // swallowed.
+//
+// A CHECKPOINT_AND_RUN decision additionally triggers the ADR-0054
+// automatic pre-turn checkpoint when deps.AutoCheckpoint is wired (issue
+// #116; autocheckpoint.go): the state + repository checkpoint pair is
+// created BEFORE the allow response is returned, and the outcome —
+// including any fail-open degrade — is surfaced on the result and as one
+// additionalContext line. A nil AutoCheckpointer keeps the decision
+// advisory (the pre-#116 behavior, and the config gate's off position).
 func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (UserPromptSubmitResult, error) {
 	parsed, err := claudehooks.ParseUserPromptSubmit(stdin)
 	if err != nil {
@@ -486,6 +518,30 @@ func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (U
 			AdditionalContext: additional,
 		}
 	} else {
+		// ADR-0054 (issue #116): a CHECKPOINT_AND_RUN decision solidifies
+		// state BEFORE the turn proceeds — automatic checkpoint pair via
+		// deps.AutoCheckpoint (nil = the advisory pre-#116 behavior; every
+		// failure inside Run is fail-open into a Warning, never a block —
+		// see autocheckpoint.go's contract). This branch is the ONLY hook
+		// place that invokes it: ordinary RUN/WARN prompts never pay the
+		// checkpoint latency.
+		if pe.decision.Action == app.PolicyCheckpointAndRun {
+			outcome := deps.AutoCheckpoint.Run(ctx, AutoCheckpointRequest{
+				SessionID:    parsed.SessionID,
+				TurnID:       pe.turnID,
+				EvaluationID: pe.evaluation.ID,
+				PromptHash:   parsed.PromptSHA256,
+			})
+			if outcome.Attempted {
+				result.AutoCheckpoint = &outcome
+				if line := outcome.ContextLine(); line != "" {
+					if additional != "" {
+						additional += "\n"
+					}
+					additional += line
+				}
+			}
+		}
 		result.Response.AdditionalContext = additional
 	}
 	return result, nil

@@ -20,6 +20,7 @@ structs for [`internal/cli/`](../cli/README.md) to render):
 - [`daemon.go`](daemon.go) — `daemon run|status|stop|install|uninstall`, including the `com.auspex.daemon` LaunchAgent plist generation around [`internal/daemon/`](../daemon/README.md).
 - [`checkpoint.go`](checkpoint.go), [`diagnostics.go`](diagnostics.go) (`status` / `doctor`), [`gc.go`](gc.go).
 - [`sessionbootstrap.go`](sessionbootstrap.go) — lazy in-hook creation of repository/worktree/session rows (issue #17); [`correlate.go`](correlate.go) — fills `Event.TaskID` / `Event.ProgressNodeID` at hook-persist time when unambiguous (issue #1); [`openturn.go`](openturn.go), [`progresscomplete.go`](progresscomplete.go).
+- [`autocheckpoint.go`](autocheckpoint.go) — `AutoCheckpointer`: the ADR-0054 automatic pre-turn checkpoint for `CHECKPOINT_AND_RUN` decisions (issue #116), shared by the UserPromptSubmit hook and the managed runner; fail-open by contract, gated by `state_checkpointing.on_checkpoint_and_run`.
 
 Composition happens in [`internal/app/wiring/`](../app/wiring/README.md); this package
 depends only on the interface types, never on concrete service implementations.

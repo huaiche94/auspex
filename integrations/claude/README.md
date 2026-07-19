@@ -2,10 +2,10 @@
 
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
-Status: **live.** The `auspex` binary ships all five
+Status: **live.** The `auspex` binary ships all seven
 `auspex hook claude ...` subcommands (`user-prompt-submit`,
-`post-tool-use`, `stop`, `stop-failure`, `statusline`), and this wiring
-runs end-to-end in real
+`post-tool-use`, `pre-compact`, `post-compact`, `stop`, `stop-failure`,
+`statusline`), and this wiring runs end-to-end in real
 sessions — this repository's own Claude Code sessions use it daily
 (issue #12 dogfooding). The files here are the reference configuration
 to copy into your Claude Code setup. Hooks fail open: an Auspex-side
@@ -30,11 +30,21 @@ from that era because it is still unresolved.)
 - `hooks.json` — Claude Code hook + status-line configuration wiring
   `UserPromptSubmit`, `PostToolUse` (issue #67 slice 3a, ADR-052; the
   matcher limits invocations to the file-touching tools
-  `Read|Edit|Write|MultiEdit|NotebookEdit`), `Stop`, `StopFailure`, and
-  the status line to
+  `Read|Edit|Write|MultiEdit|NotebookEdit`), `PreCompact` (issue #114,
+  M4/M10: captures a State Checkpoint + repository checkpoint BEFORE the
+  provider compacts the context — ADD §22.4's "`PreCompact` 一律 capture
+  state checkpoint"; `timeout: 30` because a checkpoint capture includes
+  git + archive writes, and the hook fails open — a capture failure is
+  recorded on the event, never a blocked compaction), `Stop`,
+  `StopFailure`, and the status line to
   `auspex hook claude ...` subcommands, per `docs/design/Auspex_ADD.md` §22.3/
   §22.4/§22.5 and Appendix E.3's shape (`{"hooks": {"<HookEventName>":
   [{"hooks": [{"type": "command", "command": "..."}]}]}}`).
+  `auspex hook claude post-compact` exists as a command (ADD §22.3 lists
+  the event) but is deliberately NOT registered here: Claude Code ships
+  no PostCompact hook event today — post-compaction is only observable as
+  a `SessionStart` with source `compact` — and registering an event the
+  provider never fires would misstate capability.
 
 ## CLI subcommand naming: kebab-case (resolved by ADR-050)
 

@@ -76,6 +76,9 @@ func newHookCodexStubCmd() *cobra.Command {
 				return notImplemented("hook codex status")
 			},
 		},
+		// issue #114 (hookprecompact.go): compaction hook stubs.
+		newHookCodexPreCompactStubCmd(),
+		newHookCodexPostCompactStubCmd(),
 	)
 	return cmd
 }
@@ -126,6 +129,9 @@ func newHookClaudeStubCmd() *cobra.Command {
 				return notImplemented("hook claude stop-failure")
 			},
 		},
+		// issue #114 (hookprecompact.go): compaction hook stubs.
+		newHookClaudePreCompactStubCmd(),
+		newHookClaudePostCompactStubCmd(),
 	)
 	return cmd
 }
@@ -158,6 +164,9 @@ func NewHookClaudeCmd(deps orchestrator.HookDeps) *cobra.Command {
 		newRealPostToolUseCmd(deps),
 		newRealStopCmd(deps),
 		newRealStopFailureCmd(deps),
+		// issue #114 (hookprecompact.go): pre/post-compaction hooks.
+		newRealPreCompactCmd(deps),
+		newRealPostCompactCmd(deps),
 	)
 	return cmd
 }
@@ -324,6 +333,9 @@ func NewHookCodexCmd(deps orchestrator.HookDeps) *cobra.Command {
 		newRealCodexUserPromptSubmitCmd(deps),
 		newRealCodexStopCmd(deps),
 		newRealCodexStatusCmd(deps),
+		// issue #114 (hookprecompact.go): pre/post-compaction hooks.
+		newRealCodexPreCompactCmd(deps),
+		newRealCodexPostCompactCmd(deps),
 	)
 	return cmd
 }

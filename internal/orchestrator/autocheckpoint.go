@@ -54,49 +54,12 @@ import (
 	"context"
 
 	"github.com/huaiche94/auspex/internal/domain"
-	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
-// SessionWorktreeResolver resolves the worktree a session is bound to —
-// the missing half of CheckpointCreate's (TaskID, WorktreeID) target that
-// the frozen app.FeatureDataSource.Resolve port does not expose (it
-// returns RepositoryID/TaskID only). ok=false means "no binding known"
-// (unregistered session, or a resolver-side failure) — implementations
-// must be fail-open: a lookup error is an ok=false, never a hook failure,
-// the same contract OpenTurnResolver documents.
-type SessionWorktreeResolver interface {
-	WorktreeForSession(ctx context.Context, sessionID domain.SessionID) (domain.WorktreeID, bool)
-}
-
-// SessionWorktreeStore is the SQL-backed SessionWorktreeResolver: it reads
-// provider_sessions.worktree_id — the exact binding SessionBootstrapper
-// wrote (first-observation-wins) and SQLDataSource.Resolve already walks
-// internally on the evaluation path. Lives in this package like
-// OpenTurnStore (openturn.go's precedent): hook-path infrastructure with
-// behavior worth testing against a real migrated DB, not a DTO adapter.
-type SessionWorktreeStore struct {
-	DB *sqlite.DB
-}
-
-var _ SessionWorktreeResolver = (*SessionWorktreeStore)(nil)
-
-// WorktreeForSession implements SessionWorktreeResolver. Fail-open by that
-// contract: a nil receiver/DB, query error, or no row is ok=false — never
-// a fabricated ID.
-func (s *SessionWorktreeStore) WorktreeForSession(ctx context.Context, sessionID domain.SessionID) (domain.WorktreeID, bool) {
-	if s == nil || s.DB == nil || sessionID == "" {
-		return "", false
-	}
-	var worktreeID string
-	err := s.DB.Conn().QueryRowContext(ctx,
-		`SELECT worktree_id FROM provider_sessions WHERE id = ?`,
-		string(sessionID),
-	).Scan(&worktreeID)
-	if err != nil || worktreeID == "" {
-		return "", false
-	}
-	return domain.WorktreeID(worktreeID), true
-}
+// SessionWorktreeResolver and its SQL-backed SessionWorktreeStore live in
+// hooksprecompact.go (issue #114 landed first; #116's identical copy was
+// deduplicated at merge time — one declaration per package). This file's
+// AutoCheckpointer consumes them unchanged.
 
 // AutoCheckpointer executes the ADR-0054 automatic pre-turn checkpoint.
 // A nil *AutoCheckpointer is the documented "gate off" state (config

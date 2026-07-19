@@ -88,6 +88,18 @@ func TestFixtureSuite(t *testing.T) {
 			wantEventTypes: []v1.EventType{v1.EventProviderSessionCompacted},
 		},
 		{
+			name: "precompact/normal (issue #114; ADD-specified, not yet provider-verified)",
+			produce: func(t *testing.T, n *Normalizer, clock fixedClock) []v1.Event {
+				parsed, err := codexhooks.ParsePreCompact(fixture(t, "precompact", "normal.json"))
+				if err != nil {
+					t.Fatalf("ParsePreCompact: %v", err)
+				}
+				return []v1.Event{n.NormalizePreCompact(parsed, clock.Now(), nil)}
+			},
+			wantEventCount: 1,
+			wantEventTypes: []v1.EventType{v1.EventProviderSessionCompacted},
+		},
+		{
 			name: "userpromptsubmit/normal",
 			produce: func(t *testing.T, n *Normalizer, clock fixedClock) []v1.Event {
 				parsed, err := codexhooks.ParseUserPromptSubmit(fixture(t, "userpromptsubmit", "normal.json"))

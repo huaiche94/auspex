@@ -181,21 +181,47 @@ func TestFixtureSuite(t *testing.T) {
 			wantEventTypes: []v1.EventType{v1.EventProviderTurnFailed},
 		},
 
-		// --- compacted (PreCompact-adjacent) ------------------------------
+		// --- precompact (dedicated hook, issue #114) ----------------------
+		{
+			name: "precompact/normal",
+			produce: func(t *testing.T, n *Normalizer, clock fixedClock) []v1.Event {
+				parsed, err := claudehooks.ParsePreCompact(fixture(t, "precompact", "normal.json"))
+				if err != nil {
+					t.Fatalf("ParsePreCompact: %v", err)
+				}
+				if parsed.Trigger == nil || *parsed.Trigger != claudehooks.CompactTriggerAuto {
+					t.Fatalf("normal.json fixture must model an auto-triggered compaction, got %v", parsed.Trigger)
+				}
+				return []v1.Event{n.NormalizePreCompact(parsed, clock.Now(), nil)}
+			},
+			wantEventCount: 1,
+			wantEventTypes: []v1.EventType{v1.EventProviderSessionCompacted},
+		},
+		{
+			name: "precompact/missing_fields",
+			produce: func(t *testing.T, n *Normalizer, clock fixedClock) []v1.Event {
+				parsed, err := claudehooks.ParsePreCompact(fixture(t, "precompact", "missing_fields.json"))
+				if err != nil {
+					t.Fatalf("ParsePreCompact: %v", err)
+				}
+				return []v1.Event{n.NormalizePreCompact(parsed, clock.Now(), nil)}
+			},
+			wantEventCount: 1,
+			wantEventTypes: []v1.EventType{v1.EventProviderSessionCompacted},
+		},
+
+		// --- compacted (PreCompact-adjacent, passive signature) -----------
 		//
-		// Claude Code has no dedicated PreCompact/PostCompact hook parser
-		// on this branch yet (agents/claude-provider.md P0 deliverable #1
-		// lists PreCompact as optional, "when fixtures are available" -
-		// none were built in earlier phases). The observable signature of
-		// "a compaction just happened" that this role's EXISTING parser
-		// (status-line) can actually see is: low current context usage
-		// relative to a high cumulative cost/duration/LOC total - i.e. a
-		// long-running session whose context window was just reset by a
-		// compaction, as opposed to a genuinely fresh session (which would
-		// have low cumulative cost too). testdata/provider-events/claude/
-		// statusline/compacted.json models exactly that shape. This is a
-		// deliberate scope decision, not an oversight - documented further
-		// in this node's progress-artifact assumptions.
+		// Historical note: until issue #114 wired the dedicated PreCompact
+		// hook parser exercised above, the only observable signature of "a
+		// compaction just happened" was this passive status-line shape: low
+		// current context usage relative to a high cumulative
+		// cost/duration/LOC total - i.e. a long-running session whose
+		// context window was just reset by a compaction, as opposed to a
+		// genuinely fresh session (which would have low cumulative cost
+		// too). testdata/provider-events/claude/statusline/compacted.json
+		// models exactly that shape; it remains valid coverage for
+		// installations whose hooks.json predates the PreCompact entry.
 		{
 			name: "statusline/compacted",
 			produce: func(t *testing.T, n *Normalizer, clock fixedClock) []v1.Event {

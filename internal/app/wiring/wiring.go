@@ -242,6 +242,24 @@ type HookSupport struct {
 	// FLAG (composition-root reconciliation, #90 Phase A): appended field
 	// — additive only, no existing field moved or retyped.
 	Pace orchestrator.PaceReader
+
+	// CompactCheckpoint optionally enables the issue-#114 pre-compaction
+	// auto State Checkpoint (orchestrator.HookDeps.CompactCheckpoint,
+	// hooksprecompact.go): when non-nil, `hook claude pre-compact` /
+	// `hook codex pre-compact` capture a State Checkpoint (+ repository
+	// checkpoint) for the session's resolved task BEFORE the provider's
+	// compaction proceeds, recording the outcome on the persisted
+	// provider.session.compacted event. The real value is an
+	// orchestrator.CompactCheckpointer over the same SQLDataSource
+	// (session -> task), a SessionWorktreeStore over the same *sqlite.DB
+	// (session -> worktree), and this container's own StateCheckpoint/
+	// RepositoryCheckpoint services; nil skips capture (the event records
+	// skip reason not_configured), per HookDeps.CompactCheckpoint's own
+	// documented degrade contract.
+	//
+	// FLAG (composition-root reconciliation, #114): appended field only —
+	// additive, no existing field moved or retyped.
+	CompactCheckpoint *orchestrator.CompactCheckpointer
 }
 
 // DiagnosticsSupport bundles the optional collaborators
@@ -346,6 +364,10 @@ func (a *App) RootCmd() *cobra.Command {
 		// pass-through of the optional #67 ToolOps scratch (ADR-052);
 		// merges cleanly with any other agent's additive edit here.
 		ToolOps: a.services.Hooks.ToolOps,
+		// FLAG (composition-root reconciliation, #114): appended field
+		// only — pass-through of the optional pre-compaction checkpoint
+		// capturer; merges cleanly with any other agent's additive edit.
+		CompactCheckpoint: a.services.Hooks.CompactCheckpoint,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()

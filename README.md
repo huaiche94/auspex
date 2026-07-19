@@ -67,7 +67,7 @@ step:
 | **After the turn** | claims "rate limiter done" | **evidence gate**: demands test artifacts + a git snapshot; no evidence → **blocked, not marked done**, so a post-compaction regression can't ship silently |
 | **2 a.m., quota runs dry** | if it kept going the loop dies mid-task and burns the night | **Graceful Pause**: safe point → checkpoint → wake task in SQLite; when quota returns the daemon revalidates and **resumes** instead of restarting |
 
-> *Status: Graceful Pause's durable persistence, daemon loop, and revalidated resume are wired and tested; the hands-free quota trigger that fires the pause is a current vertical slice, not yet driven end-to-end (details in the Scope and capability sections below).*
+> *Status: fully wired — durable persistence, daemon loop, revalidated resume, and the hands-free trigger that fires the pause during managed runs ([#122](https://github.com/huaiche94/auspex/issues/122)). The calibrated threshold activates once M13 calibration data exists; the emergency path is live today (details in the Scope and capability sections below).*
 
 Side by side:
 
@@ -102,10 +102,14 @@ wasted. Graceful Pause targets exactly this: checkpoint at a safe point,
 persist a wake task to SQLite, and let the daemon revalidate and resume,
 surviving crashes and reboots. The durable checkpoint/wake-job path, the
 unattended daemon loop, and the four-way revalidated resume are
-implemented and tested; the automatic quota-runway trigger and the
-provider turn-interrupt that fire the pause hands-free are the current
-vertical slice — built and unit-tested, not yet wired end-to-end in the
-shipped binary.
+implemented and tested; since
+[#122](https://github.com/huaiche94/auspex/issues/122) the automatic
+quota-runway trigger and the provider turn-interrupt that fire the pause
+hands-free are wired end-to-end for managed runs (`auspex run`) —
+debounced per ADD §17.6, structurally gated so the calibrated 0.80 path
+activates only once calibrated forecasts exist (M13), with the emergency
+path live today. Native-hook sessions stay observe-only: a hook cannot
+interrupt the provider's turn.
 
 **2. Compaction is lossy, and nothing audits the result.** Every
 summarization pass drops detail the earlier turns accumulated. That is
@@ -127,16 +131,19 @@ Auspex does not do compaction; it sits beside it. Its decision surface
 and evidence gate are real and persisted today: the policy engine emits
 and records `CHECKPOINT_AND_RUN` when a change is risky enough to
 checkpoint first, and no work unit is marked complete without verified
-evidence. Wiring those into automatic hooks — a pre-turn checkpoint on
-that decision ([#116](https://github.com/huaiche94/auspex/issues/116)), a
-post-turn evidence-gate reconciliation on Stop
-([#115](https://github.com/huaiche94/auspex/issues/115)), and a PreCompact
-checkpoint that makes "supervises compaction" literal
-([#114](https://github.com/huaiche94/auspex/issues/114)) — is designed
-(ADD §13.6 / §18.9) and on the M4/M10 roadmap, not yet wired end-to-end;
-converting quota interruptions into pauses is the same slice. The better
-native compaction gets, the longer the tasks people run unattended — and
-the more a supervision layer matters.
+evidence. Those decisions now drive automatic hooks: a pre-turn
+checkpoint on `CHECKPOINT_AND_RUN`
+([#116](https://github.com/huaiche94/auspex/issues/116), ADR-0054 —
+config-gated via `state_checkpointing.on_checkpoint_and_run`, default on,
+fail-open), a post-turn evidence-gate reconciliation on Stop
+([#115](https://github.com/huaiche94/auspex/issues/115), flag-not-block),
+and a PreCompact checkpoint that makes "supervises compaction" literal
+([#114](https://github.com/huaiche94/auspex/issues/114); Claude wired —
+the pinned Codex CLI ships no pre-compact hook event yet, so its parser
+is built but unregistered). Quota interruptions convert into pauses the
+same way ([#122](https://github.com/huaiche94/auspex/issues/122)). The
+better native compaction gets, the longer the tasks people run
+unattended — and the more a supervision layer matters.
 
 ## What it measures, and what it only estimates
 
@@ -214,11 +221,14 @@ per-prompt gate, Auspex maintains:
 - **Graceful Pause** — checkpoint at a safe point, persist a durable wake
   job to SQLite, and let the daemon (`auspex daemon`) execute due wake jobs
   unattended, re-verifying repository, quota, session, and authorization
-  before resuming. *Status: the durable persistence, the unattended daemon
-  loop, and the four-way resume revalidation are implemented and tested;
-  the automatic quota-runway trigger and the provider turn-interrupt that
-  fire the pause hands-free are the current vertical slice — not yet wired
-  end-to-end in the shipped binary.*
+  before resuming. *Status: fully wired — persistence, daemon loop,
+  four-way resume revalidation, and (since
+  [#122](https://github.com/huaiche94/auspex/issues/122)) the hands-free
+  quota-runway trigger + provider turn-interrupt for managed runs. The
+  calibrated 0.80 path is structurally gated until M13 calibration data
+  exists; the emergency path is live. Codex protocol-level graceful
+  interrupt (vs. process-signal) remains
+  [#9](https://github.com/huaiche94/auspex/issues/9) Phase 2.*
 
 ## What Auspex measures vs. what it predicts
 
@@ -460,7 +470,7 @@ milestones** (85/85 DAG nodes integrated on `main`), not a
 milestone-by-milestone sequential build. So **delivered means integrated
 on `main`, not released** — the ADD's release markers (`v0.1.0` at M4
 through `v1.0.0` at M15) are **not yet stamped as git tags**. Of the
-sixteen milestones, eight are delivered, four are partial (core landed, a
+sixteen milestones, nine are delivered, three are partial (core landed, a
 named tail remains), and four are not started.
 
 Legend — ✅ delivered (on `main`, not necessarily released) · ◐ partial
@@ -472,13 +482,13 @@ Legend — ✅ delivered (on `main`, not necessarily released) · ◐ partial
 | M1 | Domain · paths · config · SQLite | ✅ | IDs/enums, clock/id injection, OS paths, YAML config precedence, schemas, SQLite connection/migrations, repo/worktree/session/turn/task stores, `paths`/`config` commands. | — |
 | M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser, snapshot fingerprint, checkpoint create/list/show/verify, real restore ([#6](https://github.com/huaiche94/auspex/issues/6)), binary patches, untracked archive, secret/path filters. | — |
 | M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store, batch API, idempotency/out-of-order, normalized usage/tool/file/quota/context, de-identified export, tiered retention (ADR-046). | — |
-| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree, node state machine, validators, state checkpoint manifest, atomic staged commit, reconciliation, `progress`/`state` CLI. **Remaining:** wire the decisions into automatic hooks — pre-turn ([#116](https://github.com/huaiche94/auspex/issues/116)), Stop reconcile ([#115](https://github.com/huaiche94/auspex/issues/115)), PreCompact ([#114](https://github.com/huaiche94/auspex/issues/114)); `progress` inspect not yet wired. | `v0.1.0` (untagged) |
+| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree, node state machine, validators, state checkpoint manifest, atomic staged commit, reconciliation, `progress`/`state` CLI. Automatic hooks now wired: pre-turn ([#116](https://github.com/huaiche94/auspex/issues/116), ADR-0054), Stop reconcile ([#115](https://github.com/huaiche94/auspex/issues/115)), PreCompact ([#114](https://github.com/huaiche94/auspex/issues/114)). **Remaining:** `progress` inspect subcommand. | `v0.1.0` (untagged) |
 | M5 | Feature extraction · predictor · policy | ✅ | task classifier, Go/.NET topology, feature v1, empirical quantiles, token/scope estimates, risk components, reason codes, policy rules, `evaluate`/`decide`. **Note:** all cold-start rules; calibration is M13 (data-gated). | — |
 | M6 | Daemon · local API · durable scheduler | ✅ | daemon ([#7](https://github.com/huaiche94/auspex/issues/7)), loopback auth, v1 endpoints, SSE, in-process fallback, wake-job lease/recovery, doctor baseline, session-status API. | — |
 | M7 | Codex managed adapter | ◐ | detection/capability, managed `run --provider codex` (over `codex exec --json`), exec JSONL fallback, fixtures. **Remaining ([#9](https://github.com/huaiche94/auspex/issues/9) Phase 2):** App Server subscription, graceful interrupt, `codex exec resume`. | — |
-| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`, UserPromptSubmit, pre/post compact, tool/stop, native block, doctor checks. **Note:** the generalized auto state-checkpoint-on-compact wiring shares the [#114](https://github.com/huaiche94/auspex/issues/114) slice, still being finished. | `v0.2.0` (untagged) |
+| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`, UserPromptSubmit, pre/post compact, tool/stop, native block, doctor checks. **Note:** the [#114](https://github.com/huaiche94/auspex/issues/114) auto state-checkpoint-on-compact wiring landed; the pinned Codex CLI ships no pre-compact hook event yet, so the codex parser is built but unregistered. | `v0.2.0` (untagged) |
 | M9 | Claude managed + native integration | ✅ | plugin, hooks, TaskCreated/Completed mapping, statusline wrapper, context/quota telemetry, stream-json runner, resume, native-hook session bootstrap ([#17](https://github.com/huaiche94/auspex/issues/17)), `watch codex` ([#92](https://github.com/huaiche94/auspex/issues/92)). | `v0.3.0` (untagged) |
-| M10 | Runway Forecaster + Graceful Pause | ◐ | live burn-rate, runway forecast, uncalibrated fallback, statusline runway, safe-point coordinator, pause state machine, state/repo checkpoint integration, durable wake schedule, four-way resume validation, CLI pause/resume/scheduler — implemented and tested. **Remaining:** the automatic quota-runway trigger and provider turn-interrupt that fire the pause hands-free. | `v0.4.0` (untagged) |
+| M10 | Runway Forecaster + Graceful Pause | ✅ | live burn-rate, runway forecast, uncalibrated fallback, statusline runway, safe-point coordinator, pause state machine, state/repo checkpoint integration, durable wake schedule, four-way resume validation, CLI pause/resume/scheduler, and (since [#122](https://github.com/huaiche94/auspex/issues/122)) the hands-free auto-trigger + provider interrupt for managed runs — the ADD's acceptance rows are e2e-tested. **Note:** calibrated 0.80 path activates with M13 data (emergency path live); Codex protocol-level graceful interrupt is [#9](https://github.com/huaiche94/auspex/issues/9) Phase 2. | `v0.4.0` (untagged) |
 | M11 | Managed shell + UX hardening | ○ | `auspex shell` does not exist yet; interactive panels, pause UI, Ctrl+C, history/status, and the no-TTY policy are all unbuilt. The next net-new after M7 Phase 2. | — |
 | M12 | VS Code extension | ◐ | daemon client/SSE, status bar, views, guarded prompt, progress tree, pause/resume/conflict UI, binary resolution ([#10](https://github.com/huaiche94/auspex/issues/10), fed by the session-status API). **Remaining:** Marketplace/Open VSX publishing (publisher not yet registered, [#18](https://github.com/huaiche94/auspex/issues/18); runs from source/VSIX today). | `v0.5.0` (untagged) |
 | M13 | Predictor research + personalization | ○ | backtesting, outcome labels, quantile models, runway calibration, model registry, Python research package, reports — all unbuilt. **Data-gated:** awaiting telemetry accumulation; this is what turns the forecast from cold-start into calibrated. | — |

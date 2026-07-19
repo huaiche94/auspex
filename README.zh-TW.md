@@ -46,7 +46,7 @@ flowchart TB
 | **翻頁後** | 宣稱「rate limiter 做好了」 | **evidence gate**：要測試產物 + git 快照才算數；拿不出證據 → **擋住，不標記完成**，壓縮後偷送的 regression 出不去 |
 | **凌晨 2:00 配額見底** | 若硬跑，迴圈會死在半途、白燒一整夜 | **Graceful Pause**：安全點 → checkpoint → 寫 wake task 進 SQLite；配額回來後 daemon 重驗狀態並**自動恢復**，不是從頭來 |
 
-> *狀態：Graceful Pause 的持久化（checkpoint／wake job）、daemon loop、四項重驗恢復皆已接線且有測試；自動觸發暫停的配額 trigger 仍是 vertical slice，尚未端到端接上（細節見下方 Scope 與能力段落）。*
+> *狀態：已全面接線——持久化（checkpoint／wake job）、daemon loop、四項重驗恢復，以及在 managed run 中 hands-free 觸發暫停的 trigger（[#122](https://github.com/huaiche94/auspex/issues/122)）。校準門檻待 M13 校準資料到位後啟用；emergency 路徑今天就能動（細節見下方 Scope 與能力段落）。*
 
 並排看：
 
@@ -65,13 +65,13 @@ agent 已經會自己管理 context，而且機制做得不錯。Claude Code 有
 
 Auspex 不與上述任何一項競爭。它涵蓋原生壓縮做不到的三件事。
 
-**1. 配額不等於 context。** 壓縮能讓 session 撐過 context 上限。但當用量視窗（usage window）在凌晨兩點見底時，它什麼也做不了。失效模式是：session 死掉，而在你察覺之前的每一個小時都被浪費掉。Graceful Pause（優雅暫停）正是為此而生：在安全點建立檢查點、把一個喚醒工作（wake task）寫進 SQLite，讓 daemon 重新驗證後恢復執行——過程中還能挺過 crash 與重開機。其中持久化（checkpoint／wake job）、daemon 的無人值守 loop、與四項重驗恢復皆已接線且有測試；而**自動觸發**這一切的配額跑道 trigger 與 provider 端的 turn interrupt 仍是目前的 vertical slice——已建好並經單元測試，但尚未在出貨 binary 端到端接上。
+**1. 配額不等於 context。** 壓縮能讓 session 撐過 context 上限。但當用量視窗（usage window）在凌晨兩點見底時，它什麼也做不了。失效模式是：session 死掉，而在你察覺之前的每一個小時都被浪費掉。Graceful Pause（優雅暫停）正是為此而生：在安全點建立檢查點、把一個喚醒工作（wake task）寫進 SQLite，讓 daemon 重新驗證後恢復執行——過程中還能挺過 crash 與重開機。其中持久化（checkpoint／wake job）、daemon 的無人值守 loop、與四項重驗恢復皆已接線且有測試；自 [#122](https://github.com/huaiche94/auspex/issues/122) 起，**自動觸發**這一切的配額跑道 trigger 與 provider 端的 turn interrupt 已在 managed run（`auspex run`）端到端接上——依 ADD §17.6 做 debounce，校準的 0.80 路徑結構性地閘在 M13 校準資料到位之後才啟用，emergency 路徑今天就能動。native-hook session 維持 observe-only：hook 無法中斷 provider 的 turn。
 
 **2. 壓縮是有損的，而且沒有人稽核結果。** 每一次摘要都會丟掉先前回合累積的細節。這是壓縮的本質，不是 bug。原生機制信任它自己產生的摘要；沒有任何獨立檢查去驗證 agent 在壓縮之後是否仍走在正軌上。Auspex 不試圖把摘要做到完美。State Checkpointing（狀態存證）要求在任何工作單元被標記完成之前，先提出可驗證的證據——測試產物、checksum、Git 快照。一個拿不出這種證據的工作單元會卡在證據閘門（evidence gate）前，而不是憑 agent 說了算被標記完成。這道閘門位於 context 視窗之外，所以它不會遺忘。
 
 **3. session 會結束，工作不該結束。** 原生 context 管理與行程（process）同生共死。Auspex 把進度樹（progress tree）、喚醒工作與決策持久化在 SQLite 中。一個被中斷的執行——配額耗盡、crash、重開機——會從中斷處接續，而不是從頭來過。
 
-Auspex 不做壓縮，而是站在它旁邊。它的決策面與證據閘門今天是真的、會持久化：policy 引擎在變更風險高到該先建檢查點時，會產生並記錄 `CHECKPOINT_AND_RUN`；任何工作單元沒有可驗證證據就不會被標記完成。把這些接進自動 hook——依該決策自動做翻頁前 checkpoint（[#116](https://github.com/huaiche94/auspex/issues/116)）、在 Stop 做翻頁後的證據閘門 reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、以及讓「監督壓縮」名副其實的 PreCompact checkpoint（[#114](https://github.com/huaiche94/auspex/issues/114)）——都已在設計中（ADD §13.6／§18.9）、列於 M4／M10 roadmap，但尚未端到端接線；把配額中斷變成暫停屬於同一個 slice。原生壓縮做得愈好，人們愈敢放手讓它無人值守（unattended）跑更長的任務——一層監督（supervision）機制也就愈重要。
+Auspex 不做壓縮，而是站在它旁邊。它的決策面與證據閘門今天是真的、會持久化：policy 引擎在變更風險高到該先建檢查點時，會產生並記錄 `CHECKPOINT_AND_RUN`；任何工作單元沒有可驗證證據就不會被標記完成。這些決策如今驅動自動 hook：依 `CHECKPOINT_AND_RUN` 決策自動做翻頁前 checkpoint（[#116](https://github.com/huaiche94/auspex/issues/116)，ADR-0054——由 config `state_checkpointing.on_checkpoint_and_run` 控制，預設開啟、fail-open）、在 Stop 做翻頁後的證據閘門 reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)，flag 不 block）、以及讓「監督壓縮」名副其實的 PreCompact checkpoint（[#114](https://github.com/huaiche94/auspex/issues/114)；Claude 側已接線——釘住的 Codex CLI 尚無 pre-compact hook 事件，parser 已建好但未註冊）；配額中斷也以同樣方式轉成暫停（[#122](https://github.com/huaiche94/auspex/issues/122)）。原生壓縮做得愈好，人們愈敢放手讓它無人值守（unattended）跑更長的任務——一層監督（supervision）機制也就愈重要。
 
 ## 它量測什麼，又只是估計什麼
 
@@ -115,7 +115,7 @@ Auspex forecast (uncalibrated estimate — scores are not probabilities):
 
 - **Progress Tree（進度樹）**——具規範性、持久性的任務狀態（canonical, durable task state）。一個節點在沒有驗證器（validator）檢核過的證據（檔案、資料庫紀錄、checksum，或 Git 快照）之前不得標記完成；「agent 自己說完成了」永遠不算數。
 - **State（狀態）＋ repository（儲存庫）checkpoint**——每次節點完成都原子性（atomically）寫入一個 State Checkpoint；repository checkpoint 擷取 worktree 內容（並做機密資訊遮蔽／redaction），但絕不提交（commit）你的分支。
-- **Graceful Pause（優雅暫停）**——在安全點（safe point）建立檢查點、於 SQLite 中持久化一個到期喚醒工作（wake job），並由 daemon（`auspex daemon`）在無人值守（unattended）下執行到期的 wake job，恢復（resume）前重新驗證 repository、配額、session 與授權（authorization）。*狀態：持久化、無人值守 daemon loop 與四項重驗恢復皆已接線且有測試；而**自動觸發**暫停的配額跑道 trigger 與 provider turn interrupt 仍是目前的 vertical slice——尚未在出貨 binary 端到端接上。*
+- **Graceful Pause（優雅暫停）**——在安全點（safe point）建立檢查點、於 SQLite 中持久化一個到期喚醒工作（wake job），並由 daemon（`auspex daemon`）在無人值守（unattended）下執行到期的 wake job，恢復（resume）前重新驗證 repository、配額、session 與授權（authorization）。*狀態：已全面接線——持久化、無人值守 daemon loop、四項重驗恢復,以及（自 [#122](https://github.com/huaiche94/auspex/issues/122) 起）managed run 的 hands-free 配額跑道 trigger 與 provider turn interrupt。校準的 0.80 路徑結構性地閘在 M13 校準資料之後；emergency 路徑已可動。Codex 協定層 graceful interrupt（相對於 process-signal）仍屬 [#9](https://github.com/huaiche94/auspex/issues/9) Phase 2。*
 
 <a id="what-auspex-measures-vs-what-it-predicts"></a>
 ## Auspex 量測什麼 vs. 預測什麼
@@ -290,7 +290,7 @@ M0–M15 路線圖。先講框架：Auspex 是一條**穿過多個 milestone 的
 slice**（85/85 DAG 節點整合進 `main`），不是逐個 milestone 依序完工。因此
 **「已交付」＝已整合進 `main`，不等於已發版**——ADD 標的 release marker
 （M4 的 `v0.1.0` 到 M15 的 `v1.0.0`）**目前一個 git tag 都還沒 stamp**。
-十六個 milestone 中，八個已交付、四個部分（核心到位、有具名尾巴）、四個未開始。
+十六個 milestone 中，九個已交付、三個部分（核心到位、有具名尾巴）、四個未開始。
 
 圖例——✅ 已交付（在 `main`，未必發版）．◐ 部分（核心可用、有具名尾巴）．
 ○ 未開始。
@@ -301,13 +301,13 @@ slice**（85/85 DAG 節點整合進 `main`），不是逐個 milestone 依序完
 | M1 | Domain · paths · config · SQLite | ✅ | IDs/enums、clock/id 注入、OS paths、YAML config 優先序、schemas、SQLite 連線/migrations、repo/worktree/session/turn/task stores、`paths`/`config` 指令。 | — |
 | M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser、snapshot fingerprint、checkpoint create/list/show/verify、真實 restore（[#6](https://github.com/huaiche94/auspex/issues/6)）、binary patch、untracked archive、secret/path 過濾。 | — |
 | M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store、batch API、idempotency/out-of-order、normalized usage/tool/file/quota/context、de-identified export、tiered retention（ADR-046）。 | — |
-| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、`progress`/`state` CLI。**缺：**把決策接成自動 hook——pre-turn（[#116](https://github.com/huaiche94/auspex/issues/116)）、Stop reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、PreCompact（[#114](https://github.com/huaiche94/auspex/issues/114)）；`progress` inspect 也未接。 | `v0.1.0`（未 tag） |
+| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、`progress`/`state` CLI。自動 hook 已接線：pre-turn（[#116](https://github.com/huaiche94/auspex/issues/116)，ADR-0054）、Stop reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、PreCompact（[#114](https://github.com/huaiche94/auspex/issues/114)）。**缺：**`progress` inspect 子指令。 | `v0.1.0`（未 tag） |
 | M5 | Feature extraction · predictor · policy | ✅ | task classifier、Go/.NET topology、feature v1、empirical quantiles、token/scope 估計、risk components、reason codes、policy rules、`evaluate`/`decide`。**注意：**全為 cold-start 規則；校準屬 M13（資料未到）。 | — |
 | M6 | Daemon · local API · durable scheduler | ✅ | daemon（[#7](https://github.com/huaiche94/auspex/issues/7)）、loopback auth、v1 endpoints、SSE、in-process fallback、wake job lease/recovery、doctor baseline、session-status API。 | — |
 | M7 | Codex managed adapter | ◐ | 偵測/capability、managed `run --provider codex`（走 `codex exec --json`）、exec JSONL fallback、fixtures。**缺（[#9](https://github.com/huaiche94/auspex/issues/9) Phase 2）：**App Server 訂閱、graceful interrupt、`codex exec resume`。 | — |
-| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`、UserPromptSubmit、pre/post compact、tool/stop、native block、doctor checks。**注意：**compact 前自動 state checkpoint 的一般化接線與 [#114](https://github.com/huaiche94/auspex/issues/114) 同片，仍在收尾。 | `v0.2.0`（未 tag） |
+| M8 | Codex native hooks | ✅ | `auspex hook codex <event>`、UserPromptSubmit、pre/post compact、tool/stop、native block、doctor checks。**注意：**[#114](https://github.com/huaiche94/auspex/issues/114) 的 compact 前自動 state checkpoint 接線已落地；釘住的 Codex CLI 尚無 pre-compact hook 事件，codex parser 已建好但未註冊。 | `v0.2.0`（未 tag） |
 | M9 | Claude managed + native integration | ✅ | plugin、hooks、TaskCreated/Completed mapping、statusline wrapper、context/quota telemetry、stream-json runner、resume、native-hook session bootstrap（[#17](https://github.com/huaiche94/auspex/issues/17)）、`watch codex`（[#92](https://github.com/huaiche94/auspex/issues/92)）。 | `v0.3.0`（未 tag） |
-| M10 | Runway Forecaster + Graceful Pause | ◐ | live burn-rate、runway forecast、uncalibrated fallback、statusline runway、safe-point coordinator、pause state machine、state/repo checkpoint 整合、durable wake schedule、四路 resume validation、CLI pause/resume/scheduler——已實作且測過。**缺：**自動 quota-runway 觸發器與 provider turn-interrupt（hands-free 觸發 pause）。 | `v0.4.0`（未 tag） |
+| M10 | Runway Forecaster + Graceful Pause | ✅ | live burn-rate、runway forecast、uncalibrated fallback、statusline runway、safe-point coordinator、pause state machine、state/repo checkpoint 整合、durable wake schedule、四路 resume validation、CLI pause/resume/scheduler,以及（自 [#122](https://github.com/huaiche94/auspex/issues/122) 起）managed run 的 hands-free 自動觸發器 + provider interrupt——ADD 驗收列已有 e2e 測試。**注意：**校準的 0.80 路徑待 M13 資料啟用（emergency 路徑已可動）；Codex 協定層 graceful interrupt 屬 [#9](https://github.com/huaiche94/auspex/issues/9) Phase 2。 | `v0.4.0`（未 tag） |
 | M11 | Managed shell + UX hardening | ○ | `auspex shell` 尚不存在；互動面板、pause UI、Ctrl+C、history/status、no-TTY policy 都未做。是 M7 Phase 2 之後的下一塊 net-new。 | — |
 | M12 | VS Code extension | ◐ | daemon client/SSE、status bar、views、guarded prompt、progress tree、pause/resume/conflict UI、binary resolution（[#10](https://github.com/huaiche94/auspex/issues/10)，吃 session-status API）。**缺：**Marketplace/Open VSX 發佈（publisher 未註冊，[#18](https://github.com/huaiche94/auspex/issues/18)；目前跑 source/VSIX）。 | `v0.5.0`（未 tag） |
 | M13 | Predictor research + personalization | ○ | backtesting、outcome labels、quantile models、runway calibration、model registry、Python research package、reports——都未做。**資料閘：**等 telemetry 累積；這是把預測從 cold-start 變 calibrated 的關鍵。 | — |

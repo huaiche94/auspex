@@ -242,6 +242,22 @@ type HookSupport struct {
 	// FLAG (composition-root reconciliation, #90 Phase A): appended field
 	// — additive only, no existing field moved or retyped.
 	Pace orchestrator.PaceReader
+
+	// StopReconcile optionally enables the issue-#115 post-turn Progress
+	// Tree/Git/artifact reconciliation + evidence-gate outcome labeling at
+	// Stop (M4, orchestrator.HookDeps.StopReconcile, stopreconcile.go):
+	// when non-nil, each Claude Stop reconciles the session's task and
+	// persists one progress.tree.reconciled event flagging (never
+	// blocking) completion claimed without verified artifact evidence.
+	// The real value is cmd/auspex's orchestrator.TurnReconcileService
+	// over the same dataSource/progress service/reconciler/git client the
+	// container already composes; nil disables the step entirely — the
+	// pre-#115 telemetry-only Stop, per HookDeps.StopReconcile's own
+	// documented degrade contract.
+	//
+	// FLAG (composition-root reconciliation, #115): appended field —
+	// additive only, no existing field moved or retyped.
+	StopReconcile orchestrator.StopReconciler
 }
 
 // DiagnosticsSupport bundles the optional collaborators
@@ -346,6 +362,10 @@ func (a *App) RootCmd() *cobra.Command {
 		// pass-through of the optional #67 ToolOps scratch (ADR-052);
 		// merges cleanly with any other agent's additive edit here.
 		ToolOps: a.services.Hooks.ToolOps,
+		// FLAG (composition-root reconciliation, #115): appended field only
+		// — pass-through of the optional post-turn Stop reconciliation;
+		// merges cleanly with any other agent's additive edit here.
+		StopReconcile: a.services.Hooks.StopReconcile,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()

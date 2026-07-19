@@ -21,7 +21,11 @@ Constitution §7 rule 10。它實際擁有的是：
   `Layer`／`Source` 標示各層）；
 - unknown-field 的 warn 與 strict 驗證（ADD §26.2，`Options` / `UnknownFieldPolicy`）；
 - 透過 `Config.Raw` 對外公開、有完整文件記載的 merge／precedence 演算法 — 這是一個已解碼但尚未映射成
-  struct 欄位的 map — 供之後的角色在其上建立自己的型別化設定區塊。
+  struct 欄位的 map — 供之後的角色在其上建立自己的型別化設定區塊；
+- 對已有 production 消費者的區塊提供型別化解碼 — 第一個是 `state_checkpointing`
+  （`statecheckpointing.go`：`StateCheckpointingSection`、`DefaultsLayer`），承載
+  ADR-0054 自動 pre-turn checkpoint 的 `on_checkpoint_and_run` gate（預設
+  `true`；由 `cmd/auspex` 組裝根消費，任何載入錯誤 fail-open 回預設值）。
 
 相鄰套件：全域使用者設定檔的*位置*來自 [`../paths`](../paths/README.md)；repository-local
 的 `.auspex/*` 路徑則是由擁有 repository scoping 的角色負責解析，而非在這裡。

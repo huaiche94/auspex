@@ -80,6 +80,12 @@ type ManagedPromptRequest struct {
 type ManagedPromptResult struct {
 	TurnID    domain.TurnID
 	Persisted bool
+	// PromptHash is the SHA-256 the gate derived from the prompt (never
+	// raw text — the file doc comment's privacy boundary). Valid on every
+	// path, like TurnID: the managed runner threads it into the ADR-0054
+	// auto-checkpoint's authorization binding (issue #116) exactly as the
+	// hook path threads parsed.PromptSHA256.
+	PromptHash string
 
 	Evaluation app.Evaluation
 	Decision   app.DecisionResult
@@ -123,7 +129,7 @@ func EvaluateManagedPrompt(ctx context.Context, deps HookDeps, req ManagedPrompt
 	parsed.CWD = req.CWD
 
 	pe, err := evaluateSubmittedPrompt(ctx, deps, parsed, provider)
-	result := ManagedPromptResult{TurnID: pe.turnID, Persisted: pe.persisted}
+	result := ManagedPromptResult{TurnID: pe.turnID, Persisted: pe.persisted, PromptHash: parsed.PromptSHA256}
 	if err != nil {
 		return result, err
 	}

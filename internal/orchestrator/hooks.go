@@ -166,6 +166,55 @@ type HookDeps struct {
 	// nil-is-a-documented-degrade convention every optional field here
 	// follows.
 	ToolOps ToolOpScratch
+
+	// AutoCheckpoint optionally enables the ADR-0054 automatic pre-turn
+	// checkpoint for CHECKPOINT_AND_RUN decisions (issue #116, M4;
+	// autocheckpoint.go): when non-nil, HandleUserPromptSubmit (and the
+	// managed runner, which shares this deps bundle) creates the state +
+	// repository checkpoint pair BEFORE the turn proceeds and records the
+	// binding via the existing decision-allow authorization machinery —
+	// consulted ONLY on the rare CHECKPOINT_AND_RUN branch, never on the
+	// ordinary-prompt hot path. nil keeps the decision advisory (the
+	// pre-#116 behavior, and the config gate
+	// `state_checkpointing.on_checkpoint_and_run: false`'s off position) —
+	// the same nil-is-a-documented-degrade convention every optional field
+	// here follows. Failures inside the checkpointer itself are fail-open
+	// by its own contract (Run never errors, only warns).
+	//
+	// FLAG (composition-root reconciliation, #116): appended field —
+	// additive only, no existing field moved or retyped.
+	AutoCheckpoint *AutoCheckpointer
+
+	// CompactCheckpoint optionally enables the issue-#114 pre-compaction
+	// auto State Checkpoint (M4/M10; hooksprecompact.go): when non-nil,
+	// each `hook claude pre-compact` / `hook codex pre-compact`
+	// invocation captures a State Checkpoint (+ repository checkpoint,
+	// via the frozen CheckpointCreate ordering) for the session's
+	// resolved task BEFORE the provider's compaction proceeds, recording
+	// the outcome on the persisted provider.session.compacted event. nil
+	// skips capture entirely (the event records skip reason
+	// not_configured) — the same nil-is-a-documented-degrade convention
+	// every optional field here follows, and capture failure is itself
+	// recorded, never a hook failure (ADD §17.5 fail-open).
+	//
+	// FLAG (composition-root reconciliation, #114): appended field only —
+	// additive, no existing field moved or retyped.
+	CompactCheckpoint *CompactCheckpointer
+
+	// StopReconcile optionally enables the issue-#115 post-turn Progress
+	// Tree/Git/artifact reconciliation + evidence-gate outcome labeling
+	// (M4, ADD §22.4/§13.6/§18.9; stopreconcile.go): when non-nil, each
+	// Claude Stop reconciles the session's task after the turn's own
+	// events are persisted and emits one progress.tree.reconciled event
+	// that FLAGS (never blocks — Stop fires after the turn, and hooks fail
+	// open) any completion claimed without verified artifact evidence. nil
+	// disables the step entirely — exactly the pre-#115 telemetry-only
+	// Stop — the same nil-is-a-documented-degrade convention every
+	// optional field here follows.
+	//
+	// FLAG (composition-root reconciliation, #115): appended field only —
+	// additive, merges cleanly with any other agent's additive edit here.
+	StopReconcile StopReconciler
 }
 
 // OpenTurnResolver resolves a session's latest started turn. ok=false
@@ -421,6 +470,12 @@ type UserPromptSubmitResult struct {
 	// evaluation ERROR, which also degrades to allow but is recorded
 	// differently — see the source).
 	Evaluated bool
+	// AutoCheckpoint reports the ADR-0054 automatic pre-turn checkpoint
+	// outcome when the decision was CHECKPOINT_AND_RUN and an
+	// AutoCheckpointer was wired (issue #116; autocheckpoint.go). nil in
+	// every other case — including the disabled gate — so pre-#116
+	// results are unchanged when the feature is off.
+	AutoCheckpoint *AutoCheckpointOutcome
 }
 
 // HandleUserPromptSubmit implements `auspex hook claude
@@ -438,6 +493,14 @@ type UserPromptSubmitResult struct {
 // allow response — again fail-open, matching HandleStatusLine, because a
 // Auspex bug must never be the reason a user's prompt is silently
 // swallowed.
+//
+// A CHECKPOINT_AND_RUN decision additionally triggers the ADR-0054
+// automatic pre-turn checkpoint when deps.AutoCheckpoint is wired (issue
+// #116; autocheckpoint.go): the state + repository checkpoint pair is
+// created BEFORE the allow response is returned, and the outcome —
+// including any fail-open degrade — is surfaced on the result and as one
+// additionalContext line. A nil AutoCheckpointer keeps the decision
+// advisory (the pre-#116 behavior, and the config gate's off position).
 func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (UserPromptSubmitResult, error) {
 	parsed, err := claudehooks.ParseUserPromptSubmit(stdin)
 	if err != nil {
@@ -486,6 +549,30 @@ func HandleUserPromptSubmit(ctx context.Context, deps HookDeps, stdin []byte) (U
 			AdditionalContext: additional,
 		}
 	} else {
+		// ADR-0054 (issue #116): a CHECKPOINT_AND_RUN decision solidifies
+		// state BEFORE the turn proceeds — automatic checkpoint pair via
+		// deps.AutoCheckpoint (nil = the advisory pre-#116 behavior; every
+		// failure inside Run is fail-open into a Warning, never a block —
+		// see autocheckpoint.go's contract). This branch is the ONLY hook
+		// place that invokes it: ordinary RUN/WARN prompts never pay the
+		// checkpoint latency.
+		if pe.decision.Action == app.PolicyCheckpointAndRun {
+			outcome := deps.AutoCheckpoint.Run(ctx, AutoCheckpointRequest{
+				SessionID:    parsed.SessionID,
+				TurnID:       pe.turnID,
+				EvaluationID: pe.evaluation.ID,
+				PromptHash:   parsed.PromptSHA256,
+			})
+			if outcome.Attempted {
+				result.AutoCheckpoint = &outcome
+				if line := outcome.ContextLine(); line != "" {
+					if additional != "" {
+						additional += "\n"
+					}
+					additional += line
+				}
+			}
+		}
 		result.Response.AdditionalContext = additional
 	}
 	return result, nil
@@ -598,13 +685,11 @@ type StopResult struct {
 }
 
 // HandleStop implements `auspex hook claude stop`: parse, normalize a
-// provider.turn.completed event, best-effort persist. Full Progress
-// Tree/Git/artifact reconciliation (ADD §22.4: "Stop 時 reconcile Progress
-// Tree、Git、artifacts") is outcome labeling depth beyond this node's
-// scope (agents/runtime.md Part B pipeline step 12, "Observe actual
-// outcome," and step 9's checkpoint orchestration are runtime-b05's and a
-// later node's concern) — this handler covers the telemetry half only,
-// matching what claude-provider-04's Normalizer actually emits today.
+// provider.turn.completed event, best-effort persist, then run the
+// post-turn Progress Tree/Git/artifact reconciliation + evidence-gate
+// outcome labeling (ADD §22.4: "Stop 時 reconcile Progress Tree、Git、
+// artifacts"; issue #115, stopreconcile.go) — fail-open and flag-not-
+// block, like every other seam this handler drives.
 func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, error) {
 	parsed, err := claudehooks.ParseStop(stdin)
 	if err != nil {
@@ -641,6 +726,10 @@ func HandleStop(ctx context.Context, deps HookDeps, stdin []byte) (StopResult, e
 	// quota telemetry (runwaydrive.go). Fail-open — never fails the Stop
 	// hook, and in native-hook mode records only (no forced pause, §8.8).
 	deps.driveRunway(ctx, parsed.SessionID)
+	// Issue #115 (M4): post-turn Progress Tree/Git/artifact reconciliation
+	// + evidence-gate outcome labeling (stopreconcile.go). Fail-open and
+	// record-only: FLAG, never block — Stop fires after the turn.
+	deps.reconcileAtStop(ctx, claudetelemetry.Provider, parsed.SessionID, parsed.CWD)
 	return StopResult{EventsNormalized: 1, Persisted: persisted}, nil
 }
 

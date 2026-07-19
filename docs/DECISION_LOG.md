@@ -101,6 +101,11 @@ flowchart TD
     D17 ==>|✅ docs/design/ + zh-TW 非規範| D17A[ADR-049：三設計文件搬遷<br/>每資料夾 README、原著語言為規範]
     D17 -.->|✗ 全部搬進 docs/| D17B[破壞 GitHub 社群檔慣例]
     D17 -.->|✗ 中文平行規範| D17C[雙 source of truth 風險]
+
+    D17A --> D18{D-18 CHECKPOINT_AND_RUN 自動化}
+    D18 ==>|✅ 自動 checkpoint・config 可關・fail-open| D18A[ADR-0054：兩個決策面接線<br/>on_checkpoint_and_run 預設開]
+    D18 -.->|✗ 維持 advisory 只靠 #114| D18B[高風險 turn 窗口仍開著]
+    D18 -.->|✗ 預設關閉 opt-in| D18C[產品主張對多數人仍未接線]
 ```
 
 ---
@@ -235,6 +240,13 @@ flowchart TD
 - **決定：** ①三份設計文件（`Auspex_ADD.md`、`Auspex_Predictor_Design_Supplement.md`、`Auspex_Parallel_Execution_Plan.md`）→ `docs/design/`，檔名不變（`§` 引用照舊可 grep）；②九份 GitHub 社群慣例／流程權威檔（README、AGENTS、CHANGELOG、CODE_OF_CONDUCT、CONSTITUTION、CONTRIBUTING、GOVERNANCE、SECURITY、SUPPORT）留在根目錄；③活文件更新路徑引用，歷史紀錄（accepted ADRs、`docs/archive/`、`docs/implementation/` 進度日誌、Go 註解、checksummed fixtures）一律不改寫；④雙語政策：每份文件加 `<name>.zh-TW.md`，**以原著語言為規範文本**——除了兩份中文原著（`docs/design/Auspex_ADD.md` 本體即繁中、`docs/DECISION_LOG.md` 即本檔）以中文為規範、不另建會漂移的 zh-TW 副本外，其餘全部以英文版為準，分歧時中文版是 bug；⑤測試 fixture 的 `.md`（如 `testdata/checkpoints/state/add-section-18-*.md`）是測試輸入不是文件，不翻譯、其目錄不加 README（避免破壞列舉／checksum 測試）。完整條文見 ADR-049。
 - **未選：** 全部 `.md` 搬進 `docs/`（破壞 GitHub 社群檔案慣例與 agent 工具對根目錄 `AGENTS.md` 的預期）；只加連結不搬移（根目錄依舊 12 檔）；中文版列為平行規範文本（製造第二個 source of truth，違反 Constitution §1 精神）。
 - **可逆性：** 高——`git mv` ＋引用更新可單一 commit 回復；翻譯與資料夾 README 是純新增檔案，刪除即回復。
+
+## D-18 — CHECKPOINT_AND_RUN 自動化：自動 checkpoint、config 可關、fail-open（issue #116）
+
+- **日期／情境：** 2026-07-19。README 準確性稽核發現 `CHECKPOINT_AND_RUN` 是真實、有持久化的 policy 決策（ADR-043；critical 風險帶、高 blast radius、context/成本天花板都會發出），但**沒有任何程式碼對它採取行動**——pre-turn hook 與 managed runner 都只分支 `BLOCK`，checkpoint 只能靠操作者手動 `auspex checkpoint create`（D-08 當時的定調即「CHECKPOINT_AND_RUN 建議」）。issue #116 標記 `adr-needed` 提請拍板。
+- **選項：** ①**自動 checkpoint、config 可關、fail-open（✅）**——決策為 `CHECKPOINT_AND_RUN` 且 gate 開啟（預設開）時，在 turn 繼續前自動建立 state + repository checkpoint 對，checkpoint ID 走既有 `DecisionAllowRequest.RepositoryCheckpointID` 機制（issue 後立即 consume 作為稽核紀錄）；任何失敗放行 turn 並記警告——安全網故障不得封鎖它要保護的 session。②維持 advisory、自動 checkpoint 只放 PreCompact（#114）——決策名字承諾的動作依然沒接線、高風險 turn 窗口仍開著。③預設關閉 opt-in——對從不改 config 的使用者，產品主張永遠是空話。
+- **後果：** ADR-0054（就此動作取代 ADR-043/D-08 的「僅建議」定調；與 #114 的 PreCompact 路徑互補不互代）。實作：`internal/orchestrator/autocheckpoint.go`（`AutoCheckpointer`，兩個呼叫點共用）、hook 與 managed runner 的 `CHECKPOINT_AND_RUN` 分支接線、config 新鍵 `state_checkpointing.on_checkpoint_and_run`（預設 `true`；`false` = 明確 advisory）——這也是 M1 分層 config 鏈的第一個 production 消費者。熱路徑零成本：只有 `CHECKPOINT_AND_RUN` 分支才呼叫。
+- **可逆性：** 高——gate 一行 config 即回 advisory；nil 組裝與 #116 前逐位元相同（有測試釘住）。
 
 ## 待決（尚未成為決策點）
 

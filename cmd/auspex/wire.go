@@ -309,6 +309,43 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// reuses already-constructed db/clk instances; merges cleanly
 			// with any other agent's additive edit to this literal.
 			ToolOps: &orchestrator.ToolOpScratchStore{DB: db, Clock: clk},
+			// #114 (M4/M10): the pre-compaction auto State Checkpoint.
+			// `hook claude pre-compact` (and the codex twin) resolve the
+			// session through the SAME dataSource the evaluation pipeline
+			// uses (session -> task) plus a worktree lookup over the same
+			// db, then run the frozen CheckpointCreate ordering over the
+			// SAME state/repository checkpoint services `auspex checkpoint
+			// create` uses — capture happens BEFORE the provider's
+			// compaction proceeds, and every failure is recorded on the
+			// event, never a blocked compaction (fail-open).
+			//
+			// FLAG (composition-root reconciliation, #114): appended block
+			// only — reuses already-constructed instances; merges cleanly
+			// with any other agent's additive edit to this literal.
+			CompactCheckpoint: &orchestrator.CompactCheckpointer{
+				Sessions:   dataSource,
+				Worktrees:  &orchestrator.SessionWorktreeStore{DB: db},
+				State:      stateCheckpointService,
+				Repository: repositoryCheckpointService,
+			},
+			// Issue #115 (M4): the post-turn Stop reconciliation +
+			// evidence-gate outcome labeling, composed from the SAME
+			// already-constructed pieces — dataSource (session→task), the
+			// Progress Tree service (snapshot), the progress Reconciler
+			// (the M4 crash-window scan, REUSED not rebuilt), and the gitx
+			// client (worktree fingerprint). Flag-not-block by design: it
+			// records one progress.tree.reconciled event per turn and
+			// never mutates the tree or fails the hook.
+			//
+			// FLAG (composition-root reconciliation, #115): appended field
+			// only — reuses already-constructed instances; merges cleanly
+			// with any other agent's additive edit to this literal.
+			StopReconcile: &orchestrator.TurnReconcileService{
+				Sessions:   dataSource,
+				Progress:   progressTreeService,
+				Reconciler: reconciler,
+				Git:        gitClient,
+			},
 			// The REAL evaluation.Service doubles as the issue-#14
 			// forecast-card source (it satisfies orchestrator.
 			// ForecastCardSource — ForecastCard/LatestForecastCard read
@@ -320,6 +357,21 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// ADR-043's config override is a documented follow-up, see
 			// internal/pricing's package comment).
 			Forecast: evaluationService,
+			// ADR-0054 (issue #116): the automatic pre-turn checkpoint for
+			// CHECKPOINT_AND_RUN decisions, gated by the layered YAML
+			// config's state_checkpointing.on_checkpoint_and_run (default
+			// enabled; nil when disabled = the advisory pre-#116
+			// behavior). Reuses only already-constructed instances — see
+			// cmd/auspex/autocheckpoint.go for the composition and the
+			// fail-open config-loading contract.
+			//
+			// FLAG (composition-root reconciliation): appended line only —
+			// reuses already-constructed instances; merges cleanly with
+			// any other agent's additive edit to this literal.
+			AutoCheckpoint: composeAutoCheckpointer(
+				loadStateCheckpointingConfig(dirs).OnCheckpointAndRun,
+				db, evaluationService, stateCheckpointService, repositoryCheckpointService, dataSource,
+			),
 		},
 		Diagnostics: wiring.DiagnosticsSupport{
 			DB: db,

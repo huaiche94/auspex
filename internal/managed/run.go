@@ -205,6 +205,30 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 	default:
 		outcome.EvaluationID = gate.Evaluation.ID
 		outcome.Decision = gate.Decision.Action
+		// ADR-0054 (issue #116): CHECKPOINT_AND_RUN solidifies state
+		// BEFORE the provider is spawned — automatic checkpoint pair via
+		// the shared Hooks.AutoCheckpoint seam (nil = the advisory
+		// pre-#116 behavior). The managed runner already knows its own
+		// target, so it passes WorktreeID (and TaskID when the caller
+		// supplied one) directly instead of resolving from the session.
+		// Fail-open by AutoCheckpointer.Run's own contract: a degraded
+		// checkpoint is a loud HumanLog line, never a refused spawn —
+		// only BLOCK (above) refuses to spawn.
+		if gate.Decision.Action == app.PolicyCheckpointAndRun {
+			acpReq := orchestrator.AutoCheckpointRequest{
+				SessionID:    req.SessionID,
+				TurnID:       gate.TurnID,
+				EvaluationID: gate.Evaluation.ID,
+				PromptHash:   gate.PromptHash,
+				WorktreeID:   req.WorktreeID,
+			}
+			if req.TaskID != nil {
+				acpReq.TaskID = *req.TaskID
+			}
+			if acp := r.Hooks.AutoCheckpoint.Run(ctx, acpReq); acp.Attempted {
+				_, _ = fmt.Fprintln(humanLog, "auspex run: "+acp.ContextLine())
+			}
+		}
 		if gate.Card != nil {
 			// The same forecast card the hook injects as
 			// additionalContext (one presenter, every surface — issue

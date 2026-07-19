@@ -256,6 +256,57 @@ type HookSupport struct {
 	// FLAG (composition-root reconciliation, #90 Phase A): appended field
 	// — additive only, no existing field moved or retyped.
 	Pace orchestrator.PaceReader
+
+	// AutoCheckpoint optionally enables the ADR-0054 automatic pre-turn
+	// checkpoint for CHECKPOINT_AND_RUN decisions (issue #116,
+	// orchestrator.HookDeps.AutoCheckpoint): when non-nil, the
+	// UserPromptSubmit hook and the managed runner create the state +
+	// repository checkpoint pair before a CHECKPOINT_AND_RUN turn
+	// proceeds, fail-open per the checkpointer's own contract. The real
+	// value is cmd/auspex's composeAutoCheckpointer over the same
+	// already-constructed services, gated by the layered YAML config's
+	// state_checkpointing.on_checkpoint_and_run (default enabled); nil —
+	// most tests, minimal compositions, or the gate's off position —
+	// keeps the decision advisory, exactly the pre-#116 behavior, per
+	// HookDeps.AutoCheckpoint's own documented degrade contract.
+	//
+	// FLAG (composition-root reconciliation, #116): appended field —
+	// additive only, no existing field moved or retyped.
+	AutoCheckpoint *orchestrator.AutoCheckpointer
+
+	// CompactCheckpoint optionally enables the issue-#114 pre-compaction
+	// auto State Checkpoint (orchestrator.HookDeps.CompactCheckpoint,
+	// hooksprecompact.go): when non-nil, `hook claude pre-compact` /
+	// `hook codex pre-compact` capture a State Checkpoint (+ repository
+	// checkpoint) for the session's resolved task BEFORE the provider's
+	// compaction proceeds, recording the outcome on the persisted
+	// provider.session.compacted event. The real value is an
+	// orchestrator.CompactCheckpointer over the same SQLDataSource
+	// (session -> task), a SessionWorktreeStore over the same *sqlite.DB
+	// (session -> worktree), and this container's own StateCheckpoint/
+	// RepositoryCheckpoint services; nil skips capture (the event records
+	// skip reason not_configured), per HookDeps.CompactCheckpoint's own
+	// documented degrade contract.
+	//
+	// FLAG (composition-root reconciliation, #114): appended field only —
+	// additive, no existing field moved or retyped.
+	CompactCheckpoint *orchestrator.CompactCheckpointer
+
+	// StopReconcile optionally enables the issue-#115 post-turn Progress
+	// Tree/Git/artifact reconciliation + evidence-gate outcome labeling at
+	// Stop (M4, orchestrator.HookDeps.StopReconcile, stopreconcile.go):
+	// when non-nil, each Claude Stop reconciles the session's task and
+	// persists one progress.tree.reconciled event flagging (never
+	// blocking) completion claimed without verified artifact evidence.
+	// The real value is cmd/auspex's orchestrator.TurnReconcileService
+	// over the same dataSource/progress service/reconciler/git client the
+	// container already composes; nil disables the step entirely — the
+	// pre-#115 telemetry-only Stop, per HookDeps.StopReconcile's own
+	// documented degrade contract.
+	//
+	// FLAG (composition-root reconciliation, #115): appended field —
+	// additive only, no existing field moved or retyped.
+	StopReconcile orchestrator.StopReconciler
 }
 
 // DiagnosticsSupport bundles the optional collaborators
@@ -360,6 +411,18 @@ func (a *App) RootCmd() *cobra.Command {
 		// pass-through of the optional #67 ToolOps scratch (ADR-052);
 		// merges cleanly with any other agent's additive edit here.
 		ToolOps: a.services.Hooks.ToolOps,
+		// FLAG (composition-root reconciliation, #116): appended field only
+		// — pass-through of the optional ADR-0054 auto-checkpointer;
+		// merges cleanly with any other agent's additive edit here.
+		AutoCheckpoint: a.services.Hooks.AutoCheckpoint,
+		// FLAG (composition-root reconciliation, #114): appended field
+		// only — pass-through of the optional pre-compaction checkpoint
+		// capturer; merges cleanly with any other agent's additive edit.
+		CompactCheckpoint: a.services.Hooks.CompactCheckpoint,
+		// FLAG (composition-root reconciliation, #115): appended field only
+		// — pass-through of the optional post-turn Stop reconciliation;
+		// merges cleanly with any other agent's additive edit here.
+		StopReconcile: a.services.Hooks.StopReconcile,
 	}
 	if hookDeps.Clock == nil {
 		hookDeps.Clock = clock.New()

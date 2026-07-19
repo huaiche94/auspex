@@ -167,6 +167,22 @@ type HookDeps struct {
 	// follows.
 	ToolOps ToolOpScratch
 
+	// CompactCheckpoint optionally enables the issue-#114 pre-compaction
+	// auto State Checkpoint (M4/M10; hooksprecompact.go): when non-nil,
+	// each `hook claude pre-compact` / `hook codex pre-compact`
+	// invocation captures a State Checkpoint (+ repository checkpoint,
+	// via the frozen CheckpointCreate ordering) for the session's
+	// resolved task BEFORE the provider's compaction proceeds, recording
+	// the outcome on the persisted provider.session.compacted event. nil
+	// skips capture entirely (the event records skip reason
+	// not_configured) — the same nil-is-a-documented-degrade convention
+	// every optional field here follows, and capture failure is itself
+	// recorded, never a hook failure (ADD §17.5 fail-open).
+	//
+	// FLAG (composition-root reconciliation, #114): appended field only —
+	// additive, no existing field moved or retyped.
+	CompactCheckpoint *CompactCheckpointer
+
 	// StopReconcile optionally enables the issue-#115 post-turn Progress
 	// Tree/Git/artifact reconciliation + evidence-gate outcome labeling
 	// (M4, ADD §22.4/§13.6/§18.9; stopreconcile.go): when non-nil, each

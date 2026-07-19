@@ -294,6 +294,25 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 			// reuses already-constructed db/clk instances; merges cleanly
 			// with any other agent's additive edit to this literal.
 			ToolOps: &orchestrator.ToolOpScratchStore{DB: db, Clock: clk},
+			// #114 (M4/M10): the pre-compaction auto State Checkpoint.
+			// `hook claude pre-compact` (and the codex twin) resolve the
+			// session through the SAME dataSource the evaluation pipeline
+			// uses (session -> task) plus a worktree lookup over the same
+			// db, then run the frozen CheckpointCreate ordering over the
+			// SAME state/repository checkpoint services `auspex checkpoint
+			// create` uses — capture happens BEFORE the provider's
+			// compaction proceeds, and every failure is recorded on the
+			// event, never a blocked compaction (fail-open).
+			//
+			// FLAG (composition-root reconciliation, #114): appended block
+			// only — reuses already-constructed instances; merges cleanly
+			// with any other agent's additive edit to this literal.
+			CompactCheckpoint: &orchestrator.CompactCheckpointer{
+				Sessions:   dataSource,
+				Worktrees:  &orchestrator.SessionWorktreeStore{DB: db},
+				State:      stateCheckpointService,
+				Repository: repositoryCheckpointService,
+			},
 			// Issue #115 (M4): the post-turn Stop reconciliation +
 			// evidence-gate outcome labeling, composed from the SAME
 			// already-constructed pieces — dataSource (session→task), the

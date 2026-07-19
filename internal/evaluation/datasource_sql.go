@@ -34,8 +34,13 @@
 // signal — see below), Progress, RecentSimilarTurnTokens, Quota, Context,
 // RunwayForecast, PriorRunwayHitConfirmed.
 //
-// Honest cold-start (ok=false) always, by design: Repository, Session.
-// Both return ok=false unconditionally — not because the query is hard, but
+// Honest cold-start (ok=false) always, by design: Repository. Session was
+// in this bucket too until issue #114 gave compaction a real producer
+// (provider.session.compacted events from the pre/post-compact hooks):
+// it now populates exactly the one field with genuine backing data
+// (CompactionCount) and stays ok=false until at least one compaction has
+// actually been observed — see its own doc comment. The reasoning below
+// still governs every OTHER field: not because the query is hard, but
 // because the schema reachable from this package's exclusive path
 // (internal/evaluation/**) has no real backing data for the specific
 // features.RepositoryFeatures/SessionFeatures fields these methods promise
@@ -351,33 +356,83 @@ func (s *SQLDataSource) Repository(_ context.Context, _ domain.RepositoryID) (fe
 
 // --- 4. Session -------------------------------------------------------------
 
-// Session always returns ok=false. features.SessionFeatures' fields
-// (RecentTurnUsageP50/80/90, ChangedFilesRecentP50/90,
-// ChangedLinesRecentP50/90, RetryRate, TestFailureRate,
-// ToolOutputBytesP50, ContextGrowthRateP50, CompactionCount,
-// CheckpointAge) are almost entirely empirical quantiles/rates over a
-// well-defined historical window that this phase's schema cannot honestly
-// reconstruct end-to-end: events.payload_json carries per-observation
-// usage/quota/context numbers (consumed directly and correctly by Quota/
-// Context/RecentSimilarTurnTokens below, which need only raw observations,
-// not a rate), but turn-level "was this turn a retry", "how many files did
-// this turn change", and "how many lines did this turn change" are not
-// separately tagged anywhere in the events schema (no retry flag, no
-// files/lines-changed payload field on any EventType) — inventing a proxy
-// definition for "retry" from turn.failed/turn.started counts alone would
-// be a real, material modeling decision (what counts as a retry? within
-// what window? does a provider.turn.failed followed by a new
-// provider.turn.started even mean the user retried, vs. gave up?) with no
-// existing precedent in this codebase to anchor it, unlike
-// RecentSimilarTurnTokens below where internal/predictor/token's own
-// cold-start/empirical-quantile machinery already defines exactly what
-// shape of input it expects. Rather than manufacturing that definition
-// unilaterally in a storage-layer bridge, this method returns ok=false —
-// honest cold-start, matching this package's own "leave a genuine schema
-// gap honest rather than over-engineer a new modeling decision into a
-// corrective addition" discipline.
-func (s *SQLDataSource) Session(_ context.Context, _ domain.SessionID) (features.SessionFeatures, bool, error) {
-	return features.SessionFeatures{}, false, nil
+// Session populates exactly one features.SessionFeatures field with real
+// backing data — CompactionCount, from the session's persisted
+// provider.session.compacted events (issue #114: the pre/post-compact
+// hooks and codex's SessionStart source="compact" mapping are that
+// event's real producers) — and returns ok=false (unchanged pre-#114
+// behavior) when the session has no compaction observation at all: a
+// zero count cannot distinguish "no compaction happened" from "no
+// compaction hook is wired", so an all-unknown struct stays the honest
+// cold-start answer. When ok=true, every OTHER field keeps its zero/nil
+// value with Confidence low: the quantile/rate fields are pointers whose
+// nil already means "unknown, never a substituted zero"
+// (features.SessionFeatures' own contract), so partial population no
+// longer misrepresents them the way the pre-#114 doc comment warned —
+// consumers (retryMultiplier, sessionFilesQuantiles, ...) all gate on the
+// pointers themselves, not on ok alone.
+//
+// Counting rule: a compaction event with payload phase "post"
+// (claude-telemetry's CompactionPhasePost vocabulary) is the SECOND
+// observation of a compaction whose "pre" phase this count already
+// includes, so non-"post" events (phase "pre", and the phase-less codex
+// SessionStart source="compact" shape) are what count — one compaction,
+// one increment, whichever hooks a provider actually ships.
+//
+// The rest of features.SessionFeatures' fields (RecentTurnUsageP50/80/90,
+// ChangedFilesRecentP50/90, ChangedLinesRecentP50/90, RetryRate,
+// TestFailureRate, ToolOutputBytesP50, ContextGrowthRateP50,
+// CheckpointAge) remain unpopulated by design: they are empirical
+// quantiles/rates over a well-defined historical window that this schema
+// cannot honestly reconstruct end-to-end — turn-level "was this turn a
+// retry", "how many files did this turn change", etc. are not separately
+// tagged anywhere in the events schema, and inventing a proxy definition
+// for them in a storage-layer bridge would be a real, material modeling
+// decision with no existing precedent to anchor it (this package's "leave
+// a genuine schema gap honest rather than over-engineer" discipline;
+// see the pre-#114 revision of this comment for the full argument).
+func (s *SQLDataSource) Session(ctx context.Context, sessionID domain.SessionID) (features.SessionFeatures, bool, error) {
+	q := sqlite.QuerierFromContext(ctx, s.DB)
+	rows, err := q.QueryContext(ctx, `
+		SELECT payload_json FROM events
+		WHERE session_id = ? AND event_type = 'provider.session.compacted'`,
+		string(sessionID),
+	)
+	if err != nil {
+		return features.SessionFeatures{}, false, fmt.Errorf("evaluation: Session: query compaction events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	count := 0
+	for rows.Next() {
+		var payloadJSON string
+		if err := rows.Scan(&payloadJSON); err != nil {
+			return features.SessionFeatures{}, false, fmt.Errorf("evaluation: Session: scan compaction event: %w", err)
+		}
+		// Payload decoding is Go-side rather than a JSON SQL expression,
+		// keeping the query portable across SQLite builds (the same
+		// portability call orchestrator's CodexStatusStore documents). An
+		// undecodable payload still counts: the row's event_type alone
+		// already attests a compaction observation.
+		var payload map[string]any
+		if json.Unmarshal([]byte(payloadJSON), &payload) == nil {
+			if phase, _ := payload["phase"].(string); phase == "post" {
+				continue // the pre/source event for this compaction was already counted.
+			}
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return features.SessionFeatures{}, false, fmt.Errorf("evaluation: Session: iterate compaction events: %w", err)
+	}
+	if count == 0 {
+		return features.SessionFeatures{}, false, nil
+	}
+	return features.SessionFeatures{
+		SessionID:       sessionID,
+		CompactionCount: count,
+		Confidence:      domain.ConfidenceLow,
+	}, true, nil
 }
 
 // --- 5. Progress -------------------------------------------------------------

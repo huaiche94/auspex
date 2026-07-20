@@ -85,7 +85,7 @@ Auspex 精確量測 agent 花掉的一切：每一類 token、每一塊錢、每
 
 一旦接上 Claude Code 或 Codex CLI（見[快速開始](#quick-start)），你每天盯著看的呈現介面都以本 repository 自身開發 session 的實際量測輸出打頭陣。Auspex 每天都在對自己做 dogfooding。
 
-**狀態列（status line）**（Claude Code statusline，或供 tmux 使用的 `auspex hook codex status`）——最吃緊的配額視窗、距牆的剩餘跑道（runway）、今日花費與步調（pace）：
+**狀態列（status line）**（Claude Code statusline，或供 tmux／[WezTerm](integrations/wezterm/README.zh-TW.md) 使用的 `auspex hook codex status`）——最吃緊的配額視窗、距牆的剩餘跑道（runway）、今日花費與步調（pace）：
 
 ```text
 ax» Opus 4.1 │ ◷ 5h ~62% (resets 18:00) │ ⏳ runway ~38m │ today $62.19 · pace → ~$312 by 24:00 │ context [████··] 21.9% │ ✓ RUN
@@ -138,7 +138,15 @@ Auspex forecast (uncalibrated estimate — scores are not probabilities):
 <a id="quick-start"></a>
 ## 快速開始（Quick start）
 
-需要 Go 1.26.5（版本已固定於 `go.mod`）；不需要 CGO，也不需要任何外部服務。
+**先決條件（Prerequisites）**
+
+- **Go 1.26.5**（版本已固定於 `go.mod`）用來 build——不需要 CGO，也不需
+  要任何外部服務。
+- **你要接的程式輔助代理人**——Claude Code 和／或 Codex CLI——供下方的
+  provider hook 使用。
+- *選用，供常駐狀態列：*[**WezTerm**](https://wezterm.org)（**不經 tmux**
+  的狀態列——見 [`integrations/wezterm/`](integrations/wezterm/README.zh-TW.md)），
+  或 **tmux**。
 
 ```bash
 go build -o auspex ./cmd/auspex
@@ -157,6 +165,8 @@ UserPromptSubmit / Stop / StopFailure / PostToolUse / statusline 事件導向
 SessionStart / UserPromptSubmit / Stop 事件導向
 `auspex hook codex <event>`（hook 的 argv 採 kebab-case，ADR-050）。兩者的
 Stop 端擷取都記錄精確的逐回合（per-turn）token 用量——完整四類 token，Claude 來自 session transcript（ADR-051）、Codex 來自 session rollout JSONL——僅數字，絕不保存 prompt 或輸出文字。這些 hook **fail open（失效開放）**：Auspex 發生 crash 絕不阻擋你的 session。直接執行 `auspex evaluate` 即可看到真正的錯誤訊息。
+
+想要不經 tmux 的常駐狀態列，把 [`integrations/wezterm/`](integrations/wezterm/README.zh-TW.md) 接進 WezTerm 的狀態列即可——兩行的 drop-in，支援 macOS、Linux 與 Windows + WSL。
 
 ### 指令樹（The command tree）
 
@@ -179,7 +189,7 @@ auspex gc                     tiered telemetry retention (90-day default, ADR-04
 auspex export                 de-identified datasets for offline analysis
 auspex hook claude <event>    the hook entrypoints Claude Code calls
 auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
-auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
+auspex hook codex status      stdin-less status line for tmux/WezTerm/scripts (--cwd DIR)
 ```
 
 每一個指令都在 stdout 上輸出具 schema 版本（schema-versioned）的 JSON，並以單一種型別化（typed）的錯誤格式回報失敗，讓人類與 agent 都能消化（FR-160；`report`／`evaluate`／`progress complete` 有明確的 `--json` flag，其餘則無條件輸出 JSON）：
@@ -252,6 +262,7 @@ internal/             application core, domain model, adapters (Go)
 pkg/protocol/v1/      public wire protocol types
 integrations/claude/  Claude Code hook wiring (hooks.json / plugin.json)
 integrations/codex/   Codex CLI hook wiring (hooks.json)
+integrations/wezterm/ WezTerm status-bar recipe (Lua module; mac/linux + WSL)
 vscode/               VS Code companion extension (TypeScript)
 schemas/              JSON Schemas for the frozen wire shapes
 research/             offline Python analysis — never a runtime dependency

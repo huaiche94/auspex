@@ -172,8 +172,8 @@ the daily surfaces lead with measured output from this repository's own
 development sessions. Auspex dogfoods itself daily.
 
 **Status line** (Claude Code statusline, or `auspex hook codex status`
-for tmux) — worst quota window, runway to the wall, today's spend and
-pace:
+for tmux / [WezTerm](integrations/wezterm/README.md)) — worst quota
+window, runway to the wall, today's spend and pace:
 
 ```text
 ax» Opus 4.1 │ ◷ 5h ~62% (resets 18:00) │ ⏳ runway ~38m │ today $62.19 · pace → ~$312 by 24:00 │ context [████··] 21.9% │ ✓ RUN
@@ -283,6 +283,11 @@ the session rollout JSONL — numbers only, never prompt or output text.
 The hooks fail open: an Auspex crash never blocks your session. Run
 `auspex evaluate` directly to surface real errors.
 
+For a persistent status line without tmux, wire
+[`integrations/wezterm/`](integrations/wezterm/README.md) into WezTerm's
+status bar — a two-line drop-in that works on macOS, Linux, and
+Windows + WSL.
+
 ### The command tree
 
 ```text
@@ -304,7 +309,7 @@ auspex gc                     tiered telemetry retention (90-day default, ADR-04
 auspex export                 de-identified datasets for offline analysis
 auspex hook claude <event>    the hook entrypoints Claude Code calls
 auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
-auspex hook codex status      stdin-less status line for tmux/scripts (--cwd DIR)
+auspex hook codex status      stdin-less status line for tmux/WezTerm/scripts (--cwd DIR)
 ```
 
 Every command speaks schema-versioned JSON on stdout and fails with one
@@ -426,6 +431,7 @@ internal/             application core, domain model, adapters (Go)
 pkg/protocol/v1/      public wire protocol types
 integrations/claude/  Claude Code hook wiring (hooks.json / plugin.json)
 integrations/codex/   Codex CLI hook wiring (hooks.json)
+integrations/wezterm/ WezTerm status-bar recipe (Lua module; mac/linux + WSL)
 vscode/               VS Code companion extension (TypeScript)
 schemas/              JSON Schemas for the frozen wire shapes
 research/             offline Python analysis — never a runtime dependency

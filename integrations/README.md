@@ -3,8 +3,8 @@
 > 🌐 English | [繁體中文](README.zh-TW.md)
 
 Shipped configuration examples that wire an AI coding agent's own
-extension points to the `auspex` binary. One subdirectory per
-provider; today only one exists:
+extension points — or the terminal it runs in — to the `auspex` binary.
+One subdirectory per integration:
 
 - [`claude/`](claude/README.md) — Claude Code hook and plugin wiring
   (`hooks.json`, `plugin.json`): routes UserPromptSubmit / Stop /
@@ -12,6 +12,14 @@ provider; today only one exists:
   <event>`. Its README documents the file shapes, a recorded CLI
   subcommand-naming discrepancy, and the `--emit-line` status-line
   behavior.
+- [`codex/`](codex/hooks.json) — Codex CLI hook wiring (`hooks.json`):
+  routes SessionStart / UserPromptSubmit / Stop events through
+  `auspex hook codex <event>` (hook argv is kebab-case, ADR-050).
+- [`wezterm/`](wezterm/README.md) — WezTerm status-bar recipe: a
+  self-contained Lua module that renders `auspex hook codex status` in
+  WezTerm's own status bar (macOS/Linux and Windows+WSL), no tmux.
+  Because Codex CLI's footer has no injection point, this is the
+  closest to a native footer without a multiplexer.
 
 The root [`README.md`](../README.md) Quick start points here for
 wiring Auspex into Claude Code. The Go-side counterparts of these

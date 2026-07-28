@@ -146,6 +146,24 @@ Per `agents/contract-integrator.md` "Out of scope": no Claude parser, predictor 
 
 ## Amendments
 
+- **2026-07-28 — ADR-0055 (#42 / #66 item b): `FeatureDataSource` gains
+  `RecentSimilarTurnCosts`.** The ADR-044-frozen `app.FeatureDataSource`
+  port gains one additive method,
+  `RecentSimilarTurnCosts(ctx, sessionID) (features.SimilarTurnCosts,
+  error)`, returning recent same-cohort turns' KNOWN four-class USD cost
+  samples (each candidate's ADR-051 classes priced under its own model
+  via `pricing.Table.FourClassCost`) plus the answering ladder rung —
+  restricted to the model-bearing rungs (dollar samples are
+  family-priced; no cross-family blend). New DTO
+  `features.SimilarTurnCosts{SamplesUSD []float64, Rung}`. Empty
+  SamplesUSD = no qualifying cohort (the consumer keeps the ADR-043
+  two-class band — unknown is not zero). Same amendment discipline as
+  ADR-047's rung widening. The pipeline's chosen band is persisted
+  (migration `0064`: `cost_low_usd`, `cost_high_usd`,
+  `cost_model_family`, `cost_source`, all nullable) and read back
+  verbatim; the calibration export gains `cost_source` (ADR-052
+  trigger 3, authorized by ADR-0055). See ADR-0055 for the full design.
+
 - **2026-07-17 — ADR-0053 (#65 Phase 1): `TokenForecast` gains an
   input/output split.** `domain.TokenForecast` (frozen by ADR-041) gains
   four additive pointer fields — `InputTokensP50/P90`,

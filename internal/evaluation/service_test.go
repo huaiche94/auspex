@@ -9,7 +9,9 @@ import (
 
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
+	"github.com/huaiche94/auspex/internal/features"
 	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/pricing"
 )
 
 func baseRequest() app.EvaluateTurnRequest {
@@ -110,6 +112,95 @@ func TestEvaluateTurn_CostBudgetEscalatesDecision(t *testing.T) {
 	}
 	if !strings.Contains(reasons, string(domain.ReasonTurnCostBudgetCheckpointExceeded)) {
 		t.Errorf("persisted reasons %s missing %s", reasons, domain.ReasonTurnCostBudgetCheckpointExceeded)
+	}
+}
+
+// TestEvaluateTurn_FourClassEmpiricalCostBand (#66 item b, ADR-0055): with
+// >= 8 same-cohort four-class cost samples, the pipeline's band is their
+// empirical P50–P90 (Source = four-class-empirical), persisted verbatim
+// (migration 0064) and read back verbatim by the forecast card — never the
+// two-class token-band spread, which cannot see cache classes and
+// under-forecasts ~6x on real captures.
+func TestEvaluateTurn_FourClassEmpiricalCostBand(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC))
+	fake := newFakeDataSource()
+	// Sorted four-class cost samples; type-7 empirical quantiles give
+	// P50 = 2.75 (between 2.5 and 3.0) and P90 = 5.8 (between 4 and 10).
+	fake.similarCosts = []float64{1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 10.0}
+	fake.similarCostsRung = features.CohortRungModelEffort
+	svc, db := newTestService(t, clk, &sequentialIDs{prefix: "fourclass"}, fake)
+	ctx := context.Background()
+
+	exec(t, db, `INSERT INTO repositories (id, canonical_root, git_common_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)`,
+		"repo-4c", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO worktrees (id, repository_id, root_path, git_dir, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"wt-4c", "repo-4c", "/repo", "/repo/.git", "2026-07-14T00:00:00Z", "2026-07-14T00:00:00Z")
+	exec(t, db, `INSERT INTO provider_sessions (id, worktree_id, provider, invocation_mode, model, effort, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"sess-4c", "wt-4c", "claude", "native-hook", "claude-fable-5", "xhigh", "2026-07-14T00:00:00Z")
+
+	eval, err := svc.EvaluateTurn(ctx, app.EvaluateTurnRequest{
+		SessionID: "sess-4c", TurnID: "turn-4c", Provider: "claude", PromptHash: "sha256:deadbeef",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateTurn: %v", err)
+	}
+
+	var low, high float64
+	var family, source string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT cost_low_usd, cost_high_usd, cost_model_family, cost_source FROM predictions WHERE id = ?`, string(eval.ID),
+	).Scan(&low, &high, &family, &source); err != nil {
+		t.Fatalf("read back persisted cost band: %v", err)
+	}
+	if source != pricing.SourceFourClassEmpirical {
+		t.Errorf("cost_source = %q, want %q", source, pricing.SourceFourClassEmpirical)
+	}
+	if family != "fable" {
+		t.Errorf("cost_model_family = %q, want fable", family)
+	}
+	const eps = 1e-9
+	if low < 2.75-eps || low > 2.75+eps || high < 5.8-eps || high > 5.8+eps {
+		t.Errorf("band = [%v, %v], want the samples' empirical [2.75, 5.8]", low, high)
+	}
+
+	if _, err := svc.Decide(ctx, app.DecideRequest{EvaluationID: eval.ID}); err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	card, err := svc.ForecastCard(ctx, eval.ID)
+	if err != nil {
+		t.Fatalf("ForecastCard: %v", err)
+	}
+	if card.Cost == nil || card.Cost.Source != pricing.SourceFourClassEmpirical {
+		t.Fatalf("card.Cost = %+v, want the persisted four-class-empirical band, not a recompute", card.Cost)
+	}
+	if card.Cost.LowUSD != low || card.Cost.HighUSD != high {
+		t.Errorf("card band = [%v, %v], want the persisted [%v, %v] verbatim", card.Cost.LowUSD, card.Cost.HighUSD, low, high)
+	}
+}
+
+// TestEvaluateTurn_BelowCostGateKeepsTwoClassBand (ADR-0055): fewer than 8
+// cohort cost samples keeps the ADR-043 two-class band, now persisted with
+// its own source label.
+func TestEvaluateTurn_BelowCostGateKeepsTwoClassBand(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 7, 14, 10, 0, 0, 0, time.UTC))
+	fake := newFakeDataSource()
+	fake.similarCosts = []float64{1.0, 2.0, 3.0} // below the §15.2 gate
+	fake.similarCostsRung = features.CohortRungModelEffort
+	svc, db := newTestService(t, clk, &sequentialIDs{prefix: "belowgate"}, fake)
+	ctx := context.Background()
+
+	eval, err := svc.EvaluateTurn(ctx, baseRequest())
+	if err != nil {
+		t.Fatalf("EvaluateTurn: %v", err)
+	}
+	var source string
+	if err := db.Conn().QueryRowContext(ctx,
+		`SELECT cost_source FROM predictions WHERE id = ?`, string(eval.ID),
+	).Scan(&source); err != nil {
+		t.Fatalf("read back cost_source: %v", err)
+	}
+	if source != pricing.SourceDefaultTable {
+		t.Errorf("cost_source = %q, want %q (below the gate the two-class band stays)", source, pricing.SourceDefaultTable)
 	}
 }
 

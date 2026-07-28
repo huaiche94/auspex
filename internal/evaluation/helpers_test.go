@@ -100,6 +100,13 @@ type fakeDataSource struct {
 
 	similarTokens []float64
 
+	// similarCosts/similarCostsRung drive RecentSimilarTurnCosts (#66
+	// item b, ADR-0055): empty samples = no cost cohort (the default —
+	// the two-class band fallback), >= 8 samples with a model-bearing
+	// rung = the four-class empirical band.
+	similarCosts     []float64
+	similarCostsRung features.SimilarTurnCohortRung
+
 	quotaObs   []domain.QuotaObservation
 	contextObs domain.ContextObservation
 
@@ -123,6 +130,7 @@ type fakeDataSource struct {
 	sessionErr                 error
 	progressErr                error
 	recentSimilarTurnTokensErr error
+	recentSimilarTurnCostsErr  error
 	quotaErr                   error
 	contextErr                 error
 	runwayForecastErr          error
@@ -180,6 +188,17 @@ func (f *fakeDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.Ses
 		return features.SimilarTurnTokens{}, f.recentSimilarTurnTokensErr
 	}
 	return features.SimilarTurnTokens{Samples: f.similarTokens, Rung: features.CohortRungSession}, nil
+}
+
+func (f *fakeDataSource) RecentSimilarTurnCosts(_ context.Context, _ domain.SessionID) (features.SimilarTurnCosts, error) {
+	if f.recentSimilarTurnCostsErr != nil {
+		return features.SimilarTurnCosts{}, f.recentSimilarTurnCostsErr
+	}
+	rung := f.similarCostsRung
+	if rung == "" {
+		rung = features.CohortRungSession
+	}
+	return features.SimilarTurnCosts{SamplesUSD: f.similarCosts, Rung: rung}, nil
 }
 
 func (f *fakeDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {

@@ -5934,6 +5934,26 @@ hook 與 managed runner。checkpoint ID 走既有
 就此動作取代 ADR-043/D-08 的「僅建議」定調。詳見
 `docs/adr/0054-auto-checkpoint-and-run.md`。
 
+## ADR-0055 — 執行期經驗校準啟動：hook turn 餵入 cohort 階梯；四類經驗成本帶（#42／#66 item b）
+
+**Decision：** ①ADR-047 階梯的候選查詢擴為兩個 turn 級生產者
+（`provider.usage.observed` ＋ ADR-051 的 `provider.turn.completed`，
+與匯出端 token-actual join 同一組），每 turn 去重 latest-wins，並以
+`total_tokens` SQL 預過濾修正候選池被 statusline 快照稀釋的問題——#42
+的 cold-start 常數就此讓位給本地經驗分位數（§15.2 門檻 8 不變）；
+②凍結 port `app.FeatureDataSource` 加法式新增 `RecentSimilarTurnCosts`：
+同 cohort turn 的已知四類成本樣本（各以自身 model 經
+`pricing.FourClassCost` 計價），僅帶 model 的 rung 可回答（美元不跨
+family 混合）；③成本帶 >= 8 樣本時採經驗 P50–P90
+（`Source="four-class-empirical"`），否則維持兩類帶；④帶持久化
+（migration 0064：`cost_low/high_usd`、`cost_model_family`、
+`cost_source`），card／匯出逐字讀回，匯出形狀新增 `cost_source`
+（ADR-052 觸發③，本 ADR 授權）；⑤token 預測 reason codes（含
+`TOKEN_COHORT_*`）聯集進持久列。Calibrated 一律維持 false——經驗值
+更銳利但未校準（§15.6 held-out 門檻另需 ADR）；不預建 M13 artifact
+（ADR-019/M5 機制）；statusline 不動（#90）。詳見
+`docs/adr/0055-runtime-empirical-calibration.md`。
+
 ---
 
 # 34. Codex Execution Contract

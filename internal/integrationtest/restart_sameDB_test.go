@@ -196,6 +196,9 @@ func (f qa03DataSource) Progress(_ context.Context, _ *domain.TaskID) (features.
 func (f qa03DataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
 	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
+func (f qa03DataSource) RecentSimilarTurnCosts(_ context.Context, _ domain.SessionID) (features.SimilarTurnCosts, error) {
+	return features.SimilarTurnCosts{Rung: features.CohortRungSession}, nil
+}
 func (f qa03DataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
 	used := 30.0
 	return []domain.QuotaObservation{{ID: "q1", SessionID: "sess-qa03", Provider: "claude-code", LimitID: "five_hour", UsedPercent: &used, ObservedAt: time.Date(2026, 7, 12, 8, 0, 0, 0, time.UTC)}}, nil

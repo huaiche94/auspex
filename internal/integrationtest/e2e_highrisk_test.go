@@ -276,6 +276,10 @@ func (f qa02DataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.Sess
 	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
 
+func (f qa02DataSource) RecentSimilarTurnCosts(_ context.Context, _ domain.SessionID) (features.SimilarTurnCosts, error) {
+	return features.SimilarTurnCosts{Rung: features.CohortRungSession}, nil
+}
+
 func (f qa02DataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
 	used := 97.3 // matches this scenario's own status-line fixture (five_hour: 97.3%)
 	return []domain.QuotaObservation{{

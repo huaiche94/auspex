@@ -76,6 +76,17 @@ type CostRange struct {
 // future config-declared override, which would stamp its own source).
 const SourceDefaultTable = "default-price-table"
 
+// SourceFourClassEmpirical is the CostRange.Source value for a band that
+// is the empirical P50–P90 of recent same-cohort turns' KNOWN four-class
+// costs (#66 item b, ADR-0055): each sample is a past turn's captured
+// four token classes priced via FourClassCost under this same table's
+// rates, so the price provenance is still this table — the METHOD is what
+// differs from SourceDefaultTable's two-class token-band spread, and the
+// distinct source string is what lets the calibration export stratify
+// residuals by estimator generation instead of averaging the two-class
+// band's known cache-blind under-forecast into the empirical band's.
+const SourceFourClassEmpirical = "four-class-empirical"
+
 // DefaultFamily is the price-table key used when a model ID does not
 // resolve to any known family — the evaluation pipeline's persisted
 // prediction rows carry no model column at all (migration 0041), so the

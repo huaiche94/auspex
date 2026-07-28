@@ -52,15 +52,15 @@ type FeatureSource interface {
 // via geometric mean with caps (§15.2: "使用 geometric mean 避免乘數爆炸，
 // 並做 caps").
 //
-// No durable historical telemetry store exists yet this phase — the same
-// gap already noted for predictor-05/predictor-06 (agents/predictor.md's
-// cold-start contract; CONTRACT_FREEZE.md's cold-start discipline for
-// QuotaForecaster applies here by the same reasoning). Every result this
-// implementation produces this phase is therefore Calibrated=false,
-// Confidence<=ConfidenceLow: the >=8-sample empirical branch is
-// implemented (so a future FeatureSource backed by durable storage
-// activates it for free), but no caller wired up this phase supplies >=8
-// samples, so it is cold-start-only in practice.
+// The >=8-sample empirical branch is live on real deployments since
+// ADR-0055: the SQL-backed FeatureSource reads BOTH turn-exact token
+// producers (managed-run usage events and the Stop hook's ADR-051
+// transcript capture), so a database with >= 8 same-cohort turns answers
+// from local history and the cold-start table serves only genuinely cold
+// databases and unmatched cohorts. Every result remains Calibrated=false
+// (an empirical quantile over local history sharpens the estimate — at
+// most ConfidenceMedium — but is not a calibrated probability; the §15.6
+// held-out gate is what would change that, and it needs an ADR).
 type RuleTokenForecaster struct {
 	Source FeatureSource
 

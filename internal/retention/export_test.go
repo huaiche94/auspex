@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/huaiche94/auspex/internal/pricing"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
 )
 
@@ -203,6 +204,45 @@ func TestExportCalibration_CostBand_FromShippedPricing(t *testing.T) {
 	notok := byTurn["turn-notok"]
 	if notok.CostLowUSD != nil || notok.CostHighUSD != nil || notok.CostModelFamily != nil {
 		t.Errorf("row without a token forecast must carry no cost band: %+v", notok)
+	}
+
+	// The recompute path (pre-0064 rows) discloses its estimator too
+	// (ADR-0055): report.py stratifies residuals by cost_source.
+	if cost.CostSource == nil || *cost.CostSource != pricing.SourceDefaultTable {
+		t.Errorf("cost_source = %v, want %q on the recompute path", cost.CostSource, pricing.SourceDefaultTable)
+	}
+}
+
+// TestExportCalibration_PersistedCostBand_Authoritative (ADR-0055,
+// migration 0064): a row carrying its persisted band exports it VERBATIM —
+// a four-class empirical band depends on cohort samples at evaluation time
+// and a recompute would silently replace it with the two-class spread.
+func TestExportCalibration_PersistedCostBand_Authoritative(t *testing.T) {
+	e, db, _ := newTestEngine(t)
+	ctx := context.Background()
+
+	seedLabeledPrediction(t, db, "pred-4c", "turn-4c", newTime, "claude", "claude-opus-4-8", "opus", "xhigh")
+	// Persist a band the two-class recompute could NOT produce from
+	// token_p50=1000/token_p90=3000 (that recompute would give
+	// 0.005/0.075): the persisted numbers must survive untouched.
+	exec(t, db, `UPDATE predictions SET cost_low_usd = 0.91, cost_high_usd = 4.06,
+			cost_model_family = 'opus', cost_source = ? WHERE id = 'pred-4c'`,
+		pricing.SourceFourClassEmpirical)
+
+	var buf bytes.Buffer
+	if _, err := e.ExportCalibration(ctx, &buf); err != nil {
+		t.Fatalf("ExportCalibration: %v", err)
+	}
+	records := decodeExportLines(t, buf.Bytes())
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+	rec := records[0]
+	if rec.CostLowUSD == nil || *rec.CostLowUSD != 0.91 || rec.CostHighUSD == nil || *rec.CostHighUSD != 4.06 {
+		t.Errorf("band = [%v, %v], want the persisted [0.91, 4.06] verbatim", rec.CostLowUSD, rec.CostHighUSD)
+	}
+	if rec.CostSource == nil || *rec.CostSource != pricing.SourceFourClassEmpirical {
+		t.Errorf("cost_source = %v, want %q", rec.CostSource, pricing.SourceFourClassEmpirical)
 	}
 }
 

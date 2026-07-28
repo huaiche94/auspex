@@ -38,6 +38,11 @@ class Record:
     cost_low_usd: Optional[float]
     cost_high_usd: Optional[float]
     cost_model_family: Optional[str]
+    # Which estimator produced the band (ADR-0055): "default-price-table"
+    # (two-class token-band spread) or "four-class-empirical" (empirical
+    # P50-P90 of same-cohort captured four-class costs). None on exports
+    # predating the field — those bands are all two-class by construction.
+    cost_source: Optional[str]
     # #62 duration pair, riding like the cost fields. duration_p50_ns /
     # duration_p90_ns are the PREDICTED wall-clock forecast in NANOSECONDS
     # (the scope estimator's own unit); actual_duration_ms is the ACTUAL
@@ -122,6 +127,7 @@ def load(path: Path) -> Iterator[Record]:
                 cost_low_usd=raw.get("cost_low_usd"),
                 cost_high_usd=raw.get("cost_high_usd"),
                 cost_model_family=raw.get("cost_model_family"),
+                cost_source=raw.get("cost_source"),
                 duration_p50_ns=raw.get("duration_p50_ns"),
                 duration_p90_ns=raw.get("duration_p90_ns"),
                 actual_duration_ms=raw.get("actual_duration_ms"),

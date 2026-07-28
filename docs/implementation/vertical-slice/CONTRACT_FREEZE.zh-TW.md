@@ -209,6 +209,22 @@ strings）由 `internal/domain/status_test.go` 驗證）：
 
 ## 修訂紀錄（Amendments）
 
+- **2026-07-28 — ADR-0055（#42／#66 item b）：`FeatureDataSource` 新增
+  `RecentSimilarTurnCosts`。** 由 ADR-044 凍結的 `app.FeatureDataSource`
+  port 新增一個加法式方法
+  `RecentSimilarTurnCosts(ctx, sessionID) (features.SimilarTurnCosts,
+  error)`：回傳近期同 cohort turn 的「已知」四類美元成本樣本（每筆候選
+  的 ADR-051 四類以其自身 model 經 `pricing.Table.FourClassCost` 計價）
+  及回答的階梯 rung——限縮於帶 model 的 rung（美元樣本依 family 計價；
+  不做跨 family 混合）。新 DTO
+  `features.SimilarTurnCosts{SamplesUSD []float64, Rung}`。SamplesUSD
+  為空 = 無合格 cohort（消費端維持 ADR-043 兩類帶——unknown is not
+  zero）。修訂紀律同 ADR-047 的 rung 擴充。pipeline 選定的帶會持久化
+  （migration `0064`：`cost_low_usd`、`cost_high_usd`、
+  `cost_model_family`、`cost_source`，皆可空）並逐字讀回；校準匯出新增
+  `cost_source`（ADR-052 觸發③，由 ADR-0055 授權）。完整設計見
+  ADR-0055。
+
 - **2026-07-17 — ADR-0053（#65 第一階段）：`TokenForecast` 新增
   input/output 拆分。** `domain.TokenForecast`（由 ADR-041 凍結）新增四個
   附加性（additive）pointer 欄位——`InputTokensP50/P90`、

@@ -140,6 +140,10 @@ func (f *fakeRealauthDataSource) RecentSimilarTurnTokens(_ context.Context, _ do
 	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
 
+func (f *fakeRealauthDataSource) RecentSimilarTurnCosts(_ context.Context, _ domain.SessionID) (features.SimilarTurnCosts, error) {
+	return features.SimilarTurnCosts{Rung: features.CohortRungSession}, nil
+}
+
 func (f *fakeRealauthDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
 	return f.quotaObs, nil
 }

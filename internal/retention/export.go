@@ -53,22 +53,29 @@ type ExportRecord struct {
 	TokenP80 *int64 `json:"token_p80,omitempty"`
 	TokenP90 *int64 `json:"token_p90,omitempty"`
 
-	// Predicted cost band (#72): the ADR-043 cost forecast the user is
-	// actually shown — pricing.EstimateTurnCost applied to this row's token
-	// quantiles (LowUSD = TokenP50 × input price, HighUSD = TokenP90 ×
-	// output price) against its stamped model. Emitted from the SHIPPED
-	// pricing function, never a research-side re-derivation, so the
-	// calibration measures the exact number the forecast card rendered and
-	// there is no second price table to drift. Nil when the row carries no
-	// token forecast (no forecast → no cost estimate, never a fabricated $0
-	// — ADD principle 1). The ACTUAL per-turn cost is deliberately NOT here:
-	// total_cost_usd is session-cumulative, so the per-turn actual is a
-	// best-effort attribution owned by research/calibration/observations.py,
-	// never computed by these capture-before-model Go bridges. report.py
-	// joins this predicted band against that actual delta on turn_id.
+	// Predicted cost band (#72, ADR-0055): the cost forecast the user was
+	// actually shown. For rows carrying the persisted band (migration
+	// 0064) it is read verbatim — mandatory for four-class empirical bands
+	// (CostSource = "four-class-empirical"), which depend on the cohort's
+	// samples at evaluation time and cannot be recomputed later. Rows
+	// predating 0064 fall back to the SHIPPED pricing function
+	// (pricing.EstimateTurnCost over this row's token quantiles and
+	// stamped model — exact for those rows, whose bands were
+	// deterministic), never a research-side re-derivation, so either way
+	// the calibration measures the exact number the forecast card
+	// rendered. CostSource says which estimator produced the band, so
+	// report.py can stratify residuals by estimator generation. Nil when
+	// the row carries no band and no token forecast (no forecast → no cost
+	// estimate, never a fabricated $0 — ADD principle 1). The ACTUAL
+	// per-turn cost is deliberately NOT here: total_cost_usd is
+	// session-cumulative, so the per-turn actual is a best-effort
+	// attribution owned by research/calibration/observations.py, never
+	// computed by these capture-before-model Go bridges. report.py joins
+	// this predicted band against that actual delta on turn_id.
 	CostLowUSD      *float64 `json:"cost_low_usd,omitempty"`
 	CostHighUSD     *float64 `json:"cost_high_usd,omitempty"`
 	CostModelFamily *string  `json:"cost_model_family,omitempty"`
+	CostSource      *string  `json:"cost_source,omitempty"`
 
 	// Scope quantiles + component risk scores + projections: live rows
 	// only (calibration_samples deliberately archives the compact pair).
@@ -272,6 +279,13 @@ func enrichFromLiveRow(rec *ExportRecord, row map[string]any) {
 	rec.BlastRadiusRiskScore = float64Ptr(row["blast_radius_risk_score"])
 	rec.ProjectedContextUsedP90 = float64Ptr(row["projected_context_used_p90"])
 
+	// Persisted cost band (migration 0064, ADR-0055) — authoritative when
+	// present; attachCostEstimate's recompute serves pre-0064 rows only.
+	rec.CostLowUSD = float64Ptr(row["cost_low_usd"])
+	rec.CostHighUSD = float64Ptr(row["cost_high_usd"])
+	rec.CostModelFamily = nullableColumnStr(row["cost_model_family"])
+	rec.CostSource = nullableColumnStr(row["cost_source"])
+
 	// reason_codes_json is []domain.ReasonCode serialized at persist time
 	// (predictor-09 owns the shape). A decode failure is disclosed as an
 	// absent field rather than aborting the export — the numeric pair is
@@ -296,6 +310,12 @@ func enrichFromLiveRow(rec *ExportRecord, row map[string]any) {
 // DefaultFamily fallback, exactly as the forecast card does for a turn
 // evaluated before its identity was observed.
 func attachCostEstimate(rec *ExportRecord, table *pricing.Table) {
+	if rec.CostLowUSD != nil && rec.CostHighUSD != nil {
+		// The row carries its persisted band (migration 0064) — that IS
+		// the number the user was shown; recomputing would overwrite a
+		// four-class empirical band with the two-class spread.
+		return
+	}
 	if rec.TokenP50 == nil || rec.TokenP90 == nil {
 		return
 	}
@@ -311,6 +331,8 @@ func attachCostEstimate(rec *ExportRecord, table *pricing.Table) {
 	rec.CostHighUSD = &cr.HighUSD
 	family := cr.ModelFamily
 	rec.CostModelFamily = &family
+	source := cr.Source
+	rec.CostSource = &source
 }
 
 // recordFromArchivedRow maps a calibration_samples row (SELECT * map)

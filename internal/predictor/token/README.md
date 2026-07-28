@@ -25,16 +25,19 @@ neutral central split (`defaultInputTokenShare`, 0.5) are uncalibrated structura
 on #11, never fitted coefficients; the paper's ~153:1 input:output magnitude is never imported.
 The split never flips `Calibrated` to true.
 
-Cold-start honesty note (issue #42, still open): the cold-start numbers are bootstrap constants,
-not measurements. Before the #42 fix path the forecast was effectively prompt-blind — persisted
+Cold-start honesty note (issue #42): the cold-start numbers are bootstrap constants, not
+measurements. Before the #42 fix path the forecast was effectively prompt-blind — persisted
 turn payloads carried only hash/length/approx-tokens, read-back collapsed every class to
 `unknown`, and P50 came out ~3210 for essentially every prompt. The classifier-vocabulary and
 payload fixes landed (acceptance proof:
 `internal/integrationtest/forecast_prompt_conditioned_test.go`, which asserts P50 now differs by
-task class in the direction the §14.6 multipliers imply), but until a deployment accumulates
->= 8 similar samples the forecast still responds to the prompt only through the class multiplier
-and the §15.2 multipliers over these constants. Every result this phase is `Calibrated=false`
-with Confidence at most medium — never a probability (Constitution §7 rule 7).
+task class in the direction the §14.6 multipliers imply), and ADR-0055 activated the empirical
+base on real deployments: the cohort ladder now reads the Stop hook's transcript-captured
+`provider.turn.completed` accounting (ADR-051) alongside managed-run usage events, so any
+database with >= 8 same-cohort hook turns answers empirically and the constants below serve
+only genuinely cold databases and unmatched cohorts. Every result this phase is still
+`Calibrated=false` with Confidence at most medium — an empirical quantile over local history is
+sharper, not calibrated — never a probability (Constitution §7 rule 7).
 
 Output feeds [`quota/`](../quota/README.md) (delta scaling) and
 [`internal/pricing`](../../pricing/README.md) (cost range). ADD sections cited above live in

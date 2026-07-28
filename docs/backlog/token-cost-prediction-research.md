@@ -156,8 +156,11 @@ The paper's most actionable gift: signals that catch a dangerous turn
 - [ ] **Phase 2 — cache-aware cost decomposition**
   ([#66](https://github.com/huaiche94/auspex/issues/66); §3.B; the cost
   axis of ADR-043/#13): four-class turn cost with a per-model cache-rate
-  table; blocked on capturing per-turn `cache_read`/`cache_creation` (only
-  `total_tokens` is captured today, ADR-047).
+  table. Capture landed via ADR-051; the **explicit-cache forecast side
+  landed 2026-07-28 (ADR-0055)** — the shipped band is the empirical
+  P50–P90 of same-cohort turns' known four-class costs where the cohort
+  passes the gate. Remaining: the implicit-cache sibling (D-02, codex)
+  and any class-share *predictive* model superseding the empirical band.
 - [ ] **Phase 3 — repeated-file-operation risk factor**
   ([#67](https://github.com/huaiche94/auspex/issues/67); §3.C): needs
   turn-level tool-op telemetry (per-file view/edit counts) that is not

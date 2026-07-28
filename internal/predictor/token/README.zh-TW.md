@@ -24,14 +24,17 @@ output 區間更寬**——這是 Bai et al. 2026 的發現：模型預測 input
 都是受 #11 把關的未校準結構性預設值，絕非擬合係數；論文的 ~153:1 input:output 量級絕不引入。
 此拆分絕不把 `Calibrated` 翻成 true。
 
-Cold-start 誠實性備註（issue #42，尚未結案）：cold-start 數字是 bootstrap 常數，不是量測值。
+Cold-start 誠實性備註（issue #42）：cold-start 數字是 bootstrap 常數，不是量測值。
 在 #42 的修正落地之前，推估實質上對 prompt 是「盲」的——持久化的 turn payload 只帶有
 hash／length／approx-tokens，讀回時每個 class 都會坍縮成 `unknown`，導致幾乎所有 prompt 的
 P50 都落在 ~3210 左右。classifier 詞彙與 payload 的修正已經落地（驗收證明見
 `internal/integrationtest/forecast_prompt_conditioned_test.go`，該測試斷言 P50 現在會依
-task class 而不同，方向與 §14.6 的倍率一致），但在部署累積到 >= 8 筆相似樣本之前，推估仍然
-只透過 class 倍率與套用在這些常數上的 §15.2 倍率來回應 prompt。本波每一個結果都是
-`Calibrated=false`，Confidence 最高只到 medium——絕不是機率（Constitution §7 rule 7）。
+task class 而不同，方向與 §14.6 的倍率一致），且 ADR-0055 已讓經驗基準在真實部署上啟動：
+cohort 階梯現在除了 managed-run 的 usage 事件之外，也會讀取 Stop hook 從 transcript 捕捉的
+`provider.turn.completed` 記帳（ADR-051），所以任何累積了 >= 8 筆同 cohort hook turn 的資料庫
+都會以經驗值回答，下述常數只服務真正冷的資料庫與無法匹配的 cohort。本波每一個結果仍然是
+`Calibrated=false`，Confidence 最高只到 medium——對本地歷史取經驗分位數是更銳利、而非已校準
+——絕不是機率（Constitution §7 rule 7）。
 
 輸出會提供給 [`quota/`](../quota/README.md)（delta 縮放）與
 [`internal/pricing`](../../pricing/README.md)（成本範圍）。上述引用的 ADD 章節見

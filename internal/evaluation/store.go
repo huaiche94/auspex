@@ -108,10 +108,22 @@ type predictionRow struct {
 	// was made for, resolved at EvaluateTurn time from the session's
 	// latest observed identity. All nil when never observed — unknown is
 	// not zero; calibration (#11) stratifies by these labels.
-	Provider        *string
-	ModelID         *string
-	ModelFamily     *string
-	Effort          *string
+	Provider    *string
+	ModelID     *string
+	ModelFamily *string
+	Effort      *string
+	// CostLow/HighUSD + CostModelFamily/CostSource are the persisted cost
+	// band (#66 item b, migration 0064): the exact band the pipeline
+	// computed at evaluation time, which the four-class empirical
+	// estimator makes non-reproducible on read-back (it depends on the
+	// cohort's samples at that moment). All nil when the turn had no band
+	// (no token forecast and no cost cohort) or the row predates 0064 —
+	// unknown is not zero; readers fall back to the deterministic legacy
+	// recompute for pre-0064 rows only.
+	CostLowUSD      *float64
+	CostHighUSD     *float64
+	CostModelFamily *string
+	CostSource      *string
 	Confidence      domain.Confidence
 	Calibrated      bool
 	ReasonCodesJSON string
@@ -133,8 +145,9 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 			provider, model_id, model_family, effort,
 			duration_p50, duration_p90,
 			token_input_p50, token_input_p90, token_output_p50, token_output_p90,
+			cost_low_usd, cost_high_usd, cost_model_family, cost_source,
 			confidence, calibrated, reason_codes_json, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(r.ID), string(r.TurnID), r.PredictorID, r.PredictorVersion, r.FeatureSetVersion,
 		nullableInt64(r.TokenP50), nullableInt64(r.TokenP80), nullableInt64(r.TokenP90),
 		nullableInt64(r.FilesReadP50), nullableInt64(r.FilesReadP90),
@@ -147,6 +160,8 @@ func insertPrediction(ctx context.Context, db *sqlite.DB, r predictionRow) error
 		nullableInt64(r.DurationP50), nullableInt64(r.DurationP90),
 		nullableInt64(r.TokenInputP50), nullableInt64(r.TokenInputP90),
 		nullableInt64(r.TokenOutputP50), nullableInt64(r.TokenOutputP90),
+		nullableFloat64(r.CostLowUSD), nullableFloat64(r.CostHighUSD),
+		nullableString(r.CostModelFamily), nullableString(r.CostSource),
 		string(r.Confidence), boolToInt(r.Calibrated), r.ReasonCodesJSON, r.CreatedAt,
 	)
 	if err != nil {
@@ -169,6 +184,7 @@ func getPrediction(ctx context.Context, db *sqlite.DB, id domain.EvaluationID) (
 		       provider, model_id, model_family, effort,
 		       duration_p50, duration_p90,
 		       token_input_p50, token_input_p90, token_output_p50, token_output_p90,
+		       cost_low_usd, cost_high_usd, cost_model_family, cost_source,
 		       confidence, calibrated, reason_codes_json, created_at
 		FROM predictions WHERE id = ?`, string(id))
 	r, err := scanPrediction(row)
@@ -196,6 +212,8 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		durationP50, durationP90                        sql.NullInt64
 		tokenInputP50, tokenInputP90                    sql.NullInt64
 		tokenOutputP50, tokenOutputP90                  sql.NullInt64
+		costLowUSD, costHighUSD                         sql.NullFloat64
+		costModelFamily, costSource                     sql.NullString
 	)
 	if err := row.Scan(
 		&id, &turnID, &predID, &predVersion, &featureVersion,
@@ -209,6 +227,7 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 		&provider, &modelID, &modelFamily, &effort,
 		&durationP50, &durationP90,
 		&tokenInputP50, &tokenInputP90, &tokenOutputP50, &tokenOutputP90,
+		&costLowUSD, &costHighUSD, &costModelFamily, &costSource,
 		&confidence, &calibrated, &reasonCodesJSON, &createdAt,
 	); err != nil {
 		return predictionRow{}, err
@@ -238,6 +257,10 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 	r.TokenInputP90 = nullInt64Ptr(tokenInputP90)
 	r.TokenOutputP50 = nullInt64Ptr(tokenOutputP50)
 	r.TokenOutputP90 = nullInt64Ptr(tokenOutputP90)
+	r.CostLowUSD = nullFloat64Ptr(costLowUSD)
+	r.CostHighUSD = nullFloat64Ptr(costHighUSD)
+	r.CostModelFamily = nullStringPtr(costModelFamily)
+	r.CostSource = nullStringPtr(costSource)
 	r.Confidence = domain.Confidence(confidence)
 	r.Calibrated = calibrated != 0
 	r.ReasonCodesJSON = reasonCodesJSON

@@ -248,7 +248,15 @@ flowchart TD
 - **後果：** ADR-0054（就此動作取代 ADR-043/D-08 的「僅建議」定調；與 #114 的 PreCompact 路徑互補不互代）。實作：`internal/orchestrator/autocheckpoint.go`（`AutoCheckpointer`，兩個呼叫點共用）、hook 與 managed runner 的 `CHECKPOINT_AND_RUN` 分支接線、config 新鍵 `state_checkpointing.on_checkpoint_and_run`（預設 `true`；`false` = 明確 advisory）——這也是 M1 分層 config 鏈的第一個 production 消費者。熱路徑零成本：只有 `CHECKPOINT_AND_RUN` 分支才呼叫。
 - **可逆性：** 高——gate 一行 config 即回 advisory；nil 組裝與 #116 前逐位元相同（有測試釘住）。
 
+## D-19 — 執行期經驗校準啟動：階梯讀 hook 捕捉、四類經驗成本帶（issues #42／#66，ADR-0055）
+
+- **日期／情境：** 2026-07-28。Owner 回歸後檢視 20 天資料累積：兩個主力 cohort 過 §15.2 門檻（opus/xhigh 307 列、fable/xhigh 101 列）、成本殘差兩週穩定（上界低估中位 7.0–7.3×）、token P90 只包住 56%——「資料牆」對 token 與 cost 兩線已破，指示直接動工 #42/#66 校準落地。診斷發現 #42 病根有二：ADR-047 階梯只讀 `provider.usage.observed`（ADR-051 落地的 `provider.turn.completed` 記帳從未餵入）；且候選池被不帶 token 的 statusline 快照稀釋（真實 DB 最新 200 筆窗口僅 2 筆帶 token）。#66 的消費端 `FourClassCost` 早已存在、零呼叫者。
+- **選項：** ①**執行期經驗分位數（✅，ADR-0055）**——階梯讀兩個生產者＋SQL 預過濾＋per-turn 去重；新 port 方法供四類成本樣本（僅帶 model 的 rung）；帶持久化（migration 0064）供逐字讀回；token reason codes 併入持久列（修 `TOKEN_COHORT_*` 揭露斷鏈）。②把擬合常數燒進 binary（`fit.py` → Go 表）——漂移、把單人分位數出貨給所有 DB、繞過 M13 registry/held-out 門檻。③先預測四類再計價——類別比例重尾極重（cache-read÷total 中位 ~174–208×），首個消費者不穩健。
+- **後果：** 端到端實測（owner DB 副本）：token P50 3210 常數 → 輕量 prompt ~5.6k／重 prompt ~6.6k（#42 驗收①成立）；成本帶 $0.13–$1.28 → $2.14–$7.31（`four-class-empirical`）。`Calibrated` 一律仍 false（§15.6 held-out 門檻另需 ADR）；statusline 不動——D-15 的回歸 gate（cohort rung 揭露）已就緒，回歸本身歸 #90 策略線。每週報告新增按估計器分層的帶內率，是本決策的成功指標。
+- **可逆性：** 高——migration 為加法可空欄；候選查詢與成本分支各自獨立可回退；0064 前的列走原重算路徑（有測試釘住）。
+
 ## 待決（尚未成為決策點）
 
 - **#18 佔位動作**：需要 owner 本人註冊（auspex.tools、VS Code publisher、Open VSX）。
 - **校準閾值重審**（D-08 的重審條件觸發時）。
+- **`calibration_samples` 補 token-actual 欄**（ADR-051 已接受缺口；ADR-0055 維持延後，0060–0069 範圍加法 migration）。

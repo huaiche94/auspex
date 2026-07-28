@@ -476,6 +476,15 @@ type FeatureDataSource interface {
 	// []float64 so rung selection is reason-codeable).
 	RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, class features.TaskClass) (features.SimilarTurnTokens, error)
 
+	// RecentSimilarTurnCosts returns per-turn four-class USD cost samples
+	// for recent turns matching the evaluated turn's cohort, selected via
+	// the same fallback ladder restricted to its model-bearing rungs
+	// (#66 item b, ADR-0055 — the amendment that added this method).
+	// Empty SamplesUSD means no cohort rung qualified — the consumer
+	// keeps the two-class price-spread band (cold-start), never an
+	// error.
+	RecentSimilarTurnCosts(ctx context.Context, sessionID domain.SessionID) (features.SimilarTurnCosts, error)
+
 	// Quota returns the current quota observations for a session (Stage 3
 	// input, ForecastQuotaRequest.Quota).
 	Quota(ctx context.Context, sessionID domain.SessionID) ([]domain.QuotaObservation, error)

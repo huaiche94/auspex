@@ -247,6 +247,10 @@ func (restartDataSource) RecentSimilarTurnTokens(_ context.Context, _ domain.Ses
 	return features.SimilarTurnTokens{Rung: features.CohortRungSession}, nil
 }
 
+func (restartDataSource) RecentSimilarTurnCosts(_ context.Context, _ domain.SessionID) (features.SimilarTurnCosts, error) {
+	return features.SimilarTurnCosts{Rung: features.CohortRungSession}, nil
+}
+
 func (restartDataSource) Quota(_ context.Context, _ domain.SessionID) ([]domain.QuotaObservation, error) {
 	used := 97.0
 	return []domain.QuotaObservation{{ID: "q1", SessionID: "sess1", Provider: "anthropic", LimitID: "five_hour", UsedPercent: &used, ObservedAt: time.Date(2026, 7, 12, 9, 0, 0, 0, time.UTC)}}, nil

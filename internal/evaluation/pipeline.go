@@ -8,6 +8,7 @@ import (
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/policy"
+	"github.com/huaiche94/auspex/internal/predictor"
 	"github.com/huaiche94/auspex/internal/pricing"
 )
 
@@ -91,14 +92,43 @@ func (s *Service) runPipeline(ctx context.Context, req app.EvaluateTurnRequest) 
 
 	// #20 Phase 0 identity + ADR-043 increment-3 cost estimate: resolve
 	// the session's observed model once (fail-open — nils when never
-	// observed), price the token forecast under it, and let the policy
-	// stage compare that range against any user-declared budget. This is
-	// the same estimate the forecast card renders read-back; computing it
-	// here too keeps the budget decision and the displayed number from
-	// ever disagreeing (same table, same model, same quantiles).
+	// observed) and band the turn's cost for the policy stage to compare
+	// against any user-declared budget. The band is persisted onto the
+	// prediction row (migration 0064), so this live value, the forecast
+	// card's read-back, and the calibration export can never disagree.
+	//
+	// Two estimators, most-grounded first (#66 item b, ADR-0055):
+	//
+	//  1. Four-class empirical: when >= minSimilarTurnSamples recent
+	//     same-cohort turns carry the ADR-051 four-class capture, the band
+	//     is the empirical P50–P90 of those turns' KNOWN costs (each priced
+	//     via pricing.Table.FourClassCost — cache classes included, the
+	//     ~6x cache-blind under-forecast corrected by construction).
+	//  2. Two-class token-band spread (EstimateTurnCost): the cold-start
+	//     fallback below the sample gate, unchanged.
+	//
+	// CostRange.Source records which estimator produced the band; both are
+	// uncalibrated estimates and every consumer keeps labeling them so.
 	modelID, effort := s.sessionIdentity(ctx, req.SessionID)
 	var costEstimate *pricing.CostRange
-	if tokenForecast.TokensP50 > 0 || tokenForecast.TokensP90 > 0 {
+	similarCosts, err := s.Source.RecentSimilarTurnCosts(ctx, req.SessionID)
+	if err != nil {
+		return pipelineResult{}, fmt.Errorf("evaluation: load similar turn costs: %w", err)
+	}
+	if len(similarCosts.SamplesUSD) >= minSimilarTurnSamples {
+		q := predictor.EmpiricalQuantiles(similarCosts.SamplesUSD)
+		model := ""
+		if modelID != nil {
+			model = *modelID
+		}
+		_, family := s.pricingTable().Price(model)
+		costEstimate = &pricing.CostRange{
+			LowUSD:      q.P50,
+			HighUSD:     q.P90,
+			ModelFamily: family,
+			Source:      pricing.SourceFourClassEmpirical,
+		}
+	} else if tokenForecast.TokensP50 > 0 || tokenForecast.TokensP90 > 0 {
 		model := ""
 		if modelID != nil {
 			model = *modelID

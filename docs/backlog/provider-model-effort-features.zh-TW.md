@@ -6,7 +6,7 @@
 
 | 欄位 | 值 |
 |---|---|
-| 狀態 | **Phase 0–1 已落地**（2026-07-14）——擷取（#20 Phase 0）與 cohort 篩選（ADR-047）已上線；**Phase 2–3 待辦**（經驗校準，卡在 #11 資料；Codex adapter 接線） |
+| 狀態 | **Phase 0–1 已落地**（2026-07-14）；**Phase 2 部分落地**（2026-07-28，ADR-0055——token 分位數＋成本軸已於執行期生效；quota 差值待辦）；**Phase 3 待辦**（Codex adapter 接線） |
 | 追蹤 | Issue [#20](https://github.com/huaiche94/auspex/issues/20)；排序決策見 `docs/DECISION_LOG.md` D-10 |
 | 起源 | Owner 於 2026-07-13 提出的要求：「這個專案是否有考慮到不同家使用 claude(model, effort), codex(model, reasoning, speed) 當作參數來做預測公式/模型」——稽核後發現答案是*沒有*，本文件即為對應的 todo |
 | 相關 | `Auspex_ADD.md` §15.2/§15.3、ADR-041（forecast 層）、ADR-043（multi-resource runway）、DECISION_LOG D-02（第二個 provider 這條線已延後）、issue #13、#11 |
@@ -57,10 +57,10 @@ Prediction 管線（Scope → Token Forecast → Quota Forecast → Risk，ADR-0
   - [x] `predictions` 資料列持久化 `(provider, model_id, model_family, effort)`——migration 0046，於 EvaluateTurn 當下、依 session 最新觀測到的身分標記；若從未被觀測到則為 NULL。
   - [x] Forecast card 的成本估計會解析出已標記 model 所屬的價格 family（fable/mythos/opus/sonnet/haiku——fable/mythos family 與現行世代 opus 的價格已加入預設價目表），CostRange 標籤也會如實標示；只有在身分從未被觀測到時，才會退回 DefaultFamily。
 - [x] **Phase 1 — cohort 篩選**（已於 2026-07-14 落地，ADR-047）：`RecentSimilarTurnTokens` 實作了 §3.4 的後備階梯（provider+family+effort → provider+family → provider → session-recent，由第一個滿足 §15.2 ≥8 門檻的 rung 給出答案；turn 端未被標記的 rung 會被跳過，絕不會被當作空集合也算相符），並回傳究竟是哪個 rung 給出答案；forecaster 對每一個經驗基準都會發出一個 `TOKEN_COHORT_*` reason code。Usage observation 現在帶有 `model_id`/`effort` 的 payload 標記（observation 粒度的擷取——這是 Phase 0 事件標記所遺漏的樣本端那一半）。Task class ＋ repository 仍誠實地被排除在此階梯之外（在樣本介面上依然缺席）；依 ADR-047 的「誠實範圍聲明」，在出現 total-token payload 欄位之前，此階梯處於休眠狀態。
-- [ ] **Phase 2 — 經驗校準**（受阻於 Phase 0 ＋ #11 的資料）：
+- [ ] **Phase 2 — 經驗校準**（2026-07-28 部分落地，ADR-0055——#11 的資料門檻已有兩個 cohort 通過）：
   - [ ] 以逐 cohort 的 quota 差值取代 `coldstart.go` 中的常數（ADD §15.3 步驟 5）。
-  - [ ] 逐 model/effort 的 token 分位數，餵入倍率模型，或在樣本數足夠時逐 cohort 取代該模型。
-  - [ ] 逐 model 的價目表成為一項 *forecast* 輸入（ADR-043／#13 的成本軸），而不只是渲染時的顯示用途。
+  - [x] 逐 model/effort 的 token 分位數，餵入倍率模型，或在樣本數足夠時逐 cohort 取代該模型——ADR-0055：階梯現在同時讀取兩個 turn 級生產者（managed usage 事件＋ADR-051 的 Stop-hook 捕捉），配合 per-turn 去重與候選池稀釋預過濾，>= 8 的經驗基準在真實資料庫上啟動；cold-start 常數只服務冷資料庫與無法匹配的 cohort。
+  - [x] 逐 model 的價目表成為一項 *forecast* 輸入（ADR-043／#13 的成本軸），而不只是渲染時的顯示用途——ADR-0055：cohort 過門檻時，帶為同 cohort turn 已知四類成本的經驗 P50–P90（`Source = "four-class-empirical"`，migration 0064 持久化）。
 - [ ] **Phase 3 — codex adapter 接線**：D-02 延後的第二個 provider 這條線；將 codex（model、reasoning、speed）對應進正規化三元組，並驗證 cohort 機制在非 claude provider 上依然成立。
 
 ## 5. 驗收標準（用於結案 #20）

@@ -631,6 +631,207 @@ func TestSQLDataSource_RecentSimilarTurnTokens_UnlabeledTurnSkipsIdentityRungs(t
 	}
 }
 
+// insertTurnCompletedUsage inserts a provider.turn.completed event the way
+// the Stop hook's transcript capture emits it (ADR-051): events.provider
+// and turn_id populated, the payload carrying the four token classes,
+// their input+output total, and identity labels. The second producer the
+// ladder reads since ADR-0055 (#42).
+func insertTurnCompletedUsage(t *testing.T, db *sqlite.DB, eventID, sessionID, turnID, occurredAt string, payload map[string]any) {
+	t.Helper()
+	b, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	exec(t, db, `
+		INSERT INTO events (event_id, schema_version, event_type, occurred_at, observed_at, source, provider, session_id, turn_id, payload_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		eventID, "auspex.event.v1", "provider.turn.completed", occurredAt, occurredAt, "hook", "claude", sessionID, turnID, string(b),
+	)
+}
+
+// fourClassPayload builds the ADR-051 turn.completed token payload: four
+// classes, the input+output total pin, and identity labels.
+func fourClassPayload(input, creation, read, output float64, modelID, effort string) map[string]any {
+	return map[string]any{
+		"input_tokens":                input,
+		"cache_creation_input_tokens": creation,
+		"cache_read_input_tokens":     read,
+		"output_tokens":               output,
+		"total_tokens":                input + output,
+		"model_id":                    modelID,
+		"effort":                      effort,
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_TurnCompletedEventsFeedLadder(t *testing.T) {
+	// The #42 fix (ADR-0055): hook-captured provider.turn.completed events
+	// are cohort candidates — a database with ONLY native hook telemetry
+	// (zero managed runs) reaches the identity rungs.
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	setSessionIdentity(t, db, ids.sessionID, "claude-fable-5", "high")
+	for i := 0; i < 8; i++ {
+		insertTurnCompletedUsage(t, db, fmt.Sprintf("ev-tc-%d", i), "other-session-a", fmt.Sprintf("turn-tc-%d", i),
+			fmt.Sprintf("2026-07-12T01:%02d:00Z", i),
+			fourClassPayload(1_000, 2_000, 500_000, 4_000, "claude-fable-5", "high"))
+	}
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if similar.Rung != features.CohortRungModelEffort {
+		t.Fatalf("rung = %q, want %q (hook-captured turns must reach the exact cohort rung)", similar.Rung, features.CohortRungModelEffort)
+	}
+	if len(similar.Samples) != 8 {
+		t.Fatalf("len(samples) = %d, want 8", len(similar.Samples))
+	}
+	for _, s := range similar.Samples {
+		if s != 5_000 { // total_tokens = input + output, never the cache classes
+			t.Fatalf("samples = %v, want every sample 5000 (the payload's own total)", similar.Samples)
+		}
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnTokens_SameTurnDedupNewestWins(t *testing.T) {
+	// A re-entrant Stop re-captures the same turn: one candidate per turn,
+	// newest accounting wins (the export's latest-wins rule, mirrored).
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	insertTurnCompletedUsage(t, db, "ev-first", ids.sessionID, "turn-1", "2026-07-12T00:01:00Z",
+		fourClassPayload(1_000, 0, 0, 3_000, "claude-fable-5", "high"))
+	insertTurnCompletedUsage(t, db, "ev-recapture", ids.sessionID, "turn-1", "2026-07-12T00:05:00Z",
+		fourClassPayload(2_000, 0, 0, 7_000, "claude-fable-5", "high"))
+	src := evaluation.NewSQLDataSource(db)
+
+	similar, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if len(similar.Samples) != 1 {
+		t.Fatalf("len(samples) = %d, want 1 (same turn_id must not count twice)", len(similar.Samples))
+	}
+	if similar.Samples[0] != 9_000 {
+		t.Errorf("sample = %v, want 9000 (the newest re-capture, not the stale first accounting)", similar.Samples[0])
+	}
+}
+
+// --- RecentSimilarTurnCosts (#66 item b, ADR-0055) ---------------------------
+
+func TestSQLDataSource_RecentSimilarTurnCosts_ExactCohortRungAnswers(t *testing.T) {
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	setSessionIdentity(t, db, ids.sessionID, "claude-fable-5", "high")
+	// Fable list rates: $10/MTok in, $50/MTok out; cache write 1.25x in,
+	// cache read 0.10x in. Each seeded turn prices to exactly $4.00:
+	//   100k fresh ($1) + 80k creation ($1) + 1M read ($1) + 20k out ($1).
+	for i := 0; i < 8; i++ {
+		insertTurnCompletedUsage(t, db, fmt.Sprintf("ev-cost-%d", i), "other-session-a", fmt.Sprintf("turn-cost-%d", i),
+			fmt.Sprintf("2026-07-12T01:%02d:00Z", i),
+			fourClassPayload(100_000, 80_000, 1_000_000, 20_000, "claude-fable-5", "high"))
+	}
+	src := evaluation.NewSQLDataSource(db)
+
+	costs, err := src.RecentSimilarTurnCosts(context.Background(), domain.SessionID(ids.sessionID))
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnCosts: %v", err)
+	}
+	if costs.Rung != features.CohortRungModelEffort {
+		t.Fatalf("rung = %q, want %q", costs.Rung, features.CohortRungModelEffort)
+	}
+	if len(costs.SamplesUSD) != 8 {
+		t.Fatalf("len(samples) = %d, want 8", len(costs.SamplesUSD))
+	}
+	for _, s := range costs.SamplesUSD {
+		if s < 3.999 || s > 4.001 {
+			t.Fatalf("samples = %v, want every sample $4.00 (four-class explicit-cache pricing)", costs.SamplesUSD)
+		}
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnCosts_NeverAnswersAcrossFamilies(t *testing.T) {
+	// Dollar samples are family-priced: when both model-bearing rungs
+	// starve, the cost ladder returns empty — never the provider-wide
+	// cross-family blend the token ladder is allowed.
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	setSessionIdentity(t, db, ids.sessionID, "claude-opus-4-8", "high")
+	for i := 0; i < 8; i++ {
+		insertTurnCompletedUsage(t, db, fmt.Sprintf("ev-haiku-%d", i), "other-session-a", fmt.Sprintf("turn-haiku-%d", i),
+			fmt.Sprintf("2026-07-12T01:%02d:00Z", i),
+			fourClassPayload(100_000, 80_000, 1_000_000, 20_000, "claude-haiku-4-5", "high"))
+	}
+	src := evaluation.NewSQLDataSource(db)
+
+	costs, err := src.RecentSimilarTurnCosts(context.Background(), domain.SessionID(ids.sessionID))
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnCosts: %v", err)
+	}
+	if len(costs.SamplesUSD) != 0 {
+		t.Fatalf("samples = %v, want empty (haiku samples must never price an opus turn's band)", costs.SamplesUSD)
+	}
+	if costs.Rung != features.CohortRungSession {
+		t.Errorf("rung = %q, want %q (the most conservative claim when no cohort answers)", costs.Rung, features.CohortRungSession)
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnCosts_MissingClassesSupplyNoSample(t *testing.T) {
+	// Pre-ADR-051 captures carry a total but no cache classes: they still
+	// feed the token ladder but must never be priced with fabricated zero
+	// cache classes (unknown is not zero).
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	setSessionIdentity(t, db, ids.sessionID, "claude-fable-5", "high")
+	for i := 0; i < 7; i++ {
+		insertTurnCompletedUsage(t, db, fmt.Sprintf("ev-4c-%d", i), "other-session-a", fmt.Sprintf("turn-4c-%d", i),
+			fmt.Sprintf("2026-07-12T01:%02d:00Z", i),
+			fourClassPayload(100_000, 80_000, 1_000_000, 20_000, "claude-fable-5", "high"))
+	}
+	// The 8th candidate has a total but no four-class decomposition.
+	insertTurnCompletedUsage(t, db, "ev-pre-adr051", "other-session-a", "turn-pre-adr051", "2026-07-12T01:07:00Z",
+		map[string]any{"total_tokens": 120_000.0, "model_id": "claude-fable-5", "effort": "high"})
+	src := evaluation.NewSQLDataSource(db)
+
+	costs, err := src.RecentSimilarTurnCosts(context.Background(), domain.SessionID(ids.sessionID))
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnCosts: %v", err)
+	}
+	if len(costs.SamplesUSD) != 0 {
+		t.Fatalf("samples = %v, want empty (7 priceable turns is below the gate; the classless 8th must not be priced)", costs.SamplesUSD)
+	}
+
+	tokens, err := src.RecentSimilarTurnTokens(context.Background(), domain.SessionID(ids.sessionID), features.TaskClassBugfixLocal)
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnTokens: %v", err)
+	}
+	if tokens.Rung != features.CohortRungModelEffort || len(tokens.Samples) != 8 {
+		t.Errorf("token ladder rung=%q len=%d, want %q/8 (the classless turn still supplies its total-token sample)",
+			tokens.Rung, len(tokens.Samples), features.CohortRungModelEffort)
+	}
+}
+
+func TestSQLDataSource_RecentSimilarTurnCosts_UnlabeledTurnHasNoCostCohort(t *testing.T) {
+	// No observed identity: an unlabeled turn cannot join a family-priced
+	// cost cohort (unknown is not zero) — empty, never provider-wide.
+	db := openMigratedDB(t)
+	ids := seedRepoWorktreeSessionTask(t, db)
+	for i := 0; i < 8; i++ {
+		insertTurnCompletedUsage(t, db, fmt.Sprintf("ev-unl-%d", i), "other-session-a", fmt.Sprintf("turn-unl-%d", i),
+			fmt.Sprintf("2026-07-12T01:%02d:00Z", i),
+			fourClassPayload(100_000, 80_000, 1_000_000, 20_000, "claude-fable-5", "high"))
+	}
+	src := evaluation.NewSQLDataSource(db)
+
+	costs, err := src.RecentSimilarTurnCosts(context.Background(), domain.SessionID(ids.sessionID))
+	if err != nil {
+		t.Fatalf("RecentSimilarTurnCosts: %v", err)
+	}
+	if len(costs.SamplesUSD) != 0 {
+		t.Errorf("samples = %v, want empty for an identity-less turn", costs.SamplesUSD)
+	}
+}
+
 // --- Quota -----------------------------------------------------------------
 
 func TestSQLDataSource_Quota_NoEventsIsEmpty(t *testing.T) {

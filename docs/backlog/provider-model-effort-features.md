@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Phases 0–1 landed** (2026-07-14) — capture (#20 Phase 0) and cohort filtering (ADR-047) shipped; **Phases 2–3 remain** (empirical calibration, blocked on #11 data; Codex adapter wiring) |
+| Status | **Phases 0–1 landed** (2026-07-14); **Phase 2 partially landed** (2026-07-28, ADR-0055 — token quantiles + cost axis live at runtime; quota deltas remain); **Phase 3 remains** (Codex adapter wiring) |
 | Tracking | Issue [#20](https://github.com/huaiche94/auspex/issues/20); ordering decision in `docs/DECISION_LOG.md` D-10 |
 | Origin | Owner request, 2026-07-13: "這個專案是否有考慮到不同家使用 claude(model, effort), codex(model, reasoning, speed) 當作參數來做預測公式/模型" — audit found the answer is *no*, this document is the todo |
 | Related | `Auspex_ADD.md` §15.2/§15.3, ADR-041 (forecast layer), ADR-043 (multi-resource runway), DECISION_LOG D-02 (second-provider line deferred), issues #13, #11 |
@@ -116,13 +116,22 @@ the implementation.
   the ladder (still absent from the sample surface); the ladder is
   dormant until a total-token payload field exists, per ADR-047's
   "honest scope".
-- [ ] **Phase 2 — empirical calibration** (blocked on Phase 0 + #11 data):
+- [ ] **Phase 2 — empirical calibration** (partially landed 2026-07-28,
+  ADR-0055 — the #11 data gate passed for two cohorts):
   - [ ] Per-cohort quota deltas replacing `coldstart.go` constants
         (ADD §15.3 step 5).
-  - [ ] Per-model/effort token quantiles feeding the multiplier model, or
-        replacing it per cohort where samples suffice.
-  - [ ] Per-model price table becomes a *forecast* input (cost axis of
-        ADR-043 / #13), not just a render-time display.
+  - [x] Per-model/effort token quantiles feeding the multiplier model, or
+        replacing it per cohort where samples suffice — ADR-0055: the
+        ladder now reads BOTH turn-exact producers (managed usage events
+        + ADR-051 Stop-hook capture) with per-turn dedup and a
+        pool-dilution prefilter, so the >= 8 empirical base activates on
+        real databases; the cold-start constant serves only cold
+        databases and unmatched cohorts.
+  - [x] Per-model price table becomes a *forecast* input (cost axis of
+        ADR-043 / #13), not just a render-time display — ADR-0055: the
+        band is the empirical P50–P90 of same-cohort turns' known
+        four-class costs (`Source = "four-class-empirical"`, persisted
+        in migration 0064) when the cohort passes the gate.
 - [ ] **Phase 3 — codex adapter wiring**: the D-02-deferred second-provider
   line; map codex (model, reasoning, speed) into the normalized triple and
   validate that cohort mechanics hold for a non-claude provider.

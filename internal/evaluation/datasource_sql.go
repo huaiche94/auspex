@@ -614,20 +614,31 @@ func countUnresolvedBlockers(nodes []progress.Node, edges []progress.Edge, curre
 // satisfy the interface) but not used to filter, documented here rather
 // than silently ignored, exactly as before this ladder existed.
 //
-// Sample supply (issue #11): managed one-shot runs (`auspex run`) are
-// the total_tokens producers — internal/telemetry/claude's
-// NormalizeManagedRun stamps each run's turn-exact usage event with
-// total_tokens (input + output from the provider's own result line) and
-// a model_id label, exactly the payload shape this ladder reads, so the
-// once-dormant machinery here now answers from real data with no change
-// on this side (the dormant-machinery contract paying off as designed).
-// The statusline ingest path still carries NO per-turn token figure (its
-// usage snapshots are session-cumulative cost/duration), so native
-// hook-driven turns contribute nothing: on a database with fewer than
-// minSimilarTurnSamples managed-run events, every rung starves and the
-// method lands on the session rung — RuleTokenForecaster's
-// >= MinSimilarSamples gate turns that into the cold-start default,
-// exactly the pre-#11 behavior.
+// Sample supply (issue #11, widened by ADR-0055 for #42): TWO producers
+// stamp turn-exact token accounting today, and this ladder reads both —
+// the same pair the calibration export's token-actual join reads
+// (internal/retention's tokenActualEventTypes), so the samples the
+// forecast learns from and the actuals calibration measures against can
+// never diverge by event-type selection:
+//
+//   - provider.usage.observed: managed one-shot runs (`auspex run`) —
+//     internal/telemetry/claude's NormalizeManagedRun stamps each run's
+//     usage event with total_tokens (input + output from the provider's
+//     own result line) and a model_id label.
+//   - provider.turn.completed: native hook turns — the Stop hook's
+//     transcript capture (ADR-051) folds the turn's exact per-API-call
+//     usage onto the turn event, same field vocabulary, same
+//     total_tokens = input + output semantic pin.
+//
+// A re-entrant Stop re-captures the SAME turn after more work happened,
+// so a turn can carry several token-bearing events; candidates are
+// deduplicated per turn_id, newest accounting wins (the export's own
+// latest-wins rule, mirrored). Before ADR-0055 only usage.observed was
+// read, so hook-driven turns contributed nothing and the ladder starved
+// to the session rung on any database without >= minSimilarTurnSamples
+// managed runs — the #42 cold-start constant, now cleared by the very
+// telemetry ADR-051 started capturing. The statusline usage snapshot
+// still never joins here: it carries no turn_id and no per-turn tokens.
 func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID domain.SessionID, _ features.TaskClass) (features.SimilarTurnTokens, error) {
 	q := sqlite.QuerierFromContext(ctx, s.DB)
 
@@ -688,15 +699,103 @@ func (s *SQLDataSource) RecentSimilarTurnTokens(ctx context.Context, sessionID d
 	return features.SimilarTurnTokens{Samples: samples, Rung: features.CohortRungSession}, nil
 }
 
-// cohortCandidate is one provider-wide usage observation eligible for
-// cohort matching: its total-token sample plus the identity labels it
-// was stamped with at observation time. Unlabeled candidates (family/
-// effort empty) still belong to the provider rung — the label absence
-// excludes them from the narrower rungs only.
+// RecentSimilarTurnCosts returns per-turn four-class USD cost samples for
+// the evaluated turn's cohort (#66 item b, ADR-0055): each candidate
+// turn's captured four token classes (ADR-051) priced under that turn's
+// OWN model with the explicit-cache formula (pricing.Table.FourClassCost)
+// — known past costs, sampled so the pipeline can band them empirically.
+//
+// The ladder here is RecentSimilarTurnTokens' ladder restricted to its
+// model-bearing rungs (model+effort, then model family): a dollar sample
+// is priced under a specific family's rates, so the provider-wide and
+// session rungs — which may mix families — never answer; a cross-family
+// dollar blend would be a meaningless band, not a conservative fallback.
+// A turn whose own family is unresolved gets no cost cohort at all. No
+// qualifying rung returns empty SamplesUSD with the session rung label
+// (the most conservative claim, mirroring cohortRungReason's default) and
+// the consumer keeps the two-class price-spread band.
+//
+// Candidates without the full four-class decomposition (pre-ADR-051
+// capture, failed-open transcript reads) supply no cost sample — pricing
+// a turn with fabricated zero cache classes would understate it by the
+// very ~6x cache-blind factor this method exists to correct (unknown is
+// not zero).
+func (s *SQLDataSource) RecentSimilarTurnCosts(ctx context.Context, sessionID domain.SessionID) (features.SimilarTurnCosts, error) {
+	q := sqlite.QuerierFromContext(ctx, s.DB)
+
+	none := features.SimilarTurnCosts{Rung: features.CohortRungSession}
+	provider, turnFamily, turnEffort := s.turnCohortIdentity(ctx, sessionID)
+	if provider == "" || turnFamily == "" {
+		return none, nil
+	}
+	pool, err := s.cohortCandidates(ctx, q, provider)
+	if err != nil {
+		return features.SimilarTurnCosts{}, err
+	}
+
+	rungs := []struct {
+		id     features.SimilarTurnCohortRung
+		usable bool
+		match  func(c cohortCandidate) bool
+	}{
+		{
+			id:     features.CohortRungModelEffort,
+			usable: turnEffort != "",
+			match:  func(c cohortCandidate) bool { return c.family == turnFamily && c.effort == turnEffort },
+		},
+		{
+			id:     features.CohortRungModelFamily,
+			usable: true, // turnFamily != "" already established above
+			match:  func(c cohortCandidate) bool { return c.family == turnFamily },
+		},
+	}
+	for _, r := range rungs {
+		if !r.usable {
+			continue
+		}
+		var samples []float64
+		for _, c := range pool {
+			if len(samples) == recentSimilarTurnTokensLimit {
+				break
+			}
+			if !c.hasFourClass || !r.match(c) {
+				continue
+			}
+			breakdown, ok := s.pricingTable().FourClassCost(c.modelID, c.input, c.cacheCreation, c.cacheRead, c.output)
+			if !ok {
+				continue // negative class count — corrupt capture, never priced
+			}
+			samples = append(samples, breakdown.TotalUSD)
+		}
+		if len(samples) >= minSimilarTurnSamples {
+			// Sorted for determinism, as the token rungs above.
+			sort.Float64s(samples)
+			return features.SimilarTurnCosts{SamplesUSD: samples, Rung: r.id}, nil
+		}
+	}
+	return none, nil
+}
+
+// cohortCandidate is one turn's token accounting eligible for cohort
+// matching: its total-token sample plus the identity labels it was
+// stamped with at capture time. Unlabeled candidates (family/effort
+// empty) still belong to the provider rung — the label absence excludes
+// them from the narrower rungs only.
+//
+// The four-class fields carry the turn's cache-aware token decomposition
+// (ADR-051 capture) for cost sampling (#66 item b): hasFourClass is true
+// only when ALL four classes were present on the payload — a turn whose
+// capture predates ADR-051, or whose transcript read failed open, must
+// not be priced with fabricated zeros (unknown is not zero). Such a turn
+// still supplies its total-token sample when it has one.
 type cohortCandidate struct {
-	tokens float64
-	family string
-	effort string
+	tokens  float64
+	family  string
+	effort  string
+	modelID string
+
+	input, cacheCreation, cacheRead, output int64
+	hasFourClass                            bool
 }
 
 // turnCohortIdentity resolves the evaluated turn's cohort identity from
@@ -726,13 +825,26 @@ func (s *SQLDataSource) turnCohortIdentity(ctx context.Context, sessionID domain
 }
 
 // cohortCandidates fetches the provider-wide candidate pool: recent
-// usage.observed events for provider (across all sessions), keeping only
-// rows that actually carry a total_tokens sample, each labeled with its
-// payload-stamped model family and effort.
+// token-bearing events for provider (across all sessions, both producer
+// event types — see RecentSimilarTurnTokens' sample-supply note), keeping
+// only rows that actually carry a total_tokens sample, each labeled with
+// its payload-stamped model family and effort. One candidate per turn:
+// the scan runs newest-first and the first token-bearing event seen for a
+// turn_id wins — the newest accounting, mirroring the calibration
+// export's latest-wins rule for re-captured turns (tie broken by
+// insertion order via the rowid sort, so re-runs are deterministic).
 func (s *SQLDataSource) cohortCandidates(ctx context.Context, q sqlite.Querier, provider string) ([]cohortCandidate, error) {
+	// The LIKE clause is a coarse SQL prefilter, not the decision:
+	// token-BEARING rows are a small minority of these event types (every
+	// statusline snapshot is a usage.observed with no per-turn tokens, and
+	// a turn.completed without transcript capture carries none), so
+	// without it the newest-first LIMIT fills up with tokenless rows and
+	// the pool starves regardless of how much real telemetry exists.
+	// parseCohortCandidate still decides from the decoded JSON.
 	rows, err := q.QueryContext(ctx, `
-		SELECT payload_json FROM events
-		WHERE provider = ? AND event_type = 'provider.usage.observed'
+		SELECT turn_id, payload_json FROM events
+		WHERE provider = ? AND event_type IN ('provider.usage.observed', 'provider.turn.completed')
+		  AND payload_json LIKE '%"total_tokens"%'
 		ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
 		provider, cohortCandidatePoolLimit,
 	)
@@ -742,29 +854,28 @@ func (s *SQLDataSource) cohortCandidates(ctx context.Context, q sqlite.Querier, 
 	defer func() { _ = rows.Close() }()
 
 	var pool []cohortCandidate
+	seenTurn := make(map[string]bool)
 	for rows.Next() {
+		var turnID sql.NullString
 		var payloadJSON string
-		if err := rows.Scan(&payloadJSON); err != nil {
+		if err := rows.Scan(&turnID, &payloadJSON); err != nil {
 			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: scan cohort row: %w", err)
 		}
-		var payload map[string]any
-		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
-			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: decode cohort payload: %w", err)
+		c, ok, err := parseCohortCandidate(payloadJSON, s.pricingTable())
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: %w", err)
 		}
-		v, ok := payload["total_tokens"]
 		if !ok {
 			continue
 		}
-		tokens, ok := toFloat64(v)
-		if !ok {
-			continue
-		}
-		c := cohortCandidate{tokens: tokens}
-		if modelID, ok := payload["model_id"].(string); ok {
-			_, c.family = s.pricingTable().Price(modelID)
-		}
-		if effort, ok := payload["effort"].(string); ok {
-			c.effort = effort
+		// Dedup per turn AFTER the token filter: an earlier-scanned event
+		// without token accounting must not shadow the turn's real one. A
+		// row with no turn_id has no dedup key and stands alone.
+		if turnID.Valid && turnID.String != "" {
+			if seenTurn[turnID.String] {
+				continue
+			}
+			seenTurn[turnID.String] = true
 		}
 		pool = append(pool, c)
 	}
@@ -774,13 +885,67 @@ func (s *SQLDataSource) cohortCandidates(ctx context.Context, q sqlite.Querier, 
 	return pool, nil
 }
 
+// parseCohortCandidate decodes one token-bearing event payload into a
+// cohortCandidate. ok=false (with nil error) for a payload that carries
+// no usable total_tokens — not an event this ladder can learn from.
+func parseCohortCandidate(payloadJSON string, table *pricing.Table) (cohortCandidate, bool, error) {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+		return cohortCandidate{}, false, fmt.Errorf("decode cohort payload: %w", err)
+	}
+	v, ok := payload["total_tokens"]
+	if !ok {
+		return cohortCandidate{}, false, nil
+	}
+	tokens, ok := toFloat64(v)
+	if !ok {
+		return cohortCandidate{}, false, nil
+	}
+	c := cohortCandidate{tokens: tokens}
+	if modelID, ok := payload["model_id"].(string); ok {
+		c.modelID = modelID
+		_, c.family = table.Price(modelID)
+	}
+	if effort, ok := payload["effort"].(string); ok {
+		c.effort = effort
+	}
+	// Four-class decomposition for cost sampling: all four classes or
+	// nothing (unknown is not zero — see cohortCandidate's doc comment).
+	input, okIn := payloadFloat(payload, "input_tokens")
+	creation, okCr := payloadFloat(payload, "cache_creation_input_tokens")
+	read, okRd := payloadFloat(payload, "cache_read_input_tokens")
+	output, okOut := payloadFloat(payload, "output_tokens")
+	if okIn && okCr && okRd && okOut {
+		c.input, c.cacheCreation, c.cacheRead, c.output = int64(input), int64(creation), int64(read), int64(output)
+		c.hasFourClass = true
+	}
+	return c, true, nil
+}
+
+// payloadFloat reads a numeric payload key; ok=false when absent or
+// non-numeric.
+func payloadFloat(payload map[string]any, key string) (float64, bool) {
+	v, ok := payload[key]
+	if !ok {
+		return 0, false
+	}
+	return toFloat64(v)
+}
+
 // sessionRecentTurnTokens is the pre-ladder cohort, verbatim: recent
-// usage.observed total-token observations for this exact session,
-// regardless of identity labels.
+// total-token observations for this exact session, regardless of
+// identity labels — read from both producer event types with the same
+// per-turn latest-wins dedup as cohortCandidates (ADR-0055), so a
+// session's own hook-captured turns feed its fallback rung too.
 func (s *SQLDataSource) sessionRecentTurnTokens(ctx context.Context, q sqlite.Querier, sessionID domain.SessionID) ([]float64, error) {
+	// Same coarse SQL prefilter as cohortCandidates (see its comment):
+	// statusline snapshots dominate a session's recent events and carry no
+	// per-turn tokens; without the prefilter the LIMIT window fills with
+	// them and the session rung starves.
 	rows, err := q.QueryContext(ctx, `
-		SELECT payload_json FROM events
-		WHERE session_id = ? AND event_type = 'provider.usage.observed'
+		SELECT turn_id, payload_json FROM events
+		WHERE session_id = ? AND event_type IN ('provider.usage.observed', 'provider.turn.completed')
+		  AND payload_json LIKE '%"total_tokens"%'
 		ORDER BY occurred_at DESC, rowid DESC LIMIT ?`,
 		string(sessionID), recentSimilarTurnTokensLimit,
 	)
@@ -790,20 +955,32 @@ func (s *SQLDataSource) sessionRecentTurnTokens(ctx context.Context, q sqlite.Qu
 	defer func() { _ = rows.Close() }()
 
 	var out []float64
+	seenTurn := make(map[string]bool)
 	for rows.Next() {
+		var turnID sql.NullString
 		var payloadJSON string
-		if err := rows.Scan(&payloadJSON); err != nil {
+		if err := rows.Scan(&turnID, &payloadJSON); err != nil {
 			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: scan event row: %w", err)
 		}
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
 			return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: decode payload: %w", err)
 		}
-		if v, ok := payload["total_tokens"]; ok {
-			if f, ok := toFloat64(v); ok {
-				out = append(out, f)
-			}
+		v, ok := payload["total_tokens"]
+		if !ok {
+			continue
 		}
+		f, ok := toFloat64(v)
+		if !ok {
+			continue
+		}
+		if turnID.Valid && turnID.String != "" {
+			if seenTurn[turnID.String] {
+				continue
+			}
+			seenTurn[turnID.String] = true
+		}
+		out = append(out, f)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("evaluation: RecentSimilarTurnTokens: %w", err)

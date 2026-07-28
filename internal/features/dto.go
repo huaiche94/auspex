@@ -122,3 +122,23 @@ type SimilarTurnTokens struct {
 	Samples []float64
 	Rung    SimilarTurnCohortRung
 }
+
+// SimilarTurnCosts is RecentSimilarTurnCosts' result (#66 item b,
+// ADR-0055): per-turn four-class USD cost samples for recent turns
+// matching the evaluated turn's cohort, plus which ladder rung selected
+// them. Each sample is one past turn's captured four token classes priced
+// under that turn's own model with the explicit-cache formula
+// (pricing.Table.FourClassCost) — a KNOWN past cost, not a forecast; the
+// consumer turns the sample set into an empirical cost band.
+//
+// Unlike SimilarTurnTokens, only the model-bearing rungs (model+effort,
+// model family) ever answer: a dollar sample is priced under a specific
+// family's rates, so mixing families in one sample set (the provider and
+// session rungs) would average structurally different price levels into a
+// meaningless band. No qualifying rung means empty SamplesUSD — the
+// consumer falls back to the two-class price-spread band, never a
+// cross-family blend.
+type SimilarTurnCosts struct {
+	SamplesUSD []float64
+	Rung       SimilarTurnCohortRung
+}

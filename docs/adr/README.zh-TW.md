@@ -30,6 +30,7 @@ ADR-001（產品名稱，已由 ADR-045 取代）到 ADR-040（作業系統喚�
 | [`0050`](0050-hook-subcommand-kebab-case.md) | Hook 子指令 argv 採 kebab-case（正式化已出貨的 CLI，取代 ADD 附錄 E.3 的 PascalCase）；provider 的 `hook_event_name` 與 settings.json matcher key 維持 PascalCase（issue #61，REC-03）。 |
 | [`0053`](0053-token-forecast-input-output-split.md) | Token 預測在凍結的 `domain.TokenForecast` 上增量新增 input/output 拆分，input 區間在結構上更寬（模型預測 input 較差——Bai et al. 2026 方向）；加寬幅度是受 #11 把關的未校準結構性預設值（issue #65 第一階段）。 |
 | [`0054`](0054-auto-checkpoint-and-run.md) | `CHECKPOINT_AND_RUN` 決策在兩個決策面自動建立 pre-turn checkpoint 對（state + repository），由 `state_checkpointing.on_checkpoint_and_run` 把關（預設啟用），checkpoint 失敗時 fail-open；就此動作取代「僅建議」的定調（issue #116）。 |
+| [`0055`](0055-runtime-empirical-calibration.md) | 執行期經驗校準啟動：ADR-047 cohort 階梯改讀兩個 turn 級生產者（managed usage 事件＋ADR-051 Stop-hook 捕捉），配合 per-turn 去重與候選池稀釋預過濾，>= 8 經驗 token 基準就此生效（#42）；成本帶改為同 cohort turn 已知四類成本的經驗 P50–P90（`Source = "four-class-empirical"`，migration 0064 持久化），門檻以下維持兩類帶（#66 item b）。Calibrated 一律維持 false。 |
 
 相關文件：ADR 會修訂 [`../design/Auspex_ADD.md`](../design/Auspex_ADD.md)
 （ADR 必須陳述的內容定義於 Constitution §3.4）；促成其中多項決策的擁有者

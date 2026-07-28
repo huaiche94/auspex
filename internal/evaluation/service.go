@@ -207,6 +207,15 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 		return app.Evaluation{}, err
 	}
 
+	// Flatten the pipeline's cost band for the prediction row (nil-safe:
+	// a turn with no band persists NULLs across all four columns).
+	var costLow, costHigh *float64
+	var costFamily, costSource *string
+	if result.cost != nil {
+		costLow, costHigh = &result.cost.LowUSD, &result.cost.HighUSD
+		costFamily, costSource = &result.cost.ModelFamily, &result.cost.Source
+	}
+
 	err = s.DB.WithTx(ctx, func(txCtx context.Context) error {
 		if err := insertFeatureVector(txCtx, s.DB, featureVectorRow{
 			TurnID:            req.TurnID,
@@ -256,10 +265,20 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 			// the input interval is structurally wider than the output
 			// interval, an uncalibrated structural default. nil (forecaster
 			// did not split) stays NULL — unknown is not zero.
-			TokenInputP50:   result.tokens.InputTokensP50,
-			TokenInputP90:   result.tokens.InputTokensP90,
-			TokenOutputP50:  result.tokens.OutputTokensP50,
-			TokenOutputP90:  result.tokens.OutputTokensP90,
+			TokenInputP50:  result.tokens.InputTokensP50,
+			TokenInputP90:  result.tokens.InputTokensP90,
+			TokenOutputP50: result.tokens.OutputTokensP50,
+			TokenOutputP90: result.tokens.OutputTokensP90,
+			// #66 item b cost band (migration 0064, ADR-0055): the exact
+			// band the policy stage compared and the card will show —
+			// persisted because the four-class empirical estimator depends
+			// on the cohort's samples at evaluation time, which a later
+			// read-back cannot reproduce. nil (no token forecast and no
+			// cost cohort) stays NULL — unknown is not zero.
+			CostLowUSD:      costLow,
+			CostHighUSD:     costHigh,
+			CostModelFamily: costFamily,
+			CostSource:      costSource,
 			Confidence:      result.risk.OverallRisk.Confidence,
 			Calibrated:      result.risk.OverallRisk.Calibrated,
 			ReasonCodesJSON: predictionReasons,
@@ -303,9 +322,33 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 // components — its ReasonCodes mirrors that same "combine, don't just
 // pick one" discipline for the same reason: overall.ReasonCodes already
 // unions every component's own reason codes, by construction of
-// RuleRiskCombiner).
+// RuleRiskCombiner)...
+//
+// ...with one addition (ADR-0055): the TOKEN forecast's own reason codes
+// are unioned in here, because RuleRiskCombiner derives its components
+// from the token forecast's NUMBERS only, never its ReasonCodes — which
+// silently dropped ADR-047's TOKEN_COHORT_* rung disclosure from every
+// persisted row. That was invisible while the ladder never answered
+// (pre-ADR-0055 it starved on every real database); with the empirical
+// base live, the persisted row must say WHICH cohort rung produced the
+// base the user saw, or calibration cannot stratify by it and a reader
+// sees a leftover PREDICTION_COLD_START (from the retry/progress
+// multipliers' own cold-start) as the whole story.
 func mergedPredictionReasonCodes(result pipelineResult) []domain.ReasonCode {
-	return result.risk.OverallRisk.ReasonCodes
+	merged := make([]domain.ReasonCode, 0,
+		len(result.risk.OverallRisk.ReasonCodes)+len(result.tokens.ReasonCodes))
+	merged = append(merged, result.risk.OverallRisk.ReasonCodes...)
+	merged = append(merged, result.tokens.ReasonCodes...)
+	seen := make(map[domain.ReasonCode]struct{}, len(merged))
+	out := merged[:0]
+	for _, r := range merged {
+		if _, ok := seen[r]; ok {
+			continue
+		}
+		seen[r] = struct{}{}
+		out = append(out, r)
+	}
+	return out
 }
 
 // GetEvaluation implements app.EvaluationService: looks up a previously

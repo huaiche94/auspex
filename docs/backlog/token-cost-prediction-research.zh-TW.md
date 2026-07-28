@@ -136,8 +136,11 @@ turn 的訊號。
   佐證；*幅度*仍待 #11 資料。
 - [ ] **Phase 2 — cache-aware 成本拆解**
   （[#66](https://github.com/huaiche94/auspex/issues/66)；§3.B；ADR-043／
-  #13 的成本軸）：四類 turn 成本搭配各模型 cache 單價表；受阻於尚未擷取
-  每輪 `cache_read`／`cache_creation`（目前僅擷取 `total_tokens`，ADR-047）。
+  #13 的成本軸）：四類 turn 成本搭配各模型 cache 單價表。擷取已由 ADR-051
+  落地；**explicit-cache 的預測側已於 2026-07-28 落地（ADR-0055）**——
+  cohort 過門檻時，出貨的帶即同 cohort turn 已知四類成本的經驗 P50–P90。
+  待辦：implicit-cache 姊妹項（D-02，codex）與任何可取代經驗帶的類別份額
+  *預測*模型。
 - [ ] **Phase 3 — 重複檔案操作 risk factor**
   （[#67](https://github.com/huaiche94/auspex/issues/67)；§3.C）：需要目前
   尚未擷取的 turn 級工具操作遙測（各檔案 view/edit 次數）；再接

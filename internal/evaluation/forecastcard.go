@@ -246,7 +246,23 @@ func (s *Service) ForecastCard(ctx context.Context, id domain.EvaluationID) (For
 		}
 	}
 
-	if card.TokensP50 != nil && card.TokensP90 != nil {
+	// Cost band: the persisted band is authoritative when present
+	// (migration 0064 — the four-class empirical estimator depends on
+	// cohort samples at evaluation time, so recomputing here could show a
+	// DIFFERENT number than the policy stage compared). The legacy
+	// recompute below serves pre-0064 rows only, for which it is exact:
+	// their bands were a deterministic function of (model, P50, P90).
+	switch {
+	case row.CostLowUSD != nil && row.CostHighUSD != nil:
+		cr := pricing.CostRange{LowUSD: *row.CostLowUSD, HighUSD: *row.CostHighUSD}
+		if row.CostModelFamily != nil {
+			cr.ModelFamily = *row.CostModelFamily
+		}
+		if row.CostSource != nil {
+			cr.Source = *row.CostSource
+		}
+		card.Cost = &cr
+	case card.TokensP50 != nil && card.TokensP90 != nil:
 		model := ""
 		if row.ModelID != nil {
 			model = *row.ModelID

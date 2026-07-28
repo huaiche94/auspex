@@ -273,13 +273,27 @@ def cost_coverage(records: list[Record], turns: list[TurnActuals]) -> dict:
     joined = [(r, actuals[r.turn_id]) for r in predicted if r.turn_id in actuals]
 
     within = below = above = 0
+    # Stratified by the band's estimator (cost_source, ADR-0055): the
+    # four-class empirical band and the two-class spread are different
+    # generations — averaging them would hide whether the new estimator
+    # actually contains actuals. A record without the field predates it,
+    # and every such band is two-class by construction.
+    by_source: dict = {}
     for r, actual in joined:
+        source = r.cost_source or "default-price-table"
+        bucket = by_source.setdefault(
+            source, {"joined_turns": 0, "within_band": 0, "below_band": 0, "above_band": 0}
+        )
+        bucket["joined_turns"] += 1
         if actual < r.cost_low_usd:
             below += 1
+            bucket["below_band"] += 1
         elif actual > r.cost_high_usd:
             above += 1
+            bucket["above_band"] += 1
         else:
             within += 1
+            bucket["within_band"] += 1
 
     n = len(joined)
     return {
@@ -290,6 +304,7 @@ def cost_coverage(records: list[Record], turns: list[TurnActuals]) -> dict:
         "below_band": below,
         "above_band": above,
         "containment_rate": (within / n) if n else None,
+        "by_source": by_source,
     }
 
 
@@ -333,7 +348,16 @@ def cost_residual_by_cohort(records: list[Record], turns: list[TurnActuals]) -> 
         upper bound for the cohort.
     A future forecast phase (Phase 3 / #66's cache-aware cost model) is what
     would fold these into the pipeline; this module only fits and REPORTS
-    them — the Go forecast is untouched (capture-before-model)."""
+    them — the Go forecast is untouched (capture-before-model).
+
+    ADR-0055 landed that consumer: the shipped band can now be the
+    four-class empirical estimator (cost_source = "four-class-empirical").
+    This residual measures the TWO-CLASS spread's H specifically (the
+    mechanism the ~7-9x factor describes), so four-class-band rows are
+    excluded here — their containment is reported per-source by
+    cost_coverage instead; folding them in would average two estimator
+    generations into one meaningless factor. Rows without the field
+    predate it and are two-class by construction."""
     actuals: dict = {}
     for t in turns:
         if t.turn_id is None or t.cost_delta_usd is None:
@@ -343,6 +367,8 @@ def cost_residual_by_cohort(records: list[Record], turns: list[TurnActuals]) -> 
     by_cohort: dict = {}
     for r in records:
         if r.cost_low_usd is None or r.cost_high_usd is None:
+            continue
+        if r.cost_source is not None and r.cost_source != "default-price-table":
             continue
         if r.turn_id not in actuals:
             continue
@@ -711,6 +737,17 @@ def render_text(report: dict) -> str:
             lines.append(
                 f"  actual above band (cost under-forecast): {cost_cov['above_band']}"
             )
+            # ADR-0055: the two-class spread and the four-class empirical
+            # band are different estimator generations — containment is
+            # only meaningful per source (a record without the field
+            # predates it; every such band is two-class by construction).
+            for source in sorted(cost_cov.get("by_source", {})):
+                b = cost_cov["by_source"][source]
+                lines.append(
+                    f"  by estimator {source}: within {b['within_band']}/"
+                    f"{b['joined_turns']}, below {b['below_band']}, "
+                    f"above {b['above_band']}"
+                )
         else:
             lines.append("  (no joined turns — containment not computable)")
 

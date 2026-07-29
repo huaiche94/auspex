@@ -64,6 +64,7 @@ func buildTakeaways(turns []turnRecord, labels turnLabels, rep Report) []Takeawa
 		takeawayExpensiveTurns(turns, rep),
 		takeawayModelRightSizing(rep.RightSizing),
 		takeawaySessionCacheChurn(rep.CacheHygiene),
+		takeawayCacheReadShareDrop(rep.CacheHygiene),
 		takeawayQuotaPressure(rep.Quota),
 		takeawayAgentThrash(turns, labels),
 	}
@@ -323,4 +324,36 @@ func orQuestion(s string) string {
 		return "?"
 	}
 	return s
+}
+
+// takeawayCacheReadShareDrop — #146's cache-shape drift hint: the
+// window's cache-read share fell CacheShareDropPP percentage points or
+// more below the pre-window baseline. The analysis names both numbers
+// and the gate, so the reader sees WHY it fired (or why it could not).
+func takeawayCacheReadShareDrop(h CacheHygiene) Takeaway {
+	t := Takeaway{
+		Case:   CaseCacheReadShareDrop,
+		Title:  "Cache-read share dropped",
+		Lesson: "A falling cache-read share means context that used to be served from cache (~1/10th the fresh-input price) is being re-billed fresh — usually a changed prompt prefix, session churn, or frequent compaction.",
+		Action: "Keep long-lived session prefixes stable (system prompt, tool definitions), avoid restarting sessions mid-task, and check the churn-flagged sessions above for compaction thrash.",
+	}
+	switch {
+	case h.ReadSharePercent == nil && h.BaselineReadSharePercent == nil:
+		t.Analysis = fmt.Sprintf("Not enough token-reporting turns in the window or the baseline (gate: %d each) to compare cache-read shares.", CacheShareMinReportingTurns)
+	case h.ReadSharePercent == nil:
+		t.Analysis = fmt.Sprintf("Not enough token-reporting turns in the window (gate: %d) to compute its cache-read share.", CacheShareMinReportingTurns)
+	case h.BaselineReadSharePercent == nil:
+		t.Analysis = fmt.Sprintf("No pre-window baseline with enough token-reporting turns (gate: %d); the window's cache-read share is %.1f%%.", CacheShareMinReportingTurns, *h.ReadSharePercent)
+	default:
+		drop := *h.BaselineReadSharePercent - *h.ReadSharePercent
+		if drop >= CacheShareDropPP {
+			t.Fired = true
+			t.Analysis = fmt.Sprintf("Cache-read share fell to %.1f%% this window from a %.1f%% pre-window baseline (−%.1f pp, threshold %.0f pp).",
+				*h.ReadSharePercent, *h.BaselineReadSharePercent, drop, CacheShareDropPP)
+		} else {
+			t.Analysis = fmt.Sprintf("Cache-read share is %.1f%% vs a %.1f%% baseline — within %.0f pp, no drift flagged.",
+				*h.ReadSharePercent, *h.BaselineReadSharePercent, CacheShareDropPP)
+		}
+	}
+	return t
 }

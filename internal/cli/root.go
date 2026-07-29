@@ -48,7 +48,6 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(
 		newVersionCmd(),
-		newInitCmd(),
 		newHookCmd(),
 		newEvaluateCmd(),
 		newDecisionCmd(),
@@ -86,19 +85,10 @@ func newVersionCmd() *cobra.Command {
 	}
 }
 
-// newInitCmd builds `auspex init` (ADD §10.1 day-one setup flow). Stub:
-// workspace/repository registration depends on internal/app/wiring, not
-// built this phase.
-func newInitCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init",
-		Short: "Initialize Auspex for the current repository",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("init")
-		},
-	}
-}
+// `auspex init` deliberately does not exist: DECISION_LOG D-07 (issue
+// #17, resolved via lazy hook bootstrap) chose idempotent in-hook
+// registration over an explicit init command — and explicitly rejected
+// shipping both. See issue #118 for the removal of the former stub.
 
 // newEvaluateCmd builds the standalone-stub `auspex evaluate` leaf
 // (ADD §9.9 EvaluationService). A stub ONLY on this bare tree —

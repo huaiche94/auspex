@@ -183,7 +183,6 @@ auspex resume                 resume a paused run (verdict via flags)
 auspex scheduler run-once     claim one due wake job without the daemon
 auspex daemon ...             background daemon + authenticated loopback HTTP API
 auspex run ...                one-shot prompt under the managed gate (claude|codex)
-auspex init                   register repo/session — not yet wired (#118)
 auspex status | doctor        session + progress-tree state; capture health
 auspex gc                     tiered telemetry retention (90-day default, ADR-046)
 auspex export                 de-identified datasets for offline analysis

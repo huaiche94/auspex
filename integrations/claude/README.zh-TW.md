@@ -17,8 +17,8 @@ Code 設定中的參考設定。Hooks 採 fail-open：Auspex 端的錯誤絕不�
 工作階段會自我註冊：hooks 會在首次接觸時，以冪等（idempotent）
 方式建立 repository／worktree／session 資料列（issue #17，決策
 D-07「lazy bootstrap（延遲啟動）」），因此除了 hook 串接本身之外，
-不需要其他必要的設定步驟。`auspex init` 也可用來明確註冊目前的
-儲存庫。
+不需要其他必要的設定步驟。Auspex 刻意不提供顯式的 `auspex init`
+指令——D-07 選擇了延遲註冊而非 init 指令（issue #118）。
 
 （本文件最初是 `claude-provider-06` 在 vertical-slice 建置階段的
 前瞻性 stub；以下的命名不一致紀錄之所以仍保留自那個時期，是因為
@@ -128,8 +128,7 @@ ax» <model> │ ◷ weekly ~<pct>% │ context [<bar>] <cur>% (p90 ≤<pct>%) �
 
 `docs/design/Auspex_ADD.md` §22.6（「Compose existing status line」）
 描述了安裝程式應有的行為——讀取任何既有的狀態列指令、將其保存下來，
-並將 Auspex 的 wrapper 輸出與其組合，而非直接覆蓋。`auspex init`
-會註冊目前的儲存庫，但並未實作這項組合／合併步驟。此處的
+並將 Auspex 的 wrapper 輸出與其組合，而非直接覆蓋。此處的
 `hooks.json` 直接將 `statusLine` 設為靜態範例，並未嘗試模擬該
 組合／合併行為，因為靜態範例檔案本質上無法表達「讀取先前已存在的
 內容」——那本質上是安裝時期（install-time）才會發生的邏輯。

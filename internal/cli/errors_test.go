@@ -39,7 +39,6 @@ func TestNotImplementedShape(t *testing.T) {
 // not a stub.
 func TestStubCommandsReturnNotImplemented(t *testing.T) {
 	commands := [][]string{
-		{"init"},
 		{"hook", "claude", "statusline"},
 		{"hook", "claude", "user-prompt-submit"},
 		{"hook", "claude", "stop"},

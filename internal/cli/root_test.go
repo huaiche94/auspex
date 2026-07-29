@@ -12,7 +12,6 @@ func TestRootCommandTreeHasP0Surface(t *testing.T) {
 
 	paths := [][]string{
 		{"version"},
-		{"init"},
 		{"hook", "claude", "statusline"},
 		{"hook", "claude", "user-prompt-submit"},
 		{"hook", "claude", "post-tool-use"},

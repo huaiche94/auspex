@@ -190,6 +190,19 @@ func (s *Service) runPipeline(ctx context.Context, req app.EvaluateTurnRequest) 
 	} else if ok {
 		snapshot.Progress = &progressSnapshotJSON{CriticalPathLength: progFeat.CriticalPathLength}
 	}
+	// #143 spin-gate signal capture (ADR-0057 §5's capture-before-model
+	// slice): via the optional spinSignalSource seam — a DataSource that
+	// does not implement it, or a session with nothing measurable, is an
+	// honest absent field, never zeros.
+	if spinSrc, ok := s.Source.(spinSignalSource); ok {
+		spin, measurable, err := spinSrc.SpinSignals(ctx, req.SessionID, resolved.TaskID)
+		if err != nil {
+			return pipelineResult{}, fmt.Errorf("evaluation: load spin signals: %w", err)
+		}
+		if measurable {
+			snapshot.Spin = &spin
+		}
+	}
 
 	return pipelineResult{
 		scope:    scopeEstimate,

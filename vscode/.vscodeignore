@@ -6,3 +6,7 @@ out/test/**
 tsconfig.json
 node_modules/**
 package-lock.json
+media/icon.svg
+media/README.md
+media/README.zh-TW.md
+**/.DS_Store

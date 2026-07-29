@@ -175,7 +175,7 @@ auspex report                 your usage, mirrored back: spend, tokens by class,
                               model×effort split, cache hygiene, quota incidents,
                               costliest turns (--window 7d, --json)
 auspex evaluate               estimate a prompt before running it (--json)
-auspex decision allow|deny    one-time authorization — not yet wired (#119)
+auspex decision allow|deny    issue or consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
 auspex progress ...           evidence-gated completion; inspect not yet wired
 auspex pause request|cancel   request or cancel a pause (records intent)

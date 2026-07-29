@@ -56,3 +56,28 @@ func TestPolicyConfigSection_MalformedSectionFailsOpenToDefaults(t *testing.T) {
 		t.Error("on decode error the returned value must be the defaults (shadow off)")
 	}
 }
+
+func TestBudgetConfigSection(t *testing.T) {
+	if s, err := loadPolicyFromYAMLBudget(t, ""); err != nil || s.SessionUSD != 0 {
+		t.Errorf("absent budget = (%+v, %v), want zero default", s, err)
+	}
+	if s, err := loadPolicyFromYAMLBudget(t, "budget:\n  session_usd: 25.5\n"); err != nil || s.SessionUSD != 25.5 {
+		t.Errorf("declared budget = (%+v, %v), want 25.5", s, err)
+	}
+	if s, err := loadPolicyFromYAMLBudget(t, "budget:\n  session_usd: -3\n"); err != nil || s.SessionUSD != 0 {
+		t.Errorf("negative budget = (%+v, %v), want ignored (zero)", s, err)
+	}
+}
+
+func loadPolicyFromYAMLBudget(t *testing.T, body string) (BudgetSection, error) {
+	t.Helper()
+	layers := []Layer{DefaultsLayer()}
+	if body != "" {
+		layers = append(layers, Layer{Source: SourceGlobalUser, Bytes: []byte(body)})
+	}
+	cfg, err := Load(layers, Options{})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return cfg.BudgetConfigSection()
+}

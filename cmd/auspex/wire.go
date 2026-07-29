@@ -175,6 +175,11 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 	// consumer established. Fail-open to OFF — a broken config file
 	// must never silently disable real enforcement.
 	evaluationService.ShadowEnforcement = loadPolicyShadowConfig(dirs).ShadowEnforcement
+	// #141 session budget envelope (ADR-0057): the declared envelope
+	// flows into the policy config's SessionBudgetUSD; zero (undeclared)
+	// keeps the rule inactive, and Decide's normalization keeps every
+	// other zero field at its factory default.
+	evaluationService.Policy.SessionBudgetUSD = loadBudgetConfig(dirs).SessionUSD
 
 	// --- runtime Part A: Graceful Pause / Scheduler -------------------
 	pauseStore := pause.NewSQLiteStore(db)

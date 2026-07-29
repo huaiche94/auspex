@@ -67,3 +67,42 @@ func (c Config) PolicyConfigSection() (PolicySection, error) {
 	}
 	return out, nil
 }
+
+// BudgetSection is the decoded `budget` section (issue #141, ADR-0057):
+// the user-declared session budget envelope. Zero/absent = no envelope
+// declared — the rule is not policy-active (the ADR-043 opt-in
+// convention; absence is explicit degradation, never a guessed
+// default).
+type BudgetSection struct {
+	SessionUSD float64
+}
+
+// DefaultBudgetSection returns the factory default: no envelope.
+func DefaultBudgetSection() BudgetSection { return BudgetSection{} }
+
+type budgetSectionYAML struct {
+	SessionUSD *float64 `yaml:"session_usd"`
+}
+
+// BudgetConfigSection decodes the merged `budget` section from c.Raw,
+// with StateCheckpointingSection's exact fail-open-usable /
+// fail-closed-checkable split.
+func (c Config) BudgetConfigSection() (BudgetSection, error) {
+	out := DefaultBudgetSection()
+	raw, ok := c.Raw["budget"]
+	if !ok || raw == nil {
+		return out, nil
+	}
+	buf, err := yaml.Marshal(raw)
+	if err != nil {
+		return out, fmt.Errorf("config: re-encoding budget section: %w", err)
+	}
+	var section budgetSectionYAML
+	if err := yaml.Unmarshal(buf, &section); err != nil {
+		return out, fmt.Errorf("config: decoding budget section: %w", err)
+	}
+	if section.SessionUSD != nil && *section.SessionUSD > 0 {
+		out.SessionUSD = *section.SessionUSD
+	}
+	return out, nil
+}

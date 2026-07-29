@@ -172,6 +172,13 @@ type DecideRequest struct {
 	// of debounce state.
 	PriorRunwayHitConfirmed bool
 
+	// SessionSpentUSD is the session's known attributed spend so far
+	// (issue #141; the evaluation pipeline supplies it from persisted
+	// turn costs). nil means UNKNOWN — the session-budget rule stays
+	// silent rather than treating unknown as zero (a session whose
+	// spend cannot be derived must not look free).
+	SessionSpentUSD *float64
+
 	// Config carries this decision's thresholds. A zero value uses
 	// DefaultConfig().
 	Config Config
@@ -213,6 +220,12 @@ type Config struct {
 	// default: unlike the context ceiling, no objective number exists to
 	// default to.
 	TurnCostBudgetUSD float64
+
+	// SessionBudgetUSD is ADR-0057 / issue #141's user-declared SESSION
+	// budget envelope (sessionbudget.go), same opt-in convention as
+	// TurnCostBudgetUSD: zero means no envelope is declared and the rule
+	// is entirely inactive.
+	SessionBudgetUSD float64
 }
 
 // DefaultConfig returns the documented day-one threshold set (ADD §17.4's
@@ -330,7 +343,7 @@ func (d *Decider) Decide(req DecideRequest) Decision {
 	// order-insensitive for the ACTION (the strongest tier wins) and both
 	// tiers' reason codes always survive.
 	base = applyContextThresholds(base, req, cfg)
-	return applyTurnCostBudget(base, req, cfg)
+	return applySessionBudget(applyTurnCostBudget(base, req, cfg), req, cfg)
 }
 
 // runwayPauseDecision implements ADD §17.3 priority 3 and §17.4's

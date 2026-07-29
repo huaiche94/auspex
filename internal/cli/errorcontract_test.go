@@ -195,44 +195,12 @@ func TestErrorContract_RenderErrorJSON_NonDomainError(t *testing.T) {
 	}
 }
 
-// TestErrorContract_KnownIncompleteCommands_AreStubsOnly documents,
-// explicitly and as a checked test rather than only a code comment, the
-// one pre-existing gap this audit found that is out of this node's own
-// scope to fix: init, progress show, and state show have no real CLI
-// constructor anywhere in this repository (unlike checkpoint create,
-// decision allow/deny, pause request/cancel, resume, scheduler run-once,
-// status, doctor — and, since issue #14, evaluate: cli.NewEvaluateCmd is
-// real, so `evaluate` was removed from this list per this test's own
-// update-the-scope-note instruction) — every path to the remaining
-// three, even through internal/app/wiring.App.RootCmd(), is permanently
-// cli.notImplemented's stub. This test fails loudly (rather than staying
-// silently true forever) the moment a future node adds a real constructor
-// for any of them, so this documented gap is re-confirmed or corrected on
-// every test run instead of silently going stale.
-func TestErrorContract_KnownIncompleteCommands_AreStubsOnly(t *testing.T) {
-	incomplete := [][]string{
-		{"progress", "show"},
-		{"state", "show"},
-	}
-	for _, path := range incomplete {
-		t.Run(strings.Join(path, " "), func(t *testing.T) {
-			root := cli.NewRootCmd()
-			var out bytes.Buffer
-			root.SetOut(&out)
-			root.SetErr(&out)
-			root.SetArgs(path)
-
-			err := root.Execute()
-			if err == nil {
-				t.Fatalf("auspex %s: expected the stub notImplemented error; got nil (a real implementation may have landed — update this test's scope note if so)", strings.Join(path, " "))
-			}
-			var derr *domain.Error
-			if !errors.As(err, &derr) || derr.Code != domain.ErrCodeUnavailable || !derr.Retryable {
-				t.Fatalf("auspex %s: expected the stub's ErrCodeUnavailable/Retryable:true shape, got %v", strings.Join(path, " "), err)
-			}
-		})
-	}
-}
+// The KnownIncompleteCommands audit that used to live here retired with
+// issue #138: its list drained to empty as real constructors landed for
+// every entry (`evaluate` via #14, `init` removed per D-07/#118,
+// `decision` via #119, `progress show`/`state show` via #138). Every
+// command reachable through internal/app/wiring.App.RootCmd() now has a
+// real handler; the bare-tree stubs above remain covered by the P0 sweep.
 
 // --- 2. Real (non-stub) commands' error AND success paths -------------
 

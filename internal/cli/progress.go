@@ -17,18 +17,90 @@ import (
 // same reason as NewHookClaudeCmd/NewCheckpointCmd (see hook.go/
 // checkpoint.go): internal/app/wiring is a different package that needs to
 // call it.
-//
-// Only `complete` is real here; `show` keeps root.go's stub
-// (newProgressShowStubCmd) — a real snapshot-rendering command remains
-// out of issue #1's scope, and the KnownIncompleteCommands audit
-// (errorcontract_test.go) still tracks it explicitly.
 func NewProgressCmd(deps orchestrator.ProgressCompleteDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "progress",
 		Short: "Inspect the Progress Tree",
 	}
-	cmd.AddCommand(newProgressShowStubCmd(), newProgressCompleteCmd(deps))
+	cmd.AddCommand(newProgressShowCmd(deps), newProgressCompleteCmd(deps))
 	return cmd
+}
+
+// newProgressShowCmd builds `auspex progress show` (issue #138) — the
+// read-only snapshot of a task's Progress Tree via the frozen
+// app.ProgressTreeService.Snapshot port, called directly from the leaf
+// per the `checkpoint restore` precedent (checkpoint.go): a pure
+// read-back has no orchestration to add. The frozen snapshot shape
+// carries identifiers, statuses, and kinds only — no node labels or
+// content — so the output is privacy-clean by construction
+// (Constitution §7).
+func newProgressShowCmd(deps orchestrator.ProgressCompleteDeps) *cobra.Command {
+	var taskID string
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "show",
+		Short: "Show the current Progress Tree snapshot",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if taskID == "" {
+				return &domain.Error{Code: domain.ErrCodeValidation, Message: "progress show: --task is required", Retryable: false}
+			}
+			if deps.ProgressTree == nil {
+				return &domain.Error{Code: domain.ErrCodeUnavailable, Message: "progress show: ProgressTreeService is not wired", Retryable: false}
+			}
+			snapshot, err := deps.ProgressTree.Snapshot(cmd.Context(), domain.TaskID(taskID))
+			if err != nil {
+				return err
+			}
+
+			if jsonOut {
+				nodes := make([]progressShowNode, 0, len(snapshot.Nodes))
+				for _, n := range snapshot.Nodes {
+					nodes = append(nodes, progressShowNode{
+						ID:     string(n.ID),
+						Status: string(n.Status),
+						Kind:   string(n.Kind),
+					})
+				}
+				body, err := marshalOrError("progress show", progressShowOutput{
+					SchemaVersion: "auspex.progress-show.v1",
+					TaskID:        string(snapshot.TaskID),
+					NodeCount:     len(nodes),
+					Nodes:         nodes,
+				})
+				if err != nil {
+					return err
+				}
+				return writeJSON(cmd, body)
+			}
+			out := cmd.OutOrStdout()
+			if _, err := fmt.Fprintf(out, "task %s: %d node(s)\n", snapshot.TaskID, len(snapshot.Nodes)); err != nil {
+				return err
+			}
+			for _, n := range snapshot.Nodes {
+				if _, err := fmt.Fprintf(out, "  %s  %-12s %s\n", n.ID, n.Status, n.Kind); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&taskID, "task", "", "Task ID whose Progress Tree to show")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON output")
+	return cmd
+}
+
+type progressShowNode struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+	Kind   string `json:"kind"`
+}
+
+type progressShowOutput struct {
+	SchemaVersion string             `json:"schema_version"`
+	TaskID        string             `json:"task_id"`
+	NodeCount     int                `json:"node_count"`
+	Nodes         []progressShowNode `json:"nodes"`
 }
 
 // newProgressCompleteCmd builds `auspex progress complete` — the

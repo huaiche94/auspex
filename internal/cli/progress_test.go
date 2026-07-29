@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/huaiche94/auspex/internal/app"
@@ -237,12 +238,11 @@ func TestProgressComplete_MalformedArtifactSpec(t *testing.T) {
 	}
 }
 
-// TestProgressComplete_ShowRemainsStubOnRealTree documents that the real
-// progress subtree deliberately keeps `show` as the notImplemented stub
-// (NewProgressCmd's doc comment) — this fails loudly the moment a real
-// `progress show` lands, mirroring errorcontract_test.go's
-// KnownIncompleteCommands convention.
-func TestProgressComplete_ShowRemainsStubOnRealTree(t *testing.T) {
+// TestProgressShow_RequiresTask proves the real `progress show` (issue
+// #138 — the leaf that replaced the former stub) fails closed with a
+// typed validation error when --task is omitted, never a zero-ID
+// Snapshot call.
+func TestProgressShow_RequiresTask(t *testing.T) {
 	root := newTestRoot(cli.NewProgressCmd(orchestrator.ProgressCompleteDeps{
 		ProgressTree: &fakes.FakeProgressTreeService{},
 	}))
@@ -253,7 +253,70 @@ func TestProgressComplete_ShowRemainsStubOnRealTree(t *testing.T) {
 
 	err := root.Execute()
 	var derr *domain.Error
-	if !errors.As(err, &derr) || derr.Code != domain.ErrCodeUnavailable || !derr.Retryable {
-		t.Fatalf("progress show on the real tree: err = %v, want the stub's ErrCodeUnavailable/Retryable:true (update NewProgressCmd's scope note if a real show landed)", err)
+	if !errors.As(err, &derr) || derr.Code != domain.ErrCodeValidation {
+		t.Fatalf("progress show without --task: err = %v, want ErrCodeValidation", err)
+	}
+}
+
+// TestProgressShow_RendersSnapshot drives the real `progress show`
+// through the frozen Snapshot port in both output modes: --json emits
+// the auspex.progress-show.v1 document verbatim-parseable, human mode
+// renders one line per node.
+func TestProgressShow_RendersSnapshot(t *testing.T) {
+	deps := orchestrator.ProgressCompleteDeps{
+		ProgressTree: &fakes.FakeProgressTreeService{
+			SnapshotFunc: func(_ context.Context, taskID domain.TaskID) (app.ProgressTreeSnapshot, error) {
+				if taskID != "task-9" {
+					t.Errorf("Snapshot taskID = %q, want task-9", taskID)
+				}
+				return app.ProgressTreeSnapshot{
+					TaskID: taskID,
+					Nodes: []app.ProgressNode{
+						{ID: "n1", TaskID: taskID, Status: "completed", Kind: "step"},
+						{ID: "n2", TaskID: taskID, Status: "in_progress", Kind: "step"},
+					},
+				}, nil
+			},
+		},
+	}
+
+	root := newTestRoot(cli.NewProgressCmd(deps))
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"progress", "show", "--task", "task-9", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("progress show --json: %v", err)
+	}
+	var doc struct {
+		SchemaVersion string `json:"schema_version"`
+		TaskID        string `json:"task_id"`
+		NodeCount     int    `json:"node_count"`
+		Nodes         []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			Kind   string `json:"kind"`
+		} `json:"nodes"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out.String())
+	}
+	if doc.SchemaVersion != "auspex.progress-show.v1" || doc.TaskID != "task-9" || doc.NodeCount != 2 ||
+		len(doc.Nodes) != 2 || doc.Nodes[0].ID != "n1" || doc.Nodes[1].Status != "in_progress" {
+		t.Fatalf("progress show JSON = %+v", doc)
+	}
+
+	root = newTestRoot(cli.NewProgressCmd(deps))
+	out.Reset()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"progress", "show", "--task", "task-9"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("progress show (human): %v", err)
+	}
+	for _, want := range []string{"task task-9", "2 node(s)", "n1", "n2", "in_progress"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("human output %q missing %q", out.String(), want)
+		}
 	}
 }

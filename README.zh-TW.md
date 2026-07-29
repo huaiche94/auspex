@@ -177,7 +177,8 @@ auspex report                 your usage, mirrored back: spend, tokens by class,
 auspex evaluate               estimate a prompt before running it (--json)
 auspex decision allow|deny    issue or consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
-auspex progress ...           evidence-gated completion; inspect not yet wired
+auspex progress show|complete evidence-gated completion + read-only tree snapshot
+auspex state show             latest state checkpoint for a task (--json)
 auspex pause request|cancel   request or cancel a pause (records intent)
 auspex resume                 resume a paused run (verdict via flags)
 auspex scheduler run-once     claim one due wake job without the daemon
@@ -191,7 +192,7 @@ auspex hook codex <event>     the Codex CLI hook entrypoints (same gate)
 auspex hook codex status      stdin-less status line for tmux/WezTerm/scripts (--cwd DIR)
 ```
 
-每一個指令都在 stdout 上輸出具 schema 版本（schema-versioned）的 JSON，並以單一種型別化（typed）的錯誤格式回報失敗，讓人類與 agent 都能消化（FR-160；`report`／`evaluate`／`progress complete` 有明確的 `--json` flag，其餘則無條件輸出 JSON）：
+每一個指令都在 stdout 上輸出具 schema 版本（schema-versioned）的 JSON，並以單一種型別化（typed）的錯誤格式回報失敗，讓人類與 agent 都能消化（FR-160；`report`／`evaluate`／`progress show|complete`／`state show` 有明確的 `--json` flag，其餘則無條件輸出 JSON）：
 
 ```json
 {"schema_version":"auspex.error.v1","code":"validation",
@@ -311,7 +312,7 @@ slice**（85/85 DAG 節點整合進 `main`），不是逐個 milestone 依序完
 | M1 | Domain · paths · config · SQLite | ✅ | IDs/enums、clock/id 注入、OS paths、YAML config 優先序、schemas、SQLite 連線/migrations、repo/worktree/session/turn/task stores、`paths`/`config` 指令。 | — |
 | M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser、snapshot fingerprint、checkpoint create/list/show/verify、真實 restore（[#6](https://github.com/huaiche94/auspex/issues/6)）、binary patch、untracked archive、secret/path 過濾。 | — |
 | M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store、batch API、idempotency/out-of-order、normalized usage/tool/file/quota/context、de-identified export、tiered retention（ADR-046）。 | — |
-| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、`progress`/`state` CLI。自動 hook 已接線：pre-turn（[#116](https://github.com/huaiche94/auspex/issues/116)，ADR-0054）、Stop reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、PreCompact（[#114](https://github.com/huaiche94/auspex/issues/114)）。**缺：**`progress` inspect 子指令。 | `v0.1.0`（未 tag） |
+| M4 | Progress Tree + State Checkpointing | ✅ | Progress Tree、node state machine、validators、state checkpoint manifest、atomic staged commit、reconciliation、`progress`/`state` CLI（唯讀 `show` 葉指令由 [#138](https://github.com/huaiche94/auspex/issues/138) 接線）。自動 hook 已接線：pre-turn（[#116](https://github.com/huaiche94/auspex/issues/116)，ADR-0054）、Stop reconcile（[#115](https://github.com/huaiche94/auspex/issues/115)）、PreCompact（[#114](https://github.com/huaiche94/auspex/issues/114)）。 | `v0.1.0`（未 tag） |
 | M5 | Feature extraction · predictor · policy | ✅ | task classifier、Go/.NET topology、feature v1、empirical quantiles、token/scope 估計、risk components、reason codes、policy rules、`evaluate`/`decide`。**注意：**全為 cold-start 規則；校準屬 M13（資料未到）。 | — |
 | M6 | Daemon · local API · durable scheduler | ✅ | daemon（[#7](https://github.com/huaiche94/auspex/issues/7)）、loopback auth、v1 endpoints、SSE、in-process fallback、wake job lease/recovery、doctor baseline、session-status API。 | — |
 | M7 | Codex managed adapter | ◐ | 偵測/capability、managed `run --provider codex`（走 `codex exec --json`）、exec JSONL fallback、fixtures。**缺（[#9](https://github.com/huaiche94/auspex/issues/9) Phase 2）：**App Server 訂閱、graceful interrupt、`codex exec resume`。 | — |

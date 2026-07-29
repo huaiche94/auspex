@@ -402,9 +402,9 @@ func TestApp_RootCmd_StatusIsRealNotStub(t *testing.T) {
 // TestApp_RootCmd_ProgressCompleteIsRealNotStub proves issue #1's wiring:
 // `auspex progress complete` on the App-built tree calls through to the
 // injected ProgressTree fake's CompleteNode and renders real JSON, not
-// internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub — while
-// `progress show` in the SAME swapped subtree deliberately remains a stub
-// (cli.NewProgressCmd's documented split).
+// internal/cli.NewRootCmd()'s standalone ErrCodeUnavailable stub — and,
+// since issue #138, `progress show` in the SAME swapped subtree is real
+// too (Snapshot through the same fake).
 func TestApp_RootCmd_ProgressCompleteIsRealNotStub(t *testing.T) {
 	var got app.CompleteNodeRequest
 	services := fullFakeServices()
@@ -443,14 +443,69 @@ func TestApp_RootCmd_ProgressCompleteIsRealNotStub(t *testing.T) {
 		t.Errorf("state_checkpoint_id = %v, want sc-1", decoded["state_checkpoint_id"])
 	}
 
-	// The swap must not have silently promoted `progress show` — it stays
-	// the honest stub on this tree too.
+	// `progress show` swapped real alongside it (issue #138): omitting
+	// --task hits the REAL handler's typed validation error, not the
+	// stub's ErrCodeUnavailable.
 	root.SetArgs([]string{"progress", "show"})
 	out.Reset()
 	showErr := root.Execute()
 	var derr *domain.Error
-	if !errors.As(showErr, &derr) || derr.Code != domain.ErrCodeUnavailable {
-		t.Errorf("progress show: err = %v, want the stub's ErrCodeUnavailable", showErr)
+	if !errors.As(showErr, &derr) || derr.Code != domain.ErrCodeValidation {
+		t.Errorf("progress show: err = %v, want the real handler's ErrCodeValidation", showErr)
+	}
+}
+
+// TestApp_RootCmd_ProgressShowAndStateShow_RealEndToEnd proves issue
+// #138's wiring: both read-only inspection leaves on the App-built tree
+// call through to their injected fakes and render the typed JSON
+// documents, not internal/cli.NewRootCmd()'s standalone stubs.
+func TestApp_RootCmd_ProgressShowAndStateShow_RealEndToEnd(t *testing.T) {
+	services := fullFakeServices()
+	services.ProgressTree = &fakes.FakeProgressTreeService{
+		SnapshotFunc: func(_ context.Context, taskID domain.TaskID) (app.ProgressTreeSnapshot, error) {
+			return app.ProgressTreeSnapshot{
+				TaskID: taskID,
+				Nodes:  []app.ProgressNode{{ID: "n1", TaskID: taskID, Status: domain.NodeCompleted}},
+			}, nil
+		},
+	}
+	services.StateCheckpoint = &fakes.FakeStateCheckpointService{
+		LoadLatestFunc: func(_ context.Context, taskID domain.TaskID) (domain.StateCheckpoint, error) {
+			return domain.StateCheckpoint{ID: "sc-7", TaskID: taskID, ProgressTreeVersion: 2}, nil
+		},
+	}
+	a, err := wiring.New(services)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	root := a.RootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"progress", "show", "--task", "task-7", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("progress show: %v (want the real handler, not the stub)", err)
+	}
+	var progressDoc map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &progressDoc); jsonErr != nil {
+		t.Fatalf("progress show stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if progressDoc["schema_version"] != "auspex.progress-show.v1" || progressDoc["task_id"] != "task-7" || progressDoc["node_count"] != float64(1) {
+		t.Errorf("progress show JSON = %v", progressDoc)
+	}
+
+	out.Reset()
+	root.SetArgs([]string{"state", "show", "--task", "task-7", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("state show: %v (want the real handler, not the stub)", err)
+	}
+	var stateDoc map[string]any
+	if jsonErr := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &stateDoc); jsonErr != nil {
+		t.Fatalf("state show stdout is not valid JSON: %v (output: %q)", jsonErr, out.String())
+	}
+	if stateDoc["schema_version"] != "auspex.state-show.v1" || stateDoc["checkpoint_id"] != "sc-7" || stateDoc["task_id"] != "task-7" {
+		t.Errorf("state show JSON = %v", stateDoc)
 	}
 }
 

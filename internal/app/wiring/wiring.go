@@ -501,13 +501,21 @@ func (a *App) RootCmd() *cobra.Command {
 		return cli.NewStatusCmd(statusDeps)
 	})
 
-	// progress (issue #1): swapped unconditionally, like checkpoint/status,
-	// because its one dependency (ProgressTree) is a required service this
-	// container cannot exist without. Inside the replacement, `complete` is
-	// real and `show` remains root.go's stub — see cli.NewProgressCmd.
+	// progress (issue #1; `show` real as of issue #138): swapped
+	// unconditionally, like checkpoint/status, because its one dependency
+	// (ProgressTree) is a required service this container cannot exist
+	// without.
 	progressDeps := orchestrator.ProgressCompleteDeps{ProgressTree: a.services.ProgressTree}
 	replaceSubcommand(root, "progress", func(_ string) *cobra.Command {
 		return cli.NewProgressCmd(progressDeps)
+	})
+
+	// state (issue #138): swapped unconditionally for the same reason —
+	// StateCheckpoint is a required service (see New's validation), so
+	// there is no unwired configuration to keep the stub for.
+	stateService := a.services.StateCheckpoint
+	replaceSubcommand(root, "state", func(_ string) *cobra.Command {
+		return cli.NewStateCmd(stateService)
 	})
 
 	doctorDeps := orchestrator.DoctorDeps{

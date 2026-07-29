@@ -305,7 +305,8 @@ auspex report                 your usage, mirrored back: spend, tokens by class,
 auspex evaluate               estimate a prompt before running it (--json)
 auspex decision allow|deny    issue or consume a one-time authorization (replays rejected)
 auspex checkpoint create      state + repository checkpoint (never commits your branch)
-auspex progress ...           evidence-gated completion; inspect not yet wired
+auspex progress show|complete evidence-gated completion + read-only tree snapshot
+auspex state show             latest state checkpoint for a task (--json)
 auspex pause request|cancel   request or cancel a pause (records intent)
 auspex resume                 resume a paused run (verdict via flags)
 auspex scheduler run-once     claim one due wake job without the daemon
@@ -321,8 +322,8 @@ auspex hook codex status      stdin-less status line for tmux/WezTerm/scripts (-
 
 Every command speaks schema-versioned JSON on stdout and fails with one
 typed error shape, so both humans and agents can consume it (FR-160; a
-`--json` flag on `report` / `evaluate` / `progress complete`, unconditional
-elsewhere):
+`--json` flag on `report` / `evaluate` / `progress show|complete` /
+`state show`, unconditional elsewhere):
 
 ```json
 {"schema_version":"auspex.error.v1","code":"validation",
@@ -495,7 +496,7 @@ Legend — ✅ delivered (on `main`, not necessarily released) · ◐ partial
 | M1 | Domain · paths · config · SQLite | ✅ | IDs/enums, clock/id injection, OS paths, YAML config precedence, schemas, SQLite connection/migrations, repo/worktree/session/turn/task stores, `paths`/`config` commands. | — |
 | M2 | Git observer + Repository Checkpoint | ✅ | porcelain v2 parser, snapshot fingerprint, checkpoint create/list/show/verify, real restore ([#6](https://github.com/huaiche94/auspex/issues/6)), binary patches, untracked archive, secret/path filters. | — |
 | M3 | Event protocol + telemetry ingestion | ✅ | event envelope/store, batch API, idempotency/out-of-order, normalized usage/tool/file/quota/context, de-identified export, tiered retention (ADR-046). | — |
-| M4 | Progress Tree + State Checkpointing | ◐ | Progress Tree, node state machine, validators, state checkpoint manifest, atomic staged commit, reconciliation, `progress`/`state` CLI. Automatic hooks now wired: pre-turn ([#116](https://github.com/huaiche94/auspex/issues/116), ADR-0054), Stop reconcile ([#115](https://github.com/huaiche94/auspex/issues/115)), PreCompact ([#114](https://github.com/huaiche94/auspex/issues/114)). **Remaining:** `progress` inspect subcommand. | `v0.1.0` (untagged) |
+| M4 | Progress Tree + State Checkpointing | ✅ | Progress Tree, node state machine, validators, state checkpoint manifest, atomic staged commit, reconciliation, `progress`/`state` CLI (read-only `show` leaves wired via [#138](https://github.com/huaiche94/auspex/issues/138)). Automatic hooks wired: pre-turn ([#116](https://github.com/huaiche94/auspex/issues/116), ADR-0054), Stop reconcile ([#115](https://github.com/huaiche94/auspex/issues/115)), PreCompact ([#114](https://github.com/huaiche94/auspex/issues/114)). | `v0.1.0` (untagged) |
 | M5 | Feature extraction · predictor · policy | ✅ | task classifier, Go/.NET topology, feature v1, empirical quantiles, token/scope estimates, risk components, reason codes, policy rules, `evaluate`/`decide`. **Note:** all cold-start rules; calibration is M13 (data-gated). | — |
 | M6 | Daemon · local API · durable scheduler | ✅ | daemon ([#7](https://github.com/huaiche94/auspex/issues/7)), loopback auth, v1 endpoints, SSE, in-process fallback, wake-job lease/recovery, doctor baseline, session-status API. | — |
 | M7 | Codex managed adapter | ◐ | detection/capability, managed `run --provider codex` (over `codex exec --json`), exec JSONL fallback, fixtures. **Remaining ([#9](https://github.com/huaiche94/auspex/issues/9) Phase 2):** App Server subscription, graceful interrupt, `codex exec resume`. | — |

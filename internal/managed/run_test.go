@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -519,6 +520,16 @@ func TestRunner_Run_Codex_TurnFailed_PersistsFailureNoUsage(t *testing.T) {
 // gets its terminal turn.failed (the started event never dangles). The
 // fake provider sleeps far longer than the test would ever wait, so a
 // return at all proves the kill.
+//
+// The cancel is synchronized on the stream relay's FIRST byte, not a
+// fixed sleep (issue #127): the fake provider writes the whole fixture
+// in one Write before sleeping, so one observed relay byte proves every
+// fixture line is already in the pipe — the kill can then never beat the
+// child's stdout, which a bare 300ms timer lost under loaded CI (child
+// startup exceeding the timer meant SIGKILL landed before any output,
+// and the Completed assertion below flaked). A generous timer remains
+// only as a watchdog so a regression that never relays still cancels
+// instead of hanging the test.
 func TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly(t *testing.T) {
 	bin := buildFakeProvider(t)
 	t.Setenv("AUSPEX_FAKE_STREAM_FILE", codexExecFixtureAbs(t, "normal.jsonl"))
@@ -527,13 +538,21 @@ func TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly(t *testing.T) {
 	persister := &runTestPersister{}
 	runner := newTestRunner(persister, allowingEvaluation(app.PolicyRun), bin)
 
+	streamSeen := make(chan struct{})
+	req := baseCodexRunRequest()
+	req.StreamRelay = &firstWriteSignal{ch: streamSeen}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		select {
+		case <-streamSeen:
+		case <-time.After(30 * time.Second):
+			t.Error("relay never observed a byte — cancelling anyway (watchdog)")
+		}
 		cancel()
 	}()
 
-	outcome, err := runner.Run(ctx, baseCodexRunRequest())
+	outcome, err := runner.Run(ctx, req)
 	if err != nil {
 		t.Fatalf("Run: %v — a cancelled provider is a failed run result, never a Run error or a hang", err)
 	}
@@ -548,10 +567,23 @@ func TestRunner_Run_Codex_ContextCancelled_KillsProviderCleanly(t *testing.T) {
 		t.Errorf("turn.failed payload = %+v, want exit_code -1", failed.Payload)
 	}
 	// The stream written BEFORE the kill was already parsed — captured
-	// attribution survives the interruption.
+	// attribution survives the interruption. Deterministic since the
+	// cancel waited for the relay's first byte (single-Write fixture).
 	if outcome.Codex.Completed == nil {
 		t.Error("outcome.Codex.Completed is nil — pre-kill stream lines were lost")
 	}
+}
+
+// firstWriteSignal is an io.Writer that closes ch exactly once, on the
+// first Write — the synchronization point for cancel-after-output tests.
+type firstWriteSignal struct {
+	ch   chan struct{}
+	once sync.Once
+}
+
+func (w *firstWriteSignal) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.ch) })
+	return len(p), nil
 }
 
 func TestRunner_Run_Validation(t *testing.T) {

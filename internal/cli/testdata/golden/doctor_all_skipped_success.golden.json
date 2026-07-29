@@ -16,6 +16,11 @@
       "name": "capture",
       "status": "skipped",
       "detail": "no database configured"
+    },
+    {
+      "name": "codex hooks",
+      "status": "skipped",
+      "detail": "no hooks.json path configured"
     }
   ]
 }

@@ -138,6 +138,13 @@ type DoctorDeps struct {
 	DB           DBPinger
 	Config       ConfigLoader
 	RequiredDirs []string
+
+	// CodexHooksConfigPath overrides where the codex hook-installed
+	// check looks for hooks.json (tests); empty resolves the CLI's own
+	// default ($CODEX_HOME/hooks.json, else ~/.codex/hooks.json). The
+	// check itself is always attempted — an unresolvable path renders
+	// skipped, never a hard failure.
+	CodexHooksConfigPath string
 }
 
 // Doctor implements `auspex doctor`: DB reachable/migrated, config
@@ -156,6 +163,7 @@ func Doctor(ctx context.Context, deps DoctorDeps) DoctorResult {
 	checks = append(checks, checkConfig(deps.Config))
 	checks = append(checks, checkDirs(deps.RequiredDirs)...)
 	checks = append(checks, captureHealthChecks(ctx, deps.DB)...)
+	checks = append(checks, checkCodexHooks(deps.CodexHooksConfigPath))
 
 	healthy := true
 	for _, c := range checks {

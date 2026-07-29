@@ -515,6 +515,12 @@ func (a *App) RootCmd() *cobra.Command {
 		Config:       a.services.Diagnostics.Config,
 		RequiredDirs: a.services.Diagnostics.RequiredDirs,
 	}
+	// issue #9 M8: the codex hook-installed check needs the hooks.json
+	// location; an unresolvable home leaves it empty and the check
+	// renders skipped (never a composition failure).
+	if p, ok := orchestrator.DefaultCodexHooksPath(); ok {
+		doctorDeps.CodexHooksConfigPath = p
+	}
 	replaceSubcommand(root, "doctor", func(_ string) *cobra.Command {
 		return cli.NewDoctorCmd(doctorDeps)
 	})

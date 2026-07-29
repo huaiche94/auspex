@@ -28,9 +28,12 @@
    [`pausedrive.go`](pausedrive.go) 會在 provider 執行期間，依 ADD §20.3 的 5 秒心跳觀測
    該 session 的 quota runway，把每個 forecast 樣本餵入 `internal/pause` 的
    debounce/hysteresis 觸發器（ADD §17.6/§20.2），並在觸發時端到端驅動既有的凍結暫停
-   生命週期：request → safe point → checkpoints → provider 中斷（graceful SIGINT，逾時
-   升級為 kill）→ sleeping 並排入可持久化的 wake job。僅限 managed 模式——native-hook
-   模式維持只觀測不行動，因為 hook 無法中斷 provider 的 turn
+   生命週期：request → safe point → checkpoints → provider 中斷 → sleeping 並排入可持久化
+   的 wake job。中斷機制是依路徑選擇的 `providerStopper`：對已啟動的 provider 行程採
+   graceful SIGINT、逾時升級為 kill；在 codex App Server 路徑上則是 ADD §21.6 的協定層級
+   `turn/interrupt`、逾時升級為連線拆除（connection teardown），interrupted 終態通知由
+   run loop 本身觀測（issue #9 slice C，[`appserver.go`](appserver.go)）。僅限 managed
+   模式——native-hook 模式維持只觀測不行動，因為 hook 無法中斷 provider 的 turn
    （`internal/orchestrator/runwaydrive.go` 已文件化的限制）。校準的 0.80 觸發路徑受
    calibration gate 管制（M13 之前沒有任何 forecast 是 calibrated），因此今日 production
    只有 ADD §17.6 的 `emergency_uncalibrated` 路徑可能觸發；觸發失敗只會記錄並讓 run
@@ -41,8 +44,12 @@
 固定資料（fixture）；codex exec 的 fixture 與其他 codex payload fixture 同樣位於
 [`testdata/provider-events/codex/exec`](../../testdata/README.md)。
 
+codex App Server 是 ADR-013 的**主要**managed 路徑（[`appserver.go`](appserver.go)，
+issue #9 Phase 2 slice B），`codex exec --json` 為明示的 fallback；自動暫停觸發器在此路徑
+以協定層級中斷（`turn/interrupt`，見上方 slice C）。
+
 尚未在此實作（屬於 issue #8／#9 之後的增量）：受管理的 shell 模式——`auspex shell`，ADD §8.2，
-排定為 ADD 里程碑 M11——以及 daemon／事件串流／app-server 整合、經驗證的自動 resume（含
-`codex exec resume`）、協定層級的 Codex `turn/interrupt`（issue #9 Phase 2；自動暫停觸發器
-今日以行程訊號層級中斷兩種 provider），還有逐訊息（per-message）的即時用量建模。未被中斷的
+排定為 ADD 里程碑 M11——以及 daemon 整合、經驗證的自動 resume（含 §21.6 步驟 8 的
+`thread/resume` + `turn/start` bootstrap；`thread_id` 定位器已持久化於
+`provider.session.started` 事件），還有逐訊息（per-message）的即時用量建模。未被中斷的
 行程會執行到結束；context 取消（cancellation）則會將其終止。

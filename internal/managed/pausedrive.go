@@ -284,34 +284,83 @@ func (l *LiveRunInterrupter) register(sessionID domain.SessionID, run *liveRun) 
 	}
 }
 
-// liveRun is one managed run's interrupt capability: the provider process
-// handle plus the channel Run closes once the process has been waited to
-// completion — the "wait provider confirms stopped" half of ADD §20.6
-// Phase 4 (a delivered signal is not a stopped provider; only the
-// observed exit is).
+// providerStopper is the mechanism seam liveRun.interrupt drives: how a
+// graceful stop is delivered to a live managed provider, and how it is
+// escalated when not honored. Two implementations exist — processStopper
+// (M9's signal capability: SIGINT then kill, the spec/exec paths) and
+// appServerTurnStopper (ADD §21.6's protocol-level turn/interrupt then
+// connection teardown, appserver.go). The seam exists because the App
+// Server path has no per-turn process to signal: the server outlives the
+// turn, so its graceful stop is a JSON-RPC call, not a signal — while
+// everything AROUND the mechanism (grace periods, confirm-stopped
+// discipline, escalation ordering) is identical and stays in interrupt.
+type providerStopper interface {
+	// SignalStop delivers the graceful stop request. An error means the
+	// request could not be delivered (not that the provider is still
+	// running) — interrupt escalates straight to ForceStop.
+	SignalStop(ctx context.Context) error
+	// ForceStop is the escalation: terminate the provider outright.
+	// ErrProcessDone-style "already stopped" conditions are the
+	// implementation's job to swallow — a stop that finds nothing left
+	// to stop has succeeded.
+	ForceStop() error
+}
+
+// processStopper is the M9 signal-based providerStopper for spawned
+// provider processes (claude managed runs, the codex exec fallback).
+type processStopper struct {
+	proc *os.Process
+}
+
+// SignalStop delivers graceful SIGINT (M9's signal-interruption
+// capability). On platforms where os.Interrupt delivery is not
+// implemented (Windows — os.Process.Signal returns an error there) the
+// error surfaces so interrupt degrades explicitly to the hard kill: a
+// real Windows control-signal delivery is a documented follow-up, and
+// fabricating a graceful stop would violate "wait provider confirms
+// stopped".
+func (s processStopper) SignalStop(context.Context) error {
+	if err := s.proc.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return nil
+}
+
+// ForceStop terminates the process (Phase 4's "timeout 後 terminate
+// process tree" — os/exec kills the direct child; descendants of a
+// shell-less argv-only spawn are the provider's own).
+func (s processStopper) ForceStop() error {
+	if err := s.proc.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return nil
+}
+
+// liveRun is one managed run's interrupt capability: the stop mechanism
+// plus the channel Run closes once the provider has been observed to
+// finish — the "wait provider confirms stopped" half of ADD §20.6
+// Phase 4 (a delivered stop request is not a stopped provider; only the
+// observed exit/terminal is).
 type liveRun struct {
-	proc        *os.Process
+	stop        providerStopper
 	exited      <-chan struct{}
 	grace       time.Duration
 	interrupted atomic.Bool
 }
 
-// interrupt delivers ADD §20.6 Phase 4 for a managed process: graceful
-// SIGINT first (M9's signal-interruption capability), escalate to a hard
-// kill after the grace period, and only report success once the provider's
-// exit has actually been observed. On platforms where os.Interrupt
-// delivery is not implemented (Windows — os.Process.Signal returns an
-// error there), it degrades explicitly to the hard kill: a real Windows
-// control-signal delivery is a documented follow-up, and fabricating a
-// graceful stop would violate "wait provider confirms stopped".
+// interrupt delivers ADD §20.6 Phase 4 for a managed run: graceful stop
+// first (SIGINT, or §21.6's turn/interrupt), escalate to a forced stop
+// after the grace period, and only report success once the provider's
+// stop has actually been observed via exited.
 func (lr *liveRun) interrupt(ctx context.Context) error {
 	lr.interrupted.Store(true)
 
-	if err := lr.proc.Signal(os.Interrupt); err != nil && !errors.Is(err, os.ErrProcessDone) {
-		// SIGINT unavailable (Windows) or undeliverable: escalate straight
-		// to the kill path below by treating the grace period as elapsed.
-		if killErr := lr.proc.Kill(); killErr != nil && !errors.Is(killErr, os.ErrProcessDone) {
-			return killErr
+	if err := lr.stop.SignalStop(ctx); err != nil {
+		// Graceful delivery unavailable (Windows signals) or failed:
+		// escalate straight to the forced stop by treating the grace
+		// period as elapsed.
+		if forceErr := lr.stop.ForceStop(); forceErr != nil {
+			return forceErr
 		}
 	}
 
@@ -323,10 +372,8 @@ func (lr *liveRun) interrupt(ctx context.Context) error {
 	case <-time.After(lr.grace):
 	}
 
-	// Grace elapsed without an observed exit: terminate (Phase 4's
-	// "timeout 後 terminate process tree" — os/exec kills the direct child;
-	// descendants of a shell-less argv-only spawn are the provider's own).
-	if err := lr.proc.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	// Grace elapsed without an observed stop: escalate.
+	if err := lr.stop.ForceStop(); err != nil {
 		return err
 	}
 	select {
@@ -337,7 +384,7 @@ func (lr *liveRun) interrupt(ctx context.Context) error {
 	case <-time.After(lr.grace):
 		return &domain.Error{
 			Code:      domain.ErrCodeUnavailable,
-			Message:   "managed: provider process did not confirm stop after interrupt and kill",
+			Message:   "managed: provider did not confirm stop after interrupt and forced stop",
 			Retryable: false,
 		}
 	}
@@ -433,21 +480,34 @@ func (a autoPauseRun) Stop() {
 	}
 }
 
-// beginRun arms the trigger for one managed run: registers the live
-// process in the interrupter registry and starts the heartbeat pump.
-// nil-receiver-safe: an unarmed Runner gets the zero handle and zero
-// behavior change. exited must be closed by the caller once the provider
-// process has been waited to completion (Run does this immediately after
-// cmd.Wait returns).
+// beginRun arms the trigger for one managed run that owns a provider
+// PROCESS: registers the M9 signal-based stop capability in the
+// interrupter registry and starts the heartbeat pump. nil-receiver-safe:
+// an unarmed Runner gets the zero handle and zero behavior change. exited
+// must be closed by the caller once the provider process has been waited
+// to completion (Run does this immediately after cmd.Wait returns).
 func (p *PauseTrigger) beginRun(ctx context.Context, sessionID domain.SessionID, proc *os.Process, exited <-chan struct{}, humanLog io.Writer) autoPauseRun {
-	if p == nil || p.Service == nil || p.Runs == nil || p.Source == nil || proc == nil || sessionID == "" {
+	if proc == nil {
+		return autoPauseRun{}
+	}
+	return p.beginStopperRun(ctx, sessionID, processStopper{proc: proc}, exited, humanLog)
+}
+
+// beginStopperRun is beginRun's mechanism-agnostic core, and the entry
+// the App Server path calls directly with its protocol-level stopper
+// (ADD §21.6; appserver.go): same registry, same pump, same lifecycle —
+// only the stop mechanism differs. exited must be closed by the caller
+// once the provider's stop/finish has been observed (for a protocol run:
+// the turn's terminal notification, or the connection ending).
+func (p *PauseTrigger) beginStopperRun(ctx context.Context, sessionID domain.SessionID, stopper providerStopper, exited <-chan struct{}, humanLog io.Writer) autoPauseRun {
+	if p == nil || p.Service == nil || p.Runs == nil || p.Source == nil || stopper == nil || sessionID == "" {
 		return autoPauseRun{}
 	}
 	if humanLog == nil {
 		humanLog = io.Discard
 	}
 
-	run := &liveRun{proc: proc, exited: exited, grace: p.interruptGrace()}
+	run := &liveRun{stop: stopper, exited: exited, grace: p.interruptGrace()}
 	release := p.Runs.register(sessionID, run)
 
 	pumpCtx, cancel := context.WithCancel(ctx)

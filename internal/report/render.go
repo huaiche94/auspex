@@ -26,6 +26,7 @@ func RenderText(rep Report) string {
 	renderCacheHygiene(&b, rep.CacheHygiene)
 	renderQuota(&b, rep.Quota)
 	renderTopTurns(&b, rep.TopTurns)
+	renderOutcomeEconomics(&b, rep.OutcomeEconomics)
 	renderTakeaways(&b, rep.Takeaways)
 
 	if len(rep.Notes) > 0 {
@@ -212,6 +213,40 @@ func renderTopTurns(b *strings.Builder, turns []TopTurn) {
 // prints analysis -> lesson -> action, FIRED cases first so what triggered
 // this window leads. A non-fired case still prints its lesson/action as
 // forward guidance, with an honest "no signal" analysis.
+func renderOutcomeEconomics(b *strings.Builder, oe OutcomeEconomics) {
+	b.WriteString("\nOutcome economics (cost per evidenced Progress Tree node)\n")
+	if oe.AttributedTurns == 0 && oe.UnattributedTurns == 0 {
+		b.WriteString("  no costed turns in the window\n")
+		return
+	}
+	if oe.AttributedTurns == 0 {
+		fmt.Fprintf(b, "  no node-attributed spend: %d costed turn(s) carry no Progress Tree attribution\n", oe.UnattributedTurns)
+		return
+	}
+	w := newTab(b)
+	if oe.AttributedCostUSD != nil {
+		tabf(w, "  attributed spend\t%s\tacross %d turn(s)\n", formatUSD(*oe.AttributedCostUSD), oe.AttributedTurns)
+	}
+	if oe.UnattributedCostUSD != nil {
+		tabf(w, "  unattributed spend\t%s\tacross %d turn(s) (no node stamp)\n", formatUSD(*oe.UnattributedCostUSD), oe.UnattributedTurns)
+	}
+	for _, row := range oe.Outcomes {
+		cost := "-"
+		if row.CostUSD != nil {
+			cost = formatUSD(*row.CostUSD)
+		}
+		tabf(w, "  %s\t%s\t%d node(s), %d turn(s)\n", row.Outcome, cost, row.Nodes, row.Turns)
+	}
+	_ = w.Flush()
+	if oe.CostPerCompletedNodeMedianUSD != nil && oe.CostPerCompletedNodeP90USD != nil {
+		fmt.Fprintf(b, "  cost per completed node: median %s, P90 %s (%d completed node(s))\n",
+			formatUSD(*oe.CostPerCompletedNodeMedianUSD), formatUSD(*oe.CostPerCompletedNodeP90USD), oe.CompletedNodes)
+	} else {
+		fmt.Fprintf(b, "  cost per completed node: not enough data (%d completed node(s), gate %d)\n",
+			oe.CompletedNodes, MinOutcomeNodes)
+	}
+}
+
 func renderTakeaways(b *strings.Builder, takeaways []Takeaway) {
 	b.WriteString("\nActionable takeaways (analysis -> lesson -> action)\n")
 	if len(takeaways) == 0 {

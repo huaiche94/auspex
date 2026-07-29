@@ -41,6 +41,12 @@ type seriesEvent struct {
 	sessionID  string
 	turnID     string
 
+	// Correlator-stamped attribution columns (issue #1; events.task_id /
+	// events.progress_node_id) — the outcome ledger's join keys (#140).
+	// Empty = the event resolved to no task/node (honest, not zero).
+	taskID string
+	nodeID string
+
 	// provider.usage.observed measurements. Statusline snapshots carry
 	// these session-cumulative; managed-run usage events (turnID != "")
 	// carry them per-turn (internal/telemetry/claude/managedrun.go).
@@ -83,7 +89,7 @@ func loadSeriesEvents(ctx context.Context, db *sqlite.DB) ([]seriesEvent, error)
 		args[i] = t
 	}
 	rows, err := db.Conn().QueryContext(ctx,
-		`SELECT event_type, occurred_at, provider, session_id, turn_id, payload_json
+		`SELECT event_type, occurred_at, provider, session_id, turn_id, task_id, progress_node_id, payload_json
 			FROM events
 			WHERE event_type IN (`+placeholders(len(seriesEventTypes))+`)
 			ORDER BY session_id, occurred_at, rowid`, args...)
@@ -95,10 +101,10 @@ func loadSeriesEvents(ctx context.Context, db *sqlite.DB) ([]seriesEvent, error)
 	var out []seriesEvent
 	for rows.Next() {
 		var (
-			eventType, occurredAt             string
-			provider, sessionID, turnID, body sql.NullString
+			eventType, occurredAt                             string
+			provider, sessionID, turnID, taskID, nodeID, body sql.NullString
 		)
-		if err := rows.Scan(&eventType, &occurredAt, &provider, &sessionID, &turnID, &body); err != nil {
+		if err := rows.Scan(&eventType, &occurredAt, &provider, &sessionID, &turnID, &taskID, &nodeID, &body); err != nil {
 			return nil, fmt.Errorf("report: scan event row: %w", err)
 		}
 		ts, err := time.Parse(time.RFC3339Nano, occurredAt)
@@ -113,6 +119,8 @@ func loadSeriesEvents(ctx context.Context, db *sqlite.DB) ([]seriesEvent, error)
 			provider:   provider.String,
 			sessionID:  sessionID.String,
 			turnID:     turnID.String,
+			taskID:     taskID.String,
+			nodeID:     nodeID.String,
 		}
 		decodeSeriesPayload(&ev, body.String)
 		out = append(out, ev)
@@ -354,4 +362,37 @@ func payloadString(payload map[string]any, key string) *string {
 		return &v
 	}
 	return nil
+}
+
+// loadProgressNodeStatuses resolves the given progress node ids to their
+// current status (progress_nodes.status), the outcome ledger's outcome
+// label source (#140). Nodes not found are simply absent from the map —
+// the caller reports them under an "unknown" outcome rather than
+// guessing (unknown is not zero).
+func loadProgressNodeStatuses(ctx context.Context, db *sqlite.DB, nodeIDs []string) (map[string]string, error) {
+	if len(nodeIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	args := make([]any, len(nodeIDs))
+	for i, id := range nodeIDs {
+		args[i] = id
+	}
+	rows, err := db.Conn().QueryContext(ctx,
+		`SELECT id, status FROM progress_nodes WHERE id IN (`+placeholders(len(nodeIDs))+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("report: select progress node statuses: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make(map[string]string, len(nodeIDs))
+	for rows.Next() {
+		var id, status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return nil, fmt.Errorf("report: scan progress node status: %w", err)
+		}
+		out[id] = status
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("report: iterating progress node statuses: %w", err)
+	}
+	return out, nil
 }

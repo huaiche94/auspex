@@ -54,6 +54,13 @@ type turnRecord struct {
 	costUSD       *float64
 	apiDurationMs *int64
 
+	// taskID/nodeID are the correlator-stamped attribution of the turn's
+	// own events (#140 outcome ledger): the canonical spend owner. A
+	// turn carries at most one node stamp, which is what makes the
+	// node rollup double-count-safe by construction (ADR-0057 §6).
+	taskID string
+	nodeID string
+
 	tokens  tokenSample
 	fileOps fileOpsSample
 
@@ -213,6 +220,7 @@ func deriveSessionTurns(sessionID string, series []seriesEvent, negativeCostDelt
 			eventModelID: start.modelID,
 			eventEffort:  start.effort,
 		}
+		mergeAttribution(&rec, start)
 		if terminal != nil {
 			rec.outcome = terminalOutcome(terminal.eventType)
 			rec.tokens = tokensFromEvent(*terminal)
@@ -226,6 +234,7 @@ func deriveSessionTurns(sessionID string, series []seriesEvent, negativeCostDelt
 			if terminal.provider != "" {
 				rec.provider = terminal.provider
 			}
+			mergeAttribution(&rec, *terminal)
 
 			// Cumulative-delta attribution — only for a CLOSED turn
 			// (an unclosed window has no defensible end).
@@ -260,6 +269,7 @@ func deriveSessionTurns(sessionID string, series []seriesEvent, negativeCostDelt
 			eventModelID: ev.modelID,
 			eventEffort:  ev.effort,
 		}
+		mergeAttribution(&rec, ev)
 		mergeManagedUsage(&rec, managedUsage)
 		turns = append(turns, rec)
 	}
@@ -300,6 +310,20 @@ func mergeManagedUsage(rec *turnRecord, managedUsage map[string]seriesEvent) {
 	}
 	if usage.effort != "" {
 		rec.eventEffort = usage.effort
+	}
+	mergeAttribution(rec, usage)
+}
+
+// mergeAttribution copies an event's correlator-stamped task/node ids
+// onto the turn record; first non-empty stamp wins (all of a turn's
+// events carry the same resolution when the correlator resolved it —
+// taking the first is a tiebreak, not a choice).
+func mergeAttribution(rec *turnRecord, ev seriesEvent) {
+	if rec.taskID == "" && ev.taskID != "" {
+		rec.taskID = ev.taskID
+	}
+	if rec.nodeID == "" && ev.nodeID != "" {
+		rec.nodeID = ev.nodeID
 	}
 }
 
@@ -776,6 +800,137 @@ func buildTopTurns(turns []turnRecord, labels turnLabels) []TopTurn {
 			top.APIDurationMs = &v
 		}
 		out = append(out, top)
+	}
+	return out
+}
+
+// MinOutcomeNodes is the minimum completed-node sample count before the
+// outcome ledger's cost-per-completed-node quantiles are shown (#140) —
+// the same honesty gate MinCohortTurns applies to cohort medians.
+const MinOutcomeNodes = 5
+
+// attributedNodeIDs collects the distinct node ids stamped on the
+// window's turns, for the status lookup.
+func attributedNodeIDs(turns []turnRecord) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range turns {
+		if t.nodeID != "" && !seen[t.nodeID] {
+			seen[t.nodeID] = true
+			out = append(out, t.nodeID)
+		}
+	}
+	return out
+}
+
+// buildOutcomeEconomics rolls the window's costed turns up to their
+// attributed nodes and outcome labels (#140, ADR-0057 §6 canonical
+// ownership: one turn, one node stamp, one owner per dollar).
+func buildOutcomeEconomics(turns []turnRecord, nodeStatuses map[string]string) OutcomeEconomics {
+	out := OutcomeEconomics{}
+
+	type nodeAgg struct {
+		turns int
+		cost  float64
+		anyC  bool
+	}
+	nodes := map[string]*nodeAgg{}
+	var attributedCost, unattributedCost float64
+	var anyAttributedCost, anyUnattributedCost bool
+
+	for _, t := range turns {
+		costed := t.costUSD != nil
+		if t.nodeID == "" {
+			if costed {
+				out.UnattributedTurns++
+				unattributedCost += *t.costUSD
+				anyUnattributedCost = true
+			}
+			continue
+		}
+		agg := nodes[t.nodeID]
+		if agg == nil {
+			agg = &nodeAgg{}
+			nodes[t.nodeID] = agg
+		}
+		agg.turns++
+		if costed {
+			out.AttributedTurns++
+			agg.cost += *t.costUSD
+			agg.anyC = true
+			attributedCost += *t.costUSD
+			anyAttributedCost = true
+		}
+	}
+	if anyAttributedCost {
+		out.AttributedCostUSD = &attributedCost
+	}
+	if anyUnattributedCost {
+		out.UnattributedCostUSD = &unattributedCost
+	}
+
+	type outcomeAgg struct {
+		nodes int
+		turns int
+		cost  float64
+		anyC  bool
+	}
+	outcomes := map[string]*outcomeAgg{}
+	var completedCosts []float64
+	for nodeID, agg := range nodes {
+		status, ok := nodeStatuses[nodeID]
+		if !ok {
+			status = "unknown"
+		}
+		oa := outcomes[status]
+		if oa == nil {
+			oa = &outcomeAgg{}
+			outcomes[status] = oa
+		}
+		oa.nodes++
+		oa.turns += agg.turns
+		if agg.anyC {
+			oa.cost += agg.cost
+			oa.anyC = true
+		}
+		if status == "completed" { // domain.NodeCompleted's wire value (status.go)
+			out.CompletedNodes++
+			if agg.anyC {
+				completedCosts = append(completedCosts, agg.cost)
+			}
+		}
+	}
+
+	for status, oa := range outcomes {
+		row := OutcomeRow{Outcome: status, Nodes: oa.nodes, Turns: oa.turns}
+		if oa.anyC {
+			c := oa.cost
+			row.CostUSD = &c
+		}
+		out.Outcomes = append(out.Outcomes, row)
+	}
+	sort.Slice(out.Outcomes, func(i, j int) bool {
+		ci, cj := 0.0, 0.0
+		if out.Outcomes[i].CostUSD != nil {
+			ci = *out.Outcomes[i].CostUSD
+		}
+		if out.Outcomes[j].CostUSD != nil {
+			cj = *out.Outcomes[j].CostUSD
+		}
+		if ci != cj {
+			return ci > cj
+		}
+		return out.Outcomes[i].Outcome < out.Outcomes[j].Outcome
+	})
+
+	if len(completedCosts) >= MinOutcomeNodes {
+		sort.Float64s(completedCosts)
+		med := median(completedCosts)
+		// Nearest-rank P90 over the sorted per-node totals — the same
+		// small-sample-honest convention the calibration exports use.
+		p90 := completedCosts[(len(completedCosts)*9+9)/10-1]
+		out.CostPerCompletedNodeMedianUSD = &med
+		out.CostPerCompletedNodeP90USD = &p90
 	}
 	return out
 }

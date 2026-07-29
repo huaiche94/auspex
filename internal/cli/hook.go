@@ -336,6 +336,10 @@ func NewHookCodexCmd(deps orchestrator.HookDeps) *cobra.Command {
 		// issue #114 (hookprecompact.go): pre/post-compaction hooks.
 		newRealCodexPreCompactCmd(deps),
 		newRealCodexPostCompactCmd(deps),
+		// issue #9 M8 (hookcodexinstall.go): ownership-recorded
+		// hooks.json install/uninstall — dependency-free leaves.
+		newCodexHooksInstallCmd(),
+		newCodexHooksUninstallCmd(),
 	)
 	return cmd
 }

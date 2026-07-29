@@ -33,6 +33,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/huaiche94/auspex/internal/pricing"
@@ -692,7 +693,58 @@ func median(values []float64) float64 {
 	return (sorted[n/2-1] + sorted[n/2]) / 2
 }
 
-func buildCacheHygiene(turns []turnRecord) CacheHygiene {
+// CacheShareMinReportingTurns gates the #146 cache-read-share numbers:
+// both the window and its pre-window baseline need at least this many
+// token-reporting turns before a share (or a drop takeaway) is shown —
+// the same small-sample honesty MinCohortTurns applies to medians.
+const CacheShareMinReportingTurns = 8
+
+// CacheShareDropPP is the #146 drop threshold in percentage points: the
+// cache-read share falling this far below the pre-window baseline fires
+// the cache_read_share_drop takeaway. An operational documented default
+// (the CacheChurnMeanTokensPerTurn convention), not a fitted number.
+const CacheShareDropPP = 15.0
+
+// preWindow returns the turns anchored BEFORE from — the baseline pool
+// the #146 cache-share comparison uses (bounded by the retention hot
+// window, like every series here).
+func preWindow(turns []turnRecord, from time.Time) []turnRecord {
+	var out []turnRecord
+	for _, t := range turns {
+		if t.anchor.Before(from) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// cacheReadShare computes cache_read/(cache_read+fresh_input) as a
+// percentage over the token-reporting turns, with the reporting-turn
+// count; ok=false below CacheShareMinReportingTurns or when the
+// denominator is zero.
+func cacheReadShare(turns []turnRecord) (float64, int, bool) {
+	var cacheRead, fresh int64
+	reporting := 0
+	for _, t := range turns {
+		if t.tokens.cacheRead == nil && t.tokens.freshInput == nil {
+			continue
+		}
+		reporting++
+		if t.tokens.cacheRead != nil {
+			cacheRead += *t.tokens.cacheRead
+		}
+		if t.tokens.freshInput != nil {
+			fresh += *t.tokens.freshInput
+		}
+	}
+	total := cacheRead + fresh
+	if reporting < CacheShareMinReportingTurns || total == 0 {
+		return 0, reporting, false
+	}
+	return 100 * float64(cacheRead) / float64(total), reporting, true
+}
+
+func buildCacheHygiene(turns, baseline []turnRecord) CacheHygiene {
 	hygiene := CacheHygiene{
 		FlagMeanTokensPerTurn: CacheChurnMeanTokensPerTurn,
 		FlagMinReportingTurns: CacheChurnMinTurns,
@@ -763,6 +815,66 @@ func buildCacheHygiene(turns []turnRecord) CacheHygiene {
 	sort.SliceStable(hygiene.Sessions, func(i, j int) bool {
 		return hygiene.Sessions[i].MeanTokensPerTurn > hygiene.Sessions[j].MeanTokensPerTurn
 	})
+	if share, _, ok := cacheReadShare(turns); ok {
+		v := share
+		hygiene.ReadSharePercent = &v
+	}
+	if share, _, ok := cacheReadShare(baseline); ok {
+		v := share
+		hygiene.BaselineReadSharePercent = &v
+	}
+
+	// Per-cohort cache shape (#146): model×effort split, MinCohortTurns
+	// gate, sorted by reporting turns descending then label.
+	type cohortAgg struct {
+		cacheRead, fresh int64
+		reporting        int
+	}
+	cohorts := map[string]*cohortAgg{}
+	for _, t := range turns {
+		if t.tokens.cacheRead == nil && t.tokens.freshInput == nil {
+			continue
+		}
+		key := t.eventModelID + "\x00" + t.eventEffort
+		c := cohorts[key]
+		if c == nil {
+			c = &cohortAgg{}
+			cohorts[key] = c
+		}
+		c.reporting++
+		if t.tokens.cacheRead != nil {
+			c.cacheRead += *t.tokens.cacheRead
+		}
+		if t.tokens.freshInput != nil {
+			c.fresh += *t.tokens.freshInput
+		}
+	}
+	for key, c := range cohorts {
+		total := c.cacheRead + c.fresh
+		if c.reporting < MinCohortTurns || total == 0 {
+			continue
+		}
+		model, effort := key, ""
+		if i := strings.IndexByte(key, 0); i >= 0 {
+			model, effort = key[:i], key[i+1:]
+		}
+		if model == "" {
+			model = "(unlabeled)"
+		}
+		hygiene.Cohorts = append(hygiene.Cohorts, CacheCohortStat{
+			Model:            familyOrID(model),
+			Effort:           effort,
+			ReportingTurns:   c.reporting,
+			ReadSharePercent: 100 * float64(c.cacheRead) / float64(total),
+		})
+	}
+	sort.Slice(hygiene.Cohorts, func(i, j int) bool {
+		if hygiene.Cohorts[i].ReportingTurns != hygiene.Cohorts[j].ReportingTurns {
+			return hygiene.Cohorts[i].ReportingTurns > hygiene.Cohorts[j].ReportingTurns
+		}
+		return hygiene.Cohorts[i].Model < hygiene.Cohorts[j].Model
+	})
+
 	return hygiene
 }
 

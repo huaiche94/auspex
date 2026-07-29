@@ -98,16 +98,18 @@ type Report struct {
 	Notes []string `json:"notes,omitempty"`
 }
 
-// TakeawayCase identifies one of the five weekly-reflection cases the
-// report turns into an action. Slugs are stable JSON wire values.
+// TakeawayCase identifies one of the weekly-reflection cases the
+// report turns into an action (five from issue #100, plus #146's
+// cache-read-share drift). Slugs are stable JSON wire values.
 type TakeawayCase string
 
 const (
-	CaseExpensiveTurns    TakeawayCase = "expensive_turns"
-	CaseModelRightSizing  TakeawayCase = "model_right_sizing"
-	CaseSessionCacheChurn TakeawayCase = "session_cache_churn"
-	CaseQuotaPressure     TakeawayCase = "quota_pressure"
-	CaseAgentThrash       TakeawayCase = "agent_thrash"
+	CaseExpensiveTurns     TakeawayCase = "expensive_turns"
+	CaseModelRightSizing   TakeawayCase = "model_right_sizing"
+	CaseSessionCacheChurn  TakeawayCase = "session_cache_churn"
+	CaseCacheReadShareDrop TakeawayCase = "cache_read_share_drop"
+	CaseQuotaPressure      TakeawayCase = "quota_pressure"
+	CaseAgentThrash        TakeawayCase = "agent_thrash"
 )
 
 // Takeaway is one actionable case: what was observed (Analysis), the
@@ -226,6 +228,22 @@ type CacheHygiene struct {
 	// cache at ~1/10th the fresh-input price instead of re-billed fresh.
 	CacheReadPerFreshInput *float64 `json:"cache_read_per_fresh_input,omitempty"`
 
+	// ReadSharePercent is cache_read / (cache_read + fresh_input) over
+	// the window's token-reporting turns, as a percentage — the
+	// cache-shape health number (#146: high is good, a drop means
+	// context is being re-billed fresh). BaselineReadSharePercent is the
+	// same metric over the PRE-window turns still inside the retention
+	// hot window; nil when either side lacks
+	// CacheShareMinReportingTurns reporting turns (unknown is not zero).
+	ReadSharePercent         *float64 `json:"read_share_percent,omitempty"`
+	BaselineReadSharePercent *float64 `json:"baseline_read_share_percent,omitempty"`
+
+	// Cohorts is the per-model×effort cache-shape split (#146): read
+	// share per cohort at >= MinCohortTurns reporting turns, so a
+	// right-sizing decision can see which cohort's cache behaves and
+	// which burns fresh input.
+	Cohorts []CacheCohortStat `json:"cohorts,omitempty"`
+
 	// Sessions lists every session with at least one cache-creation-
 	// reporting turn in the window; Flagged marks the churn threshold
 	// breach documented on CacheChurnMeanTokensPerTurn.
@@ -234,6 +252,14 @@ type CacheHygiene struct {
 	FlagMinReportingTurns  int            `json:"flag_min_reporting_turns"`
 	FlaggedSessions        int            `json:"flagged_sessions"`
 	TokenReportingSessions int            `json:"token_reporting_sessions"`
+}
+
+// CacheCohortStat is one model×effort cohort's cache-shape split.
+type CacheCohortStat struct {
+	Model            string  `json:"model"`
+	Effort           string  `json:"effort,omitempty"`
+	ReportingTurns   int     `json:"reporting_turns"`
+	ReadSharePercent float64 `json:"read_share_percent"`
 }
 
 // SessionChurn is one session's cache-creation churn accounting.
@@ -364,7 +390,7 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 		Totals:        buildTotals(inWindow, loc),
 		ModelMix:      buildModelMix(inWindow, labels),
 		RightSizing:   buildRightSizing(inWindow, labels),
-		CacheHygiene:  buildCacheHygiene(inWindow),
+		CacheHygiene:  buildCacheHygiene(inWindow, preWindow(turns, from)),
 		Quota:         quota,
 		TopTurns:      buildTopTurns(inWindow, labels),
 		Notes:         notes,

@@ -25,14 +25,14 @@ func takeawayByCase(ts []Takeaway) map[TakeawayCase]Takeaway {
 	return out
 }
 
-func TestBuildTakeaways_AllFiveAlwaysPresentWithLessonAndAction(t *testing.T) {
+func TestBuildTakeaways_AllCasesAlwaysPresentWithLessonAndAction(t *testing.T) {
 	// Empty everything: no turns, no sections. All five cases must still
 	// appear, none fired, each with a non-empty analysis/lesson/action.
 	got := buildTakeaways(nil, turnLabels{}, Report{RightSizing: RightSizing{Note: "not enough data yet"}})
 
 	wantOrder := []TakeawayCase{
 		CaseExpensiveTurns, CaseModelRightSizing, CaseSessionCacheChurn,
-		CaseQuotaPressure, CaseAgentThrash,
+		CaseCacheReadShareDrop, CaseQuotaPressure, CaseAgentThrash,
 	}
 	if len(got) != len(wantOrder) {
 		t.Fatalf("got %d takeaways, want %d", len(got), len(wantOrder))

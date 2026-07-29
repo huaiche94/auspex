@@ -24,6 +24,7 @@ func RenderText(rep Report) string {
 	renderModelMix(&b, rep.ModelMix)
 	renderRightSizing(&b, rep.RightSizing)
 	renderCacheHygiene(&b, rep.CacheHygiene)
+	renderCacheCohorts(&b, rep.CacheHygiene)
 	renderQuota(&b, rep.Quota)
 	renderTopTurns(&b, rep.TopTurns)
 	renderOutcomeEconomics(&b, rep.OutcomeEconomics)
@@ -162,6 +163,27 @@ func renderCacheHygiene(b *strings.Builder, h CacheHygiene) {
 		fmt.Fprintf(b, "    no session above the churn threshold (%d reporting session(s))\n", h.TokenReportingSessions)
 	} else {
 		fmt.Fprintf(b, "    %d of %d reporting session(s) flagged\n", flaggedShown, h.TokenReportingSessions)
+	}
+}
+
+func renderCacheCohorts(b *strings.Builder, h CacheHygiene) {
+	if h.ReadSharePercent != nil {
+		if h.BaselineReadSharePercent != nil {
+			fmt.Fprintf(b, "  cache-read share: %.1f%% (pre-window baseline %.1f%%)\n", *h.ReadSharePercent, *h.BaselineReadSharePercent)
+		} else {
+			fmt.Fprintf(b, "  cache-read share: %.1f%% (no baseline with enough turns)\n", *h.ReadSharePercent)
+		}
+	}
+	if len(h.Cohorts) > 0 {
+		w := newTab(b)
+		for _, c := range h.Cohorts {
+			label := c.Model
+			if c.Effort != "" {
+				label += "/" + c.Effort
+			}
+			tabf(w, "  %s\t%.1f%% read share\t%d turn(s)\n", label, c.ReadSharePercent, c.ReportingTurns)
+		}
+		_ = w.Flush()
 	}
 }
 

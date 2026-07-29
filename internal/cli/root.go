@@ -157,19 +157,25 @@ func newCheckpointCmd() *cobra.Command {
 }
 
 // newProgressCmd builds the standalone-stub `auspex progress
-// {show,complete}` subtree. `show` (ProgressTreeService.Snapshot) remains
-// a stub: depends on internal/app/wiring, not built this phase. `complete`
-// is a stub ONLY on this bare tree — internal/app/wiring.App.RootCmd()
-// replaces the whole `progress` subtree with NewProgressCmd's real
-// handlers (progress.go), the same stub-then-swap pattern `hook`/
-// `checkpoint`/`status` already follow.
+// {show,complete}` subtree. Both leaves are stubs ONLY on this bare tree
+// — internal/app/wiring.App.RootCmd() replaces the whole `progress`
+// subtree with NewProgressCmd's real handlers (progress.go; `show` real
+// as of issue #138), the same stub-then-swap pattern `hook`/`checkpoint`/
+// `status` already follow.
 func newProgressCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "progress",
 		Short: "Inspect the Progress Tree",
 	}
 	cmd.AddCommand(
-		newProgressShowStubCmd(),
+		&cobra.Command{
+			Use:   "show",
+			Short: "Show the current Progress Tree snapshot",
+			Args:  cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return notImplemented("progress show")
+			},
+		},
 		&cobra.Command{
 			Use:   "complete",
 			Short: "Complete a Progress Tree node with artifact evidence",
@@ -182,23 +188,10 @@ func newProgressCmd() *cobra.Command {
 	return cmd
 }
 
-// newProgressShowStubCmd builds the `progress show` stub leaf. Factored
-// out of newProgressCmd because the REAL progress subtree (NewProgressCmd,
-// progress.go) keeps this same stub for `show` — only `complete` has a
-// real implementation as of issue #1 — and the two trees must not drift.
-func newProgressShowStubCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "show",
-		Short: "Show the current Progress Tree snapshot",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("progress show")
-		},
-	}
-}
-
 // newStateCmd builds `auspex state show` (StateCheckpointService.LoadLatest).
-// Stub: depends on internal/app/wiring, not built this phase.
+// A stub ONLY on this bare tree — internal/app/wiring.App.RootCmd()
+// replaces the `state` subtree with NewStateCmd's real handler (state.go,
+// issue #138), the same stub-then-swap pattern `progress` follows.
 func newStateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "state",

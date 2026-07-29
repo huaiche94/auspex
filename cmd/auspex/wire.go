@@ -165,11 +165,16 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 	// normalizes it to policy.DefaultConfig(), which ships the ADR-043
 	// increment-2 / D-08 context-utilization thresholds ACTIVE
 	// (owner-approved factory posture). Adjusting or disabling them from
-	// the YAML config chain (internal/config) is a documented follow-up —
-	// this composition root does not load internal/config at all yet (no
-	// production consumer of Config.Raw exists), the same recorded gap as
-	// the pricing override above; until then, evaluationService.Policy is
-	// the programmatic seam (see evaluation.Service.Policy's doc comment).
+	// the YAML config chain remains a documented follow-up;
+	// evaluationService.Policy stays the programmatic seam (see its doc
+	// comment).
+	//
+	// ShadowEnforcement, by contrast, IS config-wired (ADR-0057 §5,
+	// issue #142): the `policy.shadow_enforcement` key via the same
+	// per-section loader pattern ADR-0054's state_checkpointing
+	// consumer established. Fail-open to OFF — a broken config file
+	// must never silently disable real enforcement.
+	evaluationService.ShadowEnforcement = loadPolicyShadowConfig(dirs).ShadowEnforcement
 
 	// --- runtime Part A: Graceful Pause / Scheduler -------------------
 	pauseStore := pause.NewSQLiteStore(db)

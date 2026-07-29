@@ -1,0 +1,11 @@
+-- 0065_policy_decisions_would_action.sql
+--
+-- ADR-0057 §5 / issue #142 (Cost Guard shadow mode): when shadow
+-- enforcement downgrades a statistical enforcement-grade decision
+-- (BLOCK / PAUSE / PAUSE_AND_AUTO_RESUME) to WARN, the ORIGINAL action
+-- is recorded here so the false-positive review loop can compare what
+-- Auspex would have done against what actually happened. NULL means
+-- "not shadowed" (the decision was served exactly as computed), never
+-- "unknown". Additive, no backfill: rows predating this column were
+-- never shadowed by construction.
+ALTER TABLE policy_decisions ADD COLUMN would_action TEXT;

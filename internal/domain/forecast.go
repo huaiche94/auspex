@@ -68,6 +68,20 @@ const (
 	ReasonTurnCostBudgetCheckpointExceeded ReasonCode = "TURN_COST_BUDGET_CHECKPOINT_EXCEEDED"
 )
 
+// ReasonSessionBudget* are ADR-0057's session budget envelope states
+// (issue #141; internal/policy/sessionbudget.go), additive under the
+// same sanction as the TURN_COST_BUDGET_* pair above:
+// RESERVATION-tier when the session's known spend plus the next turn's
+// worst-case band cannot fit the declared envelope (the ADR-0057 §4
+// "no new turn that cannot be reserved" semantic), EXHAUSTED-tier when
+// the known spend alone already meets or exceeds it. Spend is an
+// attribution-model sum of estimates and the band is uncalibrated —
+// never a probability claim (Constitution principle #2).
+const (
+	ReasonSessionBudgetReservationExceeded ReasonCode = "SESSION_BUDGET_RESERVATION_EXCEEDED"
+	ReasonSessionBudgetExhausted           ReasonCode = "SESSION_BUDGET_EXHAUSTED"
+)
+
 // ReasonTokenCohort* report which rung of the ADD §15.2 similar-turn
 // cohort fallback ladder supplied a token forecast's empirical base
 // (#20 Phase 1, ADR-047; ladder defined in

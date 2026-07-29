@@ -138,10 +138,26 @@ func (s *Service) runPipeline(ctx context.Context, req app.EvaluateTurnRequest) 
 		}
 	}
 
+	// #141 session budget envelope: the session's known attributed
+	// spend, via the optional sessionSpentSource seam — nil (source
+	// absent, or no usage telemetry) keeps the envelope rule silent
+	// (unknown is not zero).
+	var sessionSpent *float64
+	if spentSrc, ok := s.Source.(sessionSpentSource); ok {
+		var err error
+		if sessionSpent, err = spentSrc.SessionSpentUSD(ctx, req.SessionID); err != nil {
+			return pipelineResult{}, fmt.Errorf("evaluation: load session spend: %w", err)
+		}
+	}
+
 	decision := s.Decider.Decide(policy.DecideRequest{
 		Risk:                    riskResult,
 		Runway:                  runwayForecast,
 		PriorRunwayHitConfirmed: priorConfirmed,
+		// SessionSpentUSD feeds the #141 session-budget envelope rule
+		// (policy/sessionbudget.go); inactive without a declared
+		// budget regardless.
+		SessionSpentUSD: sessionSpent,
 		// Cost feeds the ADR-043 increment-3 cost-budget rule
 		// (policy/costbudget.go); nil (no estimate) keeps the rule
 		// silent, and an unset budget keeps it inactive regardless.

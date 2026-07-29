@@ -41,3 +41,32 @@ func loadPolicyShadowConfig(dirs paths.Dirs) config.PolicySection {
 	}
 	return section
 }
+
+// loadBudgetConfig mirrors loadPolicyShadowConfig for the `budget`
+// section (issue #141): fail-open to the factory default (no envelope
+// declared) on every failure path.
+func loadBudgetConfig(dirs paths.Dirs) config.BudgetSection {
+	layers := []config.Layer{config.DefaultsLayer()}
+	if dirs.Config != "" {
+		if layer, err := config.LoadFile(config.SourceGlobalUser, filepath.Join(dirs.Config, "config.yaml")); err == nil {
+			layers = append(layers, layer)
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if layer, err := config.LoadFile(config.SourceRepoConfig, filepath.Join(cwd, ".auspex", "config.yaml")); err == nil {
+			layers = append(layers, layer)
+		}
+		if layer, err := config.LoadFile(config.SourceRepoLocal, filepath.Join(cwd, ".auspex", "local.yaml")); err == nil {
+			layers = append(layers, layer)
+		}
+	}
+	cfg, err := config.Load(layers, config.Options{})
+	if err != nil {
+		return config.DefaultBudgetSection()
+	}
+	section, err := cfg.BudgetConfigSection()
+	if err != nil {
+		return config.DefaultBudgetSection()
+	}
+	return section
+}

@@ -32,6 +32,7 @@ ADR-001（產品名稱，已由 ADR-045 取代）到 ADR-040（作業系統喚�
 | [`0054`](0054-auto-checkpoint-and-run.md) | `CHECKPOINT_AND_RUN` 決策在兩個決策面自動建立 pre-turn checkpoint 對（state + repository），由 `state_checkpointing.on_checkpoint_and_run` 把關（預設啟用），checkpoint 失敗時 fail-open；就此動作取代「僅建議」的定調（issue #116）。 |
 | [`0055`](0055-runtime-empirical-calibration.md) | 執行期經驗校準啟動：ADR-047 cohort 階梯改讀兩個 turn 級生產者（managed usage 事件＋ADR-051 Stop-hook 捕捉），配合 per-turn 去重與候選池稀釋預過濾，>= 8 經驗 token 基準就此生效（#42）；成本帶改為同 cohort turn 已知四類成本的經驗 P50–P90（`Source = "four-class-empirical"`，migration 0064 持久化），門檻以下維持兩類帶（#66 item b）。Calibrated 一律維持 false。 |
 | [`0056`](0056-codex-appserver-data-source.md) | Codex App Server JSON-RPC stdio 串流成為經授權的解析資料來源(ADR-052 觸發①):newline 分隔框架已對 0.144.5 驗證、型別化穩定子集只命名識別碼/數字(diff/plan/錯誤文字只量測、絕不保留)、通知對映維持在封閉 EventType 分類學內(plan 更新餵 Progress Tree 提案、不是事件)、審批請求只上呈絕不自動核准(issue #9 M7 Phase 2)。 |
+| [`0057`](0057-cost-guard-adoption-boundaries.md) | Cost Guard:直接採用 7 項成本治理能力(outcome ledger、budget envelope、shadow mode、spin gate、cost regression、subagent 歸因、hygiene hints——#140–#146),3 項改寫為 Auspex-native 版本(#147–#149),proxy/routing/prompt 改寫/支付防火牆不進核心(governor-not-harness-owner 邊界);規範性的 hard-budget 保證階梯(managed+live/managed+end-only bounded overshoot/native-hook advisory)與 shadow-first 執法紀律。 |
 
 相關文件：ADR 會修訂 [`../design/Auspex_ADD.md`](../design/Auspex_ADD.md)
 （ADR 必須陳述的內容定義於 Constitution §3.4）；促成其中多項決策的擁有者

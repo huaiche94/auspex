@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -69,6 +71,71 @@ func NewReportCmd(gen ReportGenerator) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&windowFlag, "window", "7d", "Report window: <N>d for days (e.g. 7d) or a Go duration (e.g. 36h)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON output (auspex.report.v1)")
+	cmd.AddCommand(newReportDiffCmd(gen))
+	return cmd
+}
+
+// newReportDiffCmd builds `auspex report diff <baseline.json>` (issue
+// #144, Cost Guard): compare the current window's report against a
+// SAVED `auspex report --json` document — the baseline is the report
+// format itself, versioned and self-dating, never a new artifact
+// format. The comparison applies internal/report/diff.go's documented
+// noise floors and quality-aware overall verdict (spend up is only a
+// regression when cost per completed node did not improve).
+func newReportDiffCmd(gen ReportGenerator) *cobra.Command {
+	var windowFlag string
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "diff <baseline.json>",
+		Short: "Compare the current window against a saved `auspex report --json` baseline",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body, err := os.ReadFile(args[0])
+			if err != nil {
+				return &domain.Error{
+					Code: domain.ErrCodeValidation, Message: "report diff: reading baseline: " + err.Error(), Retryable: false,
+				}
+			}
+			var baseline report.Report
+			if err := json.Unmarshal(body, &baseline); err != nil {
+				return &domain.Error{
+					Code: domain.ErrCodeValidation, Message: "report diff: baseline is not a JSON report document: " + err.Error(), Retryable: false,
+				}
+			}
+			if baseline.SchemaVersion != report.ReportSchemaVersion {
+				return &domain.Error{
+					Code:      domain.ErrCodeValidation,
+					Message:   "report diff: baseline schema_version is not " + report.ReportSchemaVersion,
+					Retryable: false,
+					Details:   map[string]string{"schema_version": baseline.SchemaVersion},
+				}
+			}
+
+			window, err := parseReportWindow(windowFlag)
+			if err != nil {
+				return err
+			}
+			current, genErr := gen.GenerateReport(cmd.Context(), window)
+			if genErr != nil {
+				return &domain.Error{
+					Code: domain.ErrCodeInternal, Message: "report diff: generating current report: " + genErr.Error(), Retryable: false,
+				}
+			}
+
+			d := report.BuildDiff(baseline, current)
+			if jsonOut {
+				body, err := marshalOrError("report diff", d)
+				if err != nil {
+					return err
+				}
+				return writeJSON(cmd, body)
+			}
+			_, writeErr := fmt.Fprint(cmd.OutOrStdout(), report.RenderDiffText(d))
+			return writeErr
+		},
+	}
+	cmd.Flags().StringVar(&windowFlag, "window", "7d", "Window for the CURRENT side of the comparison")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "Emit machine-readable JSON output (auspex.report-diff.v1)")
 	return cmd
 }
 

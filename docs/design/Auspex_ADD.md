@@ -5974,6 +5974,28 @@ total = fresh + output），ADR-0055 階梯零改動即可消費 App Server
 ⑤`managed_app_server` 語義就此固定，由 managed-run 整合切片填入。
 詳見 `docs/adr/0056-codex-appserver-data-source.md`。
 
+## ADR-0057 — Cost Guard：成本治理採用集、產品邊界與 hard-budget 保證語意（#140–#149）
+
+**Decision：** ①直接採用 7 項成本治理能力（outcome ledger／budget
+envelope／shadow mode／spin gate／cost regression／subagent 歸因／
+hygiene hints，issues #140–#146），全部延伸既有 telemetry、policy、
+Progress Tree、checkpoint 與 managed-runner 基礎。②3 項改寫為
+Auspex-native 版本（critical-path node budgets #147、numbers-only
+tool-output telemetry #148、FR-170 static-merge team rollup #149）。
+③4 項不進核心：universal proxy、自動 model routing、prompt
+compression/rewriting、payment firewall——governor 不變 harness
+owner；可觀測、建議、旁路整合，不擁有。④hard-budget 保證語意
+規範化：managed＋live usage＝最強（reservation＋safe-point pause＋
+mid-turn guard）；managed＋end-only＝bounded overshoot（「最多超出
+一個 turn」、不得宣稱 token-exact）；native hook＝僅 advisory。
+執法一律走凍結 pause 生命週期，絕不 mid-flight 殺行程。⑤執法級
+action 一律 shadow-first；spin 閾值只由自家 telemetry 校準（M13）。
+⑥記帳規則：reservation 誠實標示 band、rollup canonical ownership
+防重複計算、新訊號 numbers-only。⑦roadmap 方向：M11 envelope＋
+shadow UX、M13 outcome economics＋擬合、M14 能力協商、M15 復原與
+audit；borrowing 與 team governance 等 outcome data 穩定後再做。
+詳見 `docs/adr/0057-cost-guard-adoption-boundaries.md`。
+
 ---
 
 # 34. Codex Execution Contract

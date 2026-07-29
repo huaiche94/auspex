@@ -1,0 +1,2 @@
+{"id":1,"result":{"userAgent":"auspex/0.144.5 (Mac OS 26.5.2; arm64) WezTerm/20240203-110809-5046fc22 (auspex; 0.0.0-probe)","codexHome":"/Users/roy/.codex","platformFamily":"unix","platformOs":"macos"}}
+{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"test-host","installationId":"00000000-0000-0000-0000-000000000000","environmentId":null}}

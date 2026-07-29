@@ -5954,6 +5954,26 @@ family 混合）；③成本帶 >= 8 樣本時採經驗 P50–P90
 （ADR-019/M5 機制）；statusline 不動（#90）。詳見
 `docs/adr/0055-runtime-empirical-calibration.md`。
 
+## ADR-0056 — Codex App Server JSON-RPC 串流列為解析資料來源；對映不開分類學（#9 M7 Phase 2）
+
+**Decision：** ①App Server stdio 串流（§21.2 的協定，對 0.144.5 實測：
+newline-delimited JSON-RPC、回應省略 `jsonrpc`、存在 server→client 審批
+請求）成為經授權解析來源（ADR-052 觸發①，ADR-051 同型先例）；隱私：
+型別化結構只命名識別碼／數字／列舉，diff／plan／錯誤文字只量測位元組
+長度或步數、絕不保留，原始 frame 永不持久化。②傳輸 client 位於
+`internal/providers/codex/appserver`：關聯、通知派發、§21.7 容錯
+（未知照送、格式錯誤計數、溢位丟棄並計數）；fixtures =
+`generate-json-schema` pin ＋消毒實錄 transcript ＋行程內 fake server
+（§5 rule 4，絕不對真實帳號測試）。③通知對映全數落在封閉 EventType
+分類學內——tokenUsage→usage.observed、rateLimits→quota.observed、
+turn 生命週期→turn.*（interrupted 對映 turn.interrupted）、
+item→tool.*、diff→file_change.observed（僅長度）、plan→Progress Tree
+提案（非事件）；token 詞彙維持凍結 pin（fresh input 拆分、
+total = fresh + output），ADR-0055 階梯零改動即可消費 App Server
+樣本。④審批請求只上呈、絕不自動核准（policy 層決定）。
+⑤`managed_app_server` 語義就此固定，由 managed-run 整合切片填入。
+詳見 `docs/adr/0056-codex-appserver-data-source.md`。
+
 ---
 
 # 34. Codex Execution Contract

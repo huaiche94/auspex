@@ -47,6 +47,30 @@ type AppServerSummary struct {
 	ConnectionLost bool
 }
 
+// appServerTurnStopper is the App Server path's providerStopper (issue
+// #9 slice C): ADD §21.6's protocol-level graceful stop for one live
+// turn. SignalStop is step 5's turn/interrupt call — the interrupted
+// outcome arrives as the turn/completed notification runAppServerTurn's
+// loop is already draining (step 6), which is what closes the liveRun's
+// exited channel. ForceStop tears the connection down (Close kills the
+// spawned server process): the escalation for a server that never
+// honors the interrupt, after which the run loop observes the closed
+// notification channel and records an honest ConnectionLost. Close is
+// idempotent, so the runner's own deferred Close is unaffected.
+type appServerTurnStopper struct {
+	client   *appserver.Client
+	threadID string
+	turnID   string
+}
+
+func (s appServerTurnStopper) SignalStop(ctx context.Context) error {
+	return s.client.InterruptTurn(ctx, s.threadID, s.turnID)
+}
+
+func (s appServerTurnStopper) ForceStop() error {
+	return s.client.Close()
+}
+
 // dialAppServer spawns `<bin> app-server` and performs the §21.2
 // handshake under appServerHandshakeTimeout. The spawned process's
 // lifetime is tied to runCtx (the whole run), not the handshake timeout.
@@ -101,6 +125,25 @@ func (r *Runner) runAppServerTurn(ctx context.Context, req RunRequest, turnID do
 	}
 	providerTurnID := turnRes.Turn.ID
 
+	// M10 auto-pause over the protocol path (issue #9 slice C, ADD §21.6):
+	// with a turn now live, arm the same PauseTrigger the exec path arms —
+	// but with the protocol-level stopper instead of a process signal. A
+	// fired trigger drives the identical frozen lifecycle (safe point →
+	// checkpoints → interrupt → wake job); its interrupt step lands here
+	// as turn/interrupt (§21.6 step 5), the interrupted terminal arrives
+	// through this run loop (step 6), and turnDone's close is the
+	// "provider confirms stopped" observation the lifecycle waits on.
+	// Defers run LIFO: turnDone closes before Stop joins the pump, the
+	// same close-then-Stop ordering Run uses for providerExited.
+	turnDone := make(chan struct{})
+	autoPause := r.Pause.beginStopperRun(ctx, req.SessionID, appServerTurnStopper{
+		client:   client,
+		threadID: thread.Thread.ID,
+		turnID:   providerTurnID,
+	}, turnDone, humanLog)
+	defer autoPause.Stop()
+	defer close(turnDone)
+
 	notifications := client.Notifications()
 	serverReqs := client.ServerRequests()
 	ctxDone := ctx.Done()
@@ -109,9 +152,11 @@ func (r *Runner) runAppServerTurn(ctx context.Context, req RunRequest, turnID do
 	for {
 		select {
 		case <-ctxDone:
-			// One protocol-level interrupt attempt (§21.6 step 5's call,
-			// without the full checkpoint sequence — that is slice C),
-			// then a bounded drain for the interrupted terminal.
+			// One protocol-level interrupt attempt on context cancellation
+			// (SIGINT/deadline teardown — distinct from the auto-pause
+			// trigger above, which runs the full §21.6 checkpoint sequence
+			// before its interrupt), then a bounded drain for the
+			// interrupted terminal.
 			ctxDone = nil
 			ictx, icancel := context.WithTimeout(context.Background(), 3*time.Second)
 			if err := client.InterruptTurn(ictx, thread.Thread.ID, providerTurnID); err != nil {

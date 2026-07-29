@@ -36,9 +36,11 @@ import (
 	"github.com/huaiche94/auspex/internal/clock"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/pause"
+	"github.com/huaiche94/auspex/internal/providers/codex/appserver"
 	"github.com/huaiche94/auspex/internal/scheduler"
 	"github.com/huaiche94/auspex/internal/storage/sqlite"
 	"github.com/huaiche94/auspex/internal/testutil/fakes"
+	v1 "github.com/huaiche94/auspex/pkg/protocol/v1"
 )
 
 // --- real migrated DB + seeded session chain (pause package's own test
@@ -609,5 +611,94 @@ func TestGracefulPauseObservationSource_ColdStartIsHonest(t *testing.T) {
 	}
 	if _, ok := source.ObserveRunway(context.Background(), "sess1"); ok {
 		t.Fatal("cold start must report ok=false, never a zero forecast")
+	}
+}
+
+// --- acceptance: ADD §21.6 — the full graceful sequence on the App
+//     Server managed path (issue #9 slice C): runway trigger -> safe
+//     point -> checkpoints -> turn/interrupt -> interrupted terminal ->
+//     durable wake job -----------------------------------------------------
+
+func TestAutoPause_AppServer_ProtocolInterrupt_PausesCheckpointsSleeps(t *testing.T) {
+	bin := buildFakeAppServer(t)
+	// No scripted events: the fake's turn stays inProgress until a
+	// turn/interrupt arrives, which is exactly the long-running turn the
+	// §21.6 sequence exists to stop.
+	t.Setenv("AUSPEX_FAKE_AS_EVENTS", "")
+
+	req := baseCodexRunRequest()
+	harness := newAutoPauseHarness(t, req.SessionID)
+	harness.trigger.Source = &scriptedForecasts{fn: func(int) (domain.RunwayForecast, bool) {
+		return calibratedHotForecast(), true
+	}}
+
+	persister := &runTestPersister{}
+	runner := newAppServerRunner(persister, bin)
+	runner.Pause = harness.trigger
+
+	humanLog := &bytes.Buffer{}
+	req.HumanLog = humanLog
+
+	// The safety net: if the trigger never fires, the context-cancel
+	// bare-interrupt path ends the run and the asserts below fail loudly
+	// instead of the test hanging on a forever-inProgress turn.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	outcome, err := runner.Run(ctx, req)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// The turn ended by protocol interrupt: the ADR-013 primary path was
+	// used, the terminal notification carried status interrupted (§21.6
+	// step 6), and the run ended far sooner than the watchdog timeout.
+	if !outcome.UsedAppServer {
+		t.Fatal("UsedAppServer = false, want the ADR-013 primary path")
+	}
+	if outcome.AppServer.TurnStatus != string(appserver.TurnStatusInterrupted) {
+		t.Fatalf("TurnStatus = %q, want %q", outcome.AppServer.TurnStatus, appserver.TurnStatusInterrupted)
+	}
+	if outcome.AppServer.ConnectionLost {
+		t.Fatal("ConnectionLost = true — the graceful interrupt should keep the terminal observable")
+	}
+	if elapsed > 10*time.Second {
+		t.Fatalf("run took %v — the auto-pause interrupt did not stop the turn", elapsed)
+	}
+
+	// The frozen lifecycle ran end to end (§21.6 steps 3, 4, 7): durable
+	// Sleeping record, both checkpoint links, durable wake job.
+	records := readPauseRecords(t, harness.db)
+	if len(records) != 1 {
+		t.Fatalf("pause_records rows = %d, want exactly 1", len(records))
+	}
+	rec := records[0]
+	if rec.Status != string(domain.PauseSleeping) {
+		t.Fatalf("pause record status = %q, want %q", rec.Status, domain.PauseSleeping)
+	}
+	if !rec.StateCkpt.Valid || rec.StateCkpt.String == "" {
+		t.Fatal("pause record has no state_checkpoint_id — §21.6 step 3 did not land")
+	}
+	if !rec.RepoCkpt.Valid || rec.RepoCkpt.String == "" {
+		t.Fatal("pause record has no repository_checkpoint_id — §21.6 step 4 did not land")
+	}
+	if _, found, err := harness.wakes.GetByPauseKind(context.Background(), domain.PauseID(rec.ID), "pause_resume"); err != nil || !found {
+		t.Fatalf("wake job lookup: found=%v err=%v — Sleeping without a durable wake job (§21.6 step 7)", found, err)
+	}
+
+	// The terminal batch persisted the honest interrupted event, with the
+	// thread_id resume locator on the session.started event (what the
+	// follow-up resume slice reads).
+	if len(persister.calls) != 2 {
+		t.Fatalf("persister.calls = %d batches, want 2 (gate, terminal)", len(persister.calls))
+	}
+	terminal := persister.calls[1]
+	if ev := eventOfType(t, terminal, v1.EventProviderTurnInterrupted); ev.Payload["turn_status"] != string(appserver.TurnStatusInterrupted) {
+		t.Errorf("turn.interrupted payload = %+v", ev.Payload)
+	}
+	if ev := eventOfType(t, terminal, v1.EventProviderSessionStarted); ev.Payload["thread_id"] != "th_fake" {
+		t.Errorf("session.started payload = %+v, want the thread_id resume locator", ev.Payload)
 	}
 }

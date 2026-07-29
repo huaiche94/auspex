@@ -388,6 +388,17 @@ func buildRootCmd(ctx context.Context) (root *cobra.Command, closeFn func() erro
 		GC: orchestrator.GCDeps{
 			Runner: &retention.Engine{DB: db, Clock: clk, IDs: ids, DataDir: dirs.Data},
 		},
+		// `auspex decision allow|deny` (runtime-b06, issue #119): the ONE
+		// real *evaluation.Service doubles as both DecisionDeps halves —
+		// it satisfies the frozen app.EvaluationService port and the
+		// narrow orchestrator.AuthorizationIssuer seam alike, the exact
+		// doubling composeAutoCheckpointer already relies on. Issuer being
+		// non-nil is what flips RootCmd's swap gate from the stub tree to
+		// cli.NewDecisionCmd (see wiring.Services.Decision's doc comment).
+		Decision: orchestrator.DecisionDeps{
+			Evaluation: evaluationService,
+			Issuer:     evaluationService,
+		},
 		// `auspex report` (issue #91): the read-only personal usage
 		// report over the same db. Location nil -> time.Local (the
 		// report is personal; the user's own wall clock frames "active

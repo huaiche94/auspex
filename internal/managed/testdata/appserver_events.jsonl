@@ -1,0 +1,4 @@
+{"method":"thread/tokenUsage/updated","params":{"threadId":"th_fake","turnId":"tu_fake","tokenUsage":{"last":{"inputTokens":900,"cachedInputTokens":700,"outputTokens":60,"reasoningOutputTokens":20,"totalTokens":960},"total":{"inputTokens":5200,"cachedInputTokens":4000,"outputTokens":450,"reasoningOutputTokens":120,"totalTokens":5650},"modelContextWindow":272000}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"codex","planType":"plus","primary":{"usedPercent":42,"windowDurationMins":300,"resetsAt":1785300000},"secondary":{"usedPercent":18,"windowDurationMins":10080}}}}
+{"method":"future/unknown/notification","params":{"mystery":true}}
+{"method":"turn/completed","params":{"threadId":"th_fake","turn":{"id":"tu_fake","status":"completed","items":[{"id":"i1","type":"agentMessage"},{"id":"i2","type":"commandExecution"}],"durationMs":4321}}}

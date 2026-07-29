@@ -36,15 +36,18 @@ func TestCapabilities_HookCapableInstallWithSessions(t *testing.T) {
 		ManagedExecution:      true,
 		StructuredEventStream: true,
 		ExactTurnUsage:        true,
-		ContextWindowUsage:    true,
-		RollingQuotaUsage:     true,
-		QuotaResetTimestamp:   true,
+		// LiveTokenUsage: the App Server managed path streams
+		// thread/tokenUsage/updated mid-turn (#9 M7 Phase 2, ADR-0056).
+		LiveTokenUsage:      true,
+		ContextWindowUsage:  true,
+		RollingQuotaUsage:   true,
+		QuotaResetTimestamp: true,
 		// Everything else is deliberately false — see the Capabilities
 		// doc comment for the per-field reasoning (notably SessionResume/
 		// SessionFork: `codex exec resume` exists in the CLI but is not
 		// driven by Auspex, i.e. degraded, recorded conservatively as
-		// false; and TurnInterrupt: the managed runner's context-cancel
-		// kill is process hygiene, not a graceful interrupt).
+		// false; and TurnInterrupt: a lone turn/interrupt call is not the
+		// full §21.6 pause guarantee — that boolean flips with slice C).
 	}
 	if caps != want {
 		t.Errorf("caps = %+v, want %+v", caps, want)

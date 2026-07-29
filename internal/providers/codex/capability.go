@@ -46,6 +46,16 @@ const (
 	minExecJSONMinor = 144
 )
 
+// minAppServer{Major,Minor} is the first Codex CLI minor the App Server
+// managed path (ADR-0056; internal/providers/codex/appserver +
+// internal/managed's app-server run) is VERIFIED against: v0.144.5's
+// `codex app-server` handshake and generate-json-schema output are the
+// pinned fixtures. Same verified-floor discipline as the exec runner.
+const (
+	minAppServerMajor = 0
+	minAppServerMinor = 144
+)
+
 // CapabilityReader implements the frozen app.ProviderCapabilityReader port
 // for Codex native-hook mode. Zero value is usable: SessionsDir defaults
 // to codextelemetry.DefaultSessionsDir() and Stat to os.Stat; both are
@@ -85,11 +95,11 @@ var _ app.ProviderCapabilityReader = (*CapabilityReader)(nil)
 // Deliberate falses (not detection failures — these reflect what Auspex
 // can drive today, the honest reading of "capability"):
 //
-//   - LiveTokenUsage: the rollout is read at Stop, not streamed live, and
-//     the exec JSONL stream is event-dependent in the wrong direction —
-//     on v0.144.4 usage rides ONLY the terminal turn.completed event
-//     (item.* events carry no token fields), so nothing reports tokens
-//     mid-turn.
+//   - LiveTokenUsage is TRUE on app-server-capable versions (#9 M7
+//     Phase 2, ADR-0056): the managed App Server path streams
+//     thread/tokenUsage/updated mid-turn. (The rollout is still read at
+//     Stop and the exec JSONL still carries usage only on the terminal
+//     event — the capability rides the app-server transport.)
 //   - PlanEvents/TaskEvents/FileChangeEvents/ToolEvents: PostToolUse and
 //     friends are deferred past Phase 1, and the exec stream's item.*
 //     events are counted, not mapped (internal/telemetry/codex/
@@ -129,6 +139,18 @@ func (r *CapabilityReader) Capabilities(_ context.Context, installation app.Prov
 		caps.ManagedExecution = true
 		caps.StructuredEventStream = true
 		caps.ExactTurnUsage = true
+	}
+
+	if appServerSupported(installation.Version) {
+		// The App Server managed path (#9 M7 Phase 2, ADR-0056) streams
+		// thread/tokenUsage/updated live during the turn — the one
+		// capability neither the rollout (read at Stop) nor the exec
+		// JSONL (terminal-event usage) can provide. TurnInterrupt/
+		// SafePointControl/SessionResume stay false until the §21.6
+		// interrupt/resume sequence ships (slice C): a lone
+		// turn/interrupt call is not the full pause guarantee those
+		// booleans promise.
+		caps.LiveTokenUsage = true
 	}
 
 	if r.sessionsDirExists() {
@@ -171,6 +193,10 @@ func hooksSupported(version string) bool {
 
 func execJSONSupported(version string) bool {
 	return versionAtLeast(version, minExecJSONMajor, minExecJSONMinor)
+}
+
+func appServerSupported(version string) bool {
+	return versionAtLeast(version, minAppServerMajor, minAppServerMinor)
 }
 
 // versionAtLeast parses a Codex version string ("0.144.4",

@@ -83,6 +83,11 @@ type Report struct {
 	Quota        QuotaSection  `json:"quota"`
 	TopTurns     []TopTurn     `json:"top_turns"`
 
+	// OutcomeEconomics is the #140 outcome ledger: cost per evidenced
+	// Progress Tree node — the verified-completion denominator ADR-0057
+	// adopted as Cost Guard's differentiator.
+	OutcomeEconomics OutcomeEconomics `json:"outcome_economics"`
+
 	// Takeaways turns the descriptive sections above into action: one entry
 	// per weekly-reflection case (analysis -> lesson -> action), issue #100.
 	Takeaways []Takeaway `json:"takeaways"`
@@ -256,6 +261,44 @@ type QuotaApproach struct {
 	Samples        int     `json:"samples"`
 }
 
+// OutcomeEconomics is the outcome ledger section (#140, ADR-0057): the
+// window's spend rolled up to evidenced Progress Tree nodes by the
+// correlator's turn->node attribution, with the node's CURRENT status
+// as the outcome label. Canonical ownership: a turn carries at most one
+// node stamp, so every dollar lands in exactly one row (double-count-
+// safe by construction). Cost quantiles are computed only over
+// completed nodes and only at >= MinOutcomeNodes samples; below that
+// the section reports the counts and says "not enough data" via nil
+// quantiles (unknown is not zero).
+type OutcomeEconomics struct {
+	// AttributedTurns/UnattributedTurns split the window's COSTED turns
+	// by whether they carry a node stamp; the unattributed spend share
+	// is the honest disclosure of how much the ledger cannot see.
+	AttributedTurns     int      `json:"attributed_turns"`
+	UnattributedTurns   int      `json:"unattributed_turns"`
+	AttributedCostUSD   *float64 `json:"attributed_cost_usd,omitempty"`
+	UnattributedCostUSD *float64 `json:"unattributed_cost_usd,omitempty"`
+
+	// Outcomes is the per-status rollup (completed/failed/in_progress/
+	// ...; "unknown" for a stamped node the progress_nodes table no
+	// longer resolves), ordered by attributed cost descending.
+	Outcomes []OutcomeRow `json:"outcomes,omitempty"`
+
+	// Cost-per-completed-node quantiles over the window's completed
+	// nodes' attributed totals. nil below MinOutcomeNodes samples.
+	CompletedNodes                int      `json:"completed_nodes"`
+	CostPerCompletedNodeMedianUSD *float64 `json:"cost_per_completed_node_median_usd,omitempty"`
+	CostPerCompletedNodeP90USD    *float64 `json:"cost_per_completed_node_p90_usd,omitempty"`
+}
+
+// OutcomeRow is one outcome label's rollup.
+type OutcomeRow struct {
+	Outcome string   `json:"outcome"`
+	Nodes   int      `json:"nodes"`
+	Turns   int      `json:"turns"`
+	CostUSD *float64 `json:"cost_usd,omitempty"`
+}
+
 // TopTurn is one section-6 row: ids and numbers only — the events table
 // stores no prompt text, and this report surfaces none.
 type TopTurn struct {
@@ -307,6 +350,11 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 
 	inWindow := filterWindow(turns, from, to)
 
+	nodeStatuses, err := loadProgressNodeStatuses(ctx, e.DB, attributedNodeIDs(inWindow))
+	if err != nil {
+		return Report{}, err
+	}
+
 	rep := Report{
 		SchemaVersion: ReportSchemaVersion,
 		GeneratedAt:   now.In(loc).Format(time.RFC3339),
@@ -321,6 +369,7 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 		TopTurns:      buildTopTurns(inWindow, labels),
 		Notes:         notes,
 	}
+	rep.OutcomeEconomics = buildOutcomeEconomics(inWindow, nodeStatuses)
 	rep.Takeaways = buildTakeaways(inWindow, labels, rep)
 	return rep, nil
 }

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Marketplace icon: the same augur's sighting-arc mark as auspex.svg,
+       but with an explicit background and stroke colors (currentColor is
+       theme-dependent and renders black-on-transparent — invisible on the
+       Marketplace's dark surfaces). -->
+  <rect width="256" height="256" rx="56" fill="#1c2333"/>
+  <g fill="none" stroke="#d4a017" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40 176c26-62 62-94 88-94s62 32 88 94"/>
+    <path d="M52 208h152"/>
+  </g>
+  <circle cx="128" cy="136" r="17" fill="#e8e0cf"/>
+</svg>

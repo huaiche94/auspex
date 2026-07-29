@@ -98,5 +98,16 @@
     "@types/node": "20.14.8",
     "@types/vscode": "1.90.0",
     "typescript": "5.5.4"
-  }
+  },
+  "icon": "media/icon.png",
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "governance",
+    "quota",
+    "checkpoint",
+    "daemon"
+  ]
 }

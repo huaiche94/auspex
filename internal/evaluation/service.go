@@ -65,6 +65,16 @@ type Service struct {
 	// judgment already recorded for Pricing's config override
 	// (internal/pricing's package comment).
 	Policy policy.Config
+
+	// ShadowEnforcement enables ADR-0057 §5's shadow-first enforcement
+	// discipline (issue #142, shadow.go): statistical enforcement-grade
+	// decisions are served downgraded to WARN with the original action
+	// persisted in policy_decisions.would_action. Optional, same
+	// convention as Policy: the zero value (false) keeps enforcement
+	// behavior exactly as before. The production CLI wires it from the
+	// `policy.shadow_enforcement` config key
+	// (config.PolicyConfigSection).
+	ShadowEnforcement bool
 }
 
 var _ app.EvaluationService = (*Service)(nil)
@@ -172,6 +182,16 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 	if err != nil {
 		return app.Evaluation{}, err
 	}
+
+	// ADR-0057 §5 / issue #142: shadow enforcement applies AFTER the
+	// pipeline computed its honest decision and BEFORE anything is
+	// persisted or served, so the caller-visible action and the stored
+	// row agree (a WARN that would have been a PAUSE), while the
+	// original action survives in would_action for the false-positive
+	// review loop. The fail-closed fact gates pass through untouched —
+	// see shadow.go.
+	var wouldAction *string
+	result.decision, wouldAction = applyShadowEnforcement(result.decision, s.ShadowEnforcement)
 
 	evaluationID := domain.EvaluationID(s.IDs.NewID())
 	decisionID := domain.DecisionID(s.IDs.NewID())
@@ -288,11 +308,14 @@ func (s *Service) EvaluateTurn(ctx context.Context, req app.EvaluateTurnRequest)
 		}
 
 		return insertPolicyDecision(txCtx, s.DB, policyDecisionRow{
-			ID:                   decisionID,
-			PredictionID:         evaluationID,
-			RunwayForecastID:     nil, // this phase's DataSource surfaces domain.RunwayForecast directly, not a stored runway_forecasts row ID (predictor-06 owns that table)
-			PolicyVersion:        policyVersion,
-			Action:               string(result.decision.Action),
+			ID:               decisionID,
+			PredictionID:     evaluationID,
+			RunwayForecastID: nil, // this phase's DataSource surfaces domain.RunwayForecast directly, not a stored runway_forecasts row ID (predictor-06 owns that table)
+			PolicyVersion:    policyVersion,
+			Action:           string(result.decision.Action),
+			// WouldAction is non-nil only when shadow enforcement
+			// downgraded this decision (migration 0065, issue #142).
+			WouldAction:          wouldAction,
 			Severity:             result.decision.Severity,
 			RequiresConfirmation: result.decision.RequiresConfirmation,
 			ReasonCodesJSON:      decisionReasons,

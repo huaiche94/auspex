@@ -270,11 +270,15 @@ func scanPrediction(row interface{ Scan(dest ...any) error }) (predictionRow, er
 
 // policyDecisionRow mirrors migrations/0043_policy_decisions.sql exactly.
 type policyDecisionRow struct {
-	ID                   domain.DecisionID
-	PredictionID         domain.EvaluationID
-	RunwayForecastID     *string
-	PolicyVersion        string
-	Action               string
+	ID               domain.DecisionID
+	PredictionID     domain.EvaluationID
+	RunwayForecastID *string
+	PolicyVersion    string
+	Action           string
+	// WouldAction is the pre-downgrade action when shadow enforcement
+	// rewrote this decision (migration 0065, issue #142); nil (NULL)
+	// means the decision was served exactly as computed.
+	WouldAction          *string
 	Severity             string
 	RequiresConfirmation bool
 	ReasonCodesJSON      string
@@ -286,10 +290,11 @@ func insertPolicyDecision(ctx context.Context, db *sqlite.DB, r policyDecisionRo
 	_, err := q.ExecContext(ctx, `
 		INSERT INTO policy_decisions (
 			id, prediction_id, runway_forecast_id, policy_version, action,
-			severity, requires_confirmation, reason_codes_json, decided_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			would_action, severity, requires_confirmation, reason_codes_json, decided_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(r.ID), string(r.PredictionID), nullableString(r.RunwayForecastID),
-		r.PolicyVersion, r.Action, r.Severity, boolToInt(r.RequiresConfirmation),
+		r.PolicyVersion, r.Action, nullableString(r.WouldAction),
+		r.Severity, boolToInt(r.RequiresConfirmation),
 		r.ReasonCodesJSON, r.DecidedAt,
 	)
 	if err != nil {

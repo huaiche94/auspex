@@ -155,6 +155,10 @@ type featuresSnapshot struct {
 	Progress     *progressSnapshotJSON     `json:"progress,omitempty"`
 	Quota        []domain.QuotaObservation `json:"quota,omitempty"`
 	Context      domain.ContextObservation `json:"context"`
+	// Spin is the #143 spin-gate signal capture (spinsignals.go) — the
+	// M13 threshold-fitting corpus accrues here; absent when nothing was
+	// measurable.
+	Spin *SpinSignals `json:"spin,omitempty"`
 }
 
 type repositorySnapshot struct {

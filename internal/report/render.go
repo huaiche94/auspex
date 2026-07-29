@@ -28,6 +28,7 @@ func RenderText(rep Report) string {
 	renderQuota(&b, rep.Quota)
 	renderTopTurns(&b, rep.TopTurns)
 	renderOutcomeEconomics(&b, rep.OutcomeEconomics)
+	renderSubagentAttribution(&b, rep.SubagentAttribution)
 	renderTakeaways(&b, rep.Takeaways)
 
 	if len(rep.Notes) > 0 {
@@ -267,6 +268,25 @@ func renderOutcomeEconomics(b *strings.Builder, oe OutcomeEconomics) {
 		fmt.Fprintf(b, "  cost per completed node: not enough data (%d completed node(s), gate %d)\n",
 			oe.CompletedNodes, MinOutcomeNodes)
 	}
+}
+
+func renderSubagentAttribution(b *strings.Builder, roots []SubagentRoot) {
+	if len(roots) == 0 {
+		return // no delegation observed — the section stays silent rather than rendering an empty table
+	}
+	b.WriteString("\nSubagent attribution (parent -> child spend rollup; codex linkage)\n")
+	w := newTab(b)
+	for _, r := range roots {
+		own, sub := "-", "-"
+		if r.OwnCostUSD != nil {
+			own = formatUSD(*r.OwnCostUSD)
+		}
+		if r.SubagentCostUSD != nil {
+			sub = formatUSD(*r.SubagentCostUSD)
+		}
+		tabf(w, "  %s\t%s total\town %s\tsubagents %s (%d)\n", r.RootSessionID, formatUSD(*r.TotalCostUSD), own, sub, r.Subagents)
+	}
+	_ = w.Flush()
 }
 
 func renderTakeaways(b *strings.Builder, takeaways []Takeaway) {

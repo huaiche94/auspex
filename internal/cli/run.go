@@ -84,7 +84,10 @@ func NewRunCmdWithAutoPause(deps orchestrator.HookDeps, pauseTrigger *managed.Pa
 				tid = &t
 			}
 
-			runner := &managed.Runner{Hooks: deps, ProviderBin: providerBin, Pause: pauseTrigger}
+			// PreferAppServer: the production CLI always prefers the
+			// ADR-013 primary managed path for codex; the runner falls
+			// back loudly to exec --json when the handshake fails.
+			runner := &managed.Runner{Hooks: deps, ProviderBin: providerBin, Pause: pauseTrigger, PreferAppServer: true}
 			outcome, err := runner.Run(cmd.Context(), managed.RunRequest{
 				Provider:   provider,
 				SessionID:  domain.SessionID(sessionID),
@@ -140,6 +143,11 @@ type runOutput struct {
 	TotalCostUSD    *float64 `json:"total_cost_usd"`
 	DurationMs      *int64   `json:"duration_ms"`
 	EventsPersisted int      `json:"events_persisted"`
+	// InvocationMode discloses the managed transport when it differs
+	// from the provider default (today: "managed_app_server" on the
+	// ADR-013 primary codex path; omitted otherwise — additive field,
+	// pre-slice-B outputs unchanged).
+	InvocationMode *string `json:"invocation_mode,omitempty"`
 }
 
 func buildRunOutput(sessionID string, outcome managed.RunOutcome) runOutput {
@@ -169,6 +177,18 @@ func buildRunOutput(sessionID string, outcome managed.RunOutcome) runOutput {
 	if cs := outcome.Codex; cs.Failed != nil || cs.Completed != nil {
 		failed := cs.Failed != nil
 		out.IsError = &failed
+	}
+	// Codex App Server path (issue #9 M7 Phase 2, ADR-013 primary):
+	// invocation_mode discloses which managed transport actually ran, and
+	// the turn's own terminal status maps onto is_error (interrupted is
+	// not an error — the turn ended as instructed).
+	if outcome.UsedAppServer {
+		mode := "managed_app_server"
+		out.InvocationMode = &mode
+		if outcome.AppServer.TurnStatus != "" {
+			failed := outcome.AppServer.TurnStatus == "failed"
+			out.IsError = &failed
+		}
 	}
 	return out
 }

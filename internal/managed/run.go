@@ -17,6 +17,7 @@ import (
 	"github.com/huaiche94/auspex/internal/app"
 	"github.com/huaiche94/auspex/internal/domain"
 	"github.com/huaiche94/auspex/internal/orchestrator"
+	"github.com/huaiche94/auspex/internal/providers/codex/appserver"
 )
 
 // ProviderClaude is the claude managed one-shot provider (issue #8 MVP);
@@ -52,6 +53,13 @@ type Runner struct {
 	// the provider's turn). nil disables auto-pause entirely; Run then
 	// behaves exactly as before.
 	Pause *PauseTrigger
+
+	// PreferAppServer selects the ADR-013 primary managed path for codex
+	// runs: dial `<bin> app-server`, and only fall back (loudly) to the
+	// exec --json spec path when the handshake fails. The production CLI
+	// wires this true; the zero value keeps the exec path byte-identical
+	// for every existing consumer and test (see appserver.go).
+	PreferAppServer bool
 }
 
 // RunRequest is one managed one-shot run. Prompt is passed to the
@@ -103,6 +111,15 @@ type RunOutcome struct {
 	Stream          StreamSummary
 	Codex           CodexStreamSummary
 	EventsPersisted int
+
+	// UsedAppServer marks a codex run that executed over the App Server
+	// path (ADR-013 primary; appserver.go); AppServer then carries its
+	// attribution block. ExitCode is 0 when the turn reached a terminal
+	// notification and -1 otherwise (no child exit code is meaningful —
+	// the server process outlives the turn and is closed, not waited,
+	// by the runner).
+	UsedAppServer bool
+	AppServer     AppServerSummary
 }
 
 // Run executes one managed one-shot run end to end: bootstrap the
@@ -148,19 +165,39 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 		bin = spec.defaultBin
 	}
 
+	// ADR-013 primary managed path (issue #9 M7 Phase 2): for codex,
+	// attempt the App Server handshake BEFORE bootstrap so the session
+	// row records the invocation mode the run will actually use. Only
+	// `initialize` crosses the wire here — no prompt is sent before the
+	// gate below decides (the gate protects the TURN; the server process
+	// itself carries no prompt). Any failure falls back loudly to the
+	// exec spec path.
+	var asClient *appserver.Client
+	invocationMode := spec.invocationMode
+	if req.Provider == ProviderCodex && r.PreferAppServer {
+		if c, err := dialAppServer(ctx, bin); err == nil {
+			asClient = c
+			invocationMode = orchestrator.InvocationModeManagedAppServer
+			defer func() { _ = c.Close() }()
+		} else {
+			_, _ = fmt.Fprintf(humanLog, "auspex run: app-server unavailable, falling back to exec --json (ADR-013 fallback): %v\n", err)
+		}
+	}
+
 	// Session bootstrap (issue #17) with the honest provider and managed
 	// invocation mode, BEFORE the gate: the gate's shared path
 	// re-bootstraps with the hook default, but provider_sessions'
 	// provider/invocation_mode are first-observation-wins, so registering
-	// first is what makes the row say managed_stream_json under the run's
-	// own provider (see orchestrator.SessionBootstrap's field doc).
-	// Nil-receiver-safe and fail-open by Bootstrap's own contract.
+	// first is what makes the row say managed_stream_json (or
+	// managed_app_server) under the run's own provider (see
+	// orchestrator.SessionBootstrap's field doc). Nil-receiver-safe and
+	// fail-open by Bootstrap's own contract.
 	if req.Dir != "" {
 		r.Hooks.Bootstrapper.Bootstrap(ctx, orchestrator.SessionBootstrap{
 			SessionID:      req.SessionID,
 			Dir:            req.Dir,
 			Provider:       req.Provider,
-			InvocationMode: spec.invocationMode,
+			InvocationMode: invocationMode,
 		})
 	}
 
@@ -237,6 +274,28 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (RunOutcome, error) {
 			_, _ = fmt.Fprintln(humanLog, gate.Card.AdditionalContext())
 		}
 		_, _ = fmt.Fprintf(humanLog, "auspex run: decision %s (evaluation %s), spawning provider\n", gate.Decision.Action, gate.Evaluation.ID)
+	}
+
+	// App Server execution (ADR-013 primary; appserver.go): the turn
+	// runs over the live connection instead of a spawned argv stream.
+	// The connection's failure modes are attribution data, never a Run
+	// error — identical posture to the spec path's exited-provider rule.
+	if asClient != nil {
+		o := r.runAppServerTurn(ctx, req, gate.TurnID, asClient, humanLog)
+		outcome.UsedAppServer = true
+		outcome.AppServer = AppServerSummary{
+			ThreadID:       o.ThreadID,
+			ModelID:        o.ModelID,
+			TurnStatus:     string(o.Status),
+			ItemCount:      o.ItemCount,
+			ConnectionLost: o.ConnectionLost,
+		}
+		outcome.ExitCode = -1
+		if o.TerminalSeen {
+			outcome.ExitCode = 0
+		}
+		outcome.EventsPersisted += r.persistAppServerTerminal(ctx, o)
+		return outcome, nil
 	}
 
 	// Spawn: argv-only, never a shell string (Constitution §7 rule 5).

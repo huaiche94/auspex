@@ -83,6 +83,15 @@ const invocationModeNativeHook = "native-hook"
 // assumed away).
 const InvocationModeManagedStreamJSON = "managed_stream_json"
 
+// InvocationModeManagedAppServer is the provider_sessions.invocation_mode
+// value for sessions driven over a live Codex App Server connection
+// (ADR-013's primary managed path; ADR-0056 fixes this value's meaning).
+// It fills the second slot ADD §16's policy vocabulary reserved
+// (invocation_mode_in: [managed_app_server, managed_stream_json]) — the
+// slot provider.go's spec table doc reserved for "a future app-server
+// adapter", which is now internal/managed's app-server run path.
+const InvocationModeManagedAppServer = "managed_app_server"
+
 // RepoResolver is the narrow, package-local view of *gitx.Client this
 // bootstrapper actually consumes — the same one-method-view convention
 // SessionResolver (correlate.go) established over app.FeatureDataSource.

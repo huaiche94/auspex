@@ -1046,3 +1046,77 @@ func buildOutcomeEconomics(turns []turnRecord, nodeStatuses map[string]string) O
 	}
 	return out
 }
+
+// buildSubagentAttribution rolls each session's turn costs up to its
+// ROOT session along the #145 parent edges (cycle-safe: a walk that
+// revisits a session stops and keeps the last sound root). Only roots
+// with at least one descendant appear — the section is about
+// delegation, not a session list. Each turn's cost is counted exactly
+// once, at the session that spent it; the root row splits own vs
+// descendant spend rather than re-owning anything (ADR-0057 §6).
+func buildSubagentAttribution(turns []turnRecord, parentEdges map[string]string) []SubagentRoot {
+	if len(parentEdges) == 0 {
+		return nil
+	}
+	rootOf := func(session string) string {
+		seen := map[string]bool{}
+		for !seen[session] {
+			seen[session] = true
+			parent, ok := parentEdges[session]
+			if !ok {
+				break
+			}
+			session = parent
+		}
+		return session
+	}
+
+	type agg struct {
+		own, sub       float64
+		anyOwn, anySub bool
+		children       map[string]bool
+	}
+	roots := map[string]*agg{}
+	for _, t := range turns {
+		if t.sessionID == "" || t.costUSD == nil {
+			continue
+		}
+		root := rootOf(t.sessionID)
+		a := roots[root]
+		if a == nil {
+			a = &agg{children: map[string]bool{}}
+			roots[root] = a
+		}
+		if t.sessionID == root {
+			a.own += *t.costUSD
+			a.anyOwn = true
+		} else {
+			a.sub += *t.costUSD
+			a.anySub = true
+			a.children[t.sessionID] = true
+		}
+	}
+
+	var out []SubagentRoot
+	for root, a := range roots {
+		if len(a.children) == 0 {
+			continue
+		}
+		row := SubagentRoot{RootSessionID: root, Subagents: len(a.children)}
+		if a.anyOwn {
+			v := a.own
+			row.OwnCostUSD = &v
+		}
+		if a.anySub {
+			v := a.sub
+			row.SubagentCostUSD = &v
+		}
+		total := a.own + a.sub
+		row.TotalCostUSD = &total
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return *out[i].TotalCostUSD > *out[j].TotalCostUSD
+	})
+	return out
+}

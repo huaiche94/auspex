@@ -396,3 +396,36 @@ func loadProgressNodeStatuses(ctx context.Context, db *sqlite.DB, nodeIDs []stri
 	}
 	return out, nil
 }
+
+// loadParentEdges resolves child session -> parent session from the
+// #145 subagent linkage: codex rollout/appserver session-started events
+// stamp parent_session_id into their payload (rolloutscan.go). Claude
+// sidechain subagents are NOT separately captured today (transcript
+// capture is deliberately main-chain-only) — that coverage is #145's
+// capture follow-up, and the report section discloses codex-only scope.
+func loadParentEdges(ctx context.Context, db *sqlite.DB) (map[string]string, error) {
+	rows, err := db.Conn().QueryContext(ctx, `
+		SELECT DISTINCT session_id, json_extract(payload_json, '$.parent_session_id')
+		FROM events
+		WHERE event_type = 'provider.session.started'
+		  AND json_extract(payload_json, '$.parent_session_id') IS NOT NULL
+		  AND session_id IS NOT NULL AND session_id != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("report: select parent edges: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var child, parent sql.NullString
+		if err := rows.Scan(&child, &parent); err != nil {
+			return nil, fmt.Errorf("report: scan parent edge: %w", err)
+		}
+		if child.String != "" && parent.String != "" && child.String != parent.String {
+			out[child.String] = parent.String
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("report: iterating parent edges: %w", err)
+	}
+	return out, nil
+}

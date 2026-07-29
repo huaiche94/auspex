@@ -88,6 +88,11 @@ type Report struct {
 	// adopted as Cost Guard's differentiator.
 	OutcomeEconomics OutcomeEconomics `json:"outcome_economics"`
 
+	// SubagentAttribution is the #145 parent-child cost rollup (codex
+	// linkage today; claude sidechain coverage is the capture
+	// follow-up).
+	SubagentAttribution []SubagentRoot `json:"subagent_attribution,omitempty"`
+
 	// Takeaways turns the descriptive sections above into action: one entry
 	// per weekly-reflection case (analysis -> lesson -> action), issue #100.
 	Takeaways []Takeaway `json:"takeaways"`
@@ -317,6 +322,18 @@ type OutcomeEconomics struct {
 	CostPerCompletedNodeP90USD    *float64 `json:"cost_per_completed_node_p90_usd,omitempty"`
 }
 
+// SubagentRoot is one delegating session's rollup: its own spend plus
+// every descendant subagent's, each dollar counted exactly once at the
+// session that spent it (ADR-0057 §6 canonical ownership — the root
+// VIEW aggregates, it never re-owns).
+type SubagentRoot struct {
+	RootSessionID   string   `json:"root_session_id"`
+	Subagents       int      `json:"subagents"`
+	OwnCostUSD      *float64 `json:"own_cost_usd,omitempty"`
+	SubagentCostUSD *float64 `json:"subagent_cost_usd,omitempty"`
+	TotalCostUSD    *float64 `json:"total_cost_usd,omitempty"`
+}
+
 // OutcomeRow is one outcome label's rollup.
 type OutcomeRow struct {
 	Outcome string   `json:"outcome"`
@@ -380,6 +397,10 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 	if err != nil {
 		return Report{}, err
 	}
+	parentEdges, err := loadParentEdges(ctx, e.DB)
+	if err != nil {
+		return Report{}, err
+	}
 
 	rep := Report{
 		SchemaVersion: ReportSchemaVersion,
@@ -396,6 +417,7 @@ func (e *Engine) GenerateReport(ctx context.Context, window time.Duration) (Repo
 		Notes:         notes,
 	}
 	rep.OutcomeEconomics = buildOutcomeEconomics(inWindow, nodeStatuses)
+	rep.SubagentAttribution = buildSubagentAttribution(inWindow, parentEdges)
 	rep.Takeaways = buildTakeaways(inWindow, labels, rep)
 	return rep, nil
 }

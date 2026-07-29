@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -52,18 +53,28 @@ func (m multiCloser) Close() error {
 	return errors.Join(errs...)
 }
 
-// recv reads one frame the client sent.
+// recv reads one frame the client sent. It is called from server-side
+// goroutines, so failures use Errorf + Goexit rather than Fatalf
+// (staticcheck SA2002: FailNow must stay on the test goroutine; Goexit
+// ends only THIS goroutine, and the marked error fails the test).
 func (s *fakeServer) recv() map[string]any {
 	s.t.Helper()
 	if !s.in.Scan() {
-		s.t.Fatalf("fake server: client closed the pipe before an expected frame (err=%v)", s.in.Err())
+		s.t.Errorf("fake server: client closed the pipe before an expected frame (err=%v)", s.in.Err())
+		runtime.Goexit()
 	}
 	var m map[string]any
 	if err := json.Unmarshal(s.in.Bytes(), &m); err != nil {
-		s.t.Fatalf("fake server: client sent invalid JSON %q: %v", s.in.Text(), err)
+		s.t.Errorf("fake server: client sent invalid JSON %q: %v", s.in.Text(), err)
+		runtime.Goexit()
 	}
 	return m
 }
+
+// drain reads and discards one client frame without asserting — the
+// helper for goroutines that only need to unblock a pipe write
+// (staticcheck SA2002: T.Fatal must stay on the test goroutine).
+func (s *fakeServer) drain() { s.in.Scan() }
 
 // send writes one raw line to the client.
 func (s *fakeServer) send(line string) {
@@ -241,7 +252,7 @@ func TestClient_ServerRequest_RespondTo(t *testing.T) {
 func TestClient_ConnectionEnd_FailsPendingAndClosesChannels(t *testing.T) {
 	s := newFakeServer(t)
 
-	go s.recv() // real servers read the request even when they never answer
+	go s.drain() // real servers read the request even when they never answer
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -271,7 +282,7 @@ func TestClient_ConnectionEnd_FailsPendingAndClosesChannels(t *testing.T) {
 
 func TestClient_CallContextCancel(t *testing.T) {
 	s := newFakeServer(t)
-	go s.recv() // swallow the request, never answer
+	go s.drain() // swallow the request, never answer
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(50 * time.Millisecond); cancel() }()

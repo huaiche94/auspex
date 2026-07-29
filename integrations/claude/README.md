@@ -15,8 +15,8 @@ directly to surface real errors.
 Sessions self-register: the hooks idempotently create
 repository/worktree/session rows on first contact (issue #17, decision
 D-07 "lazy bootstrap"), so there is no required setup step beyond the
-hook wiring itself. `auspex init` also exists for explicit registration
-of the current repository.
+hook wiring itself. There is deliberately no explicit `auspex init` —
+D-07 chose lazy registration over an init command (issue #118).
 
 (This file began as `claude-provider-06`'s forward-looking stub during
 the vertical-slice build; the naming-discrepancy record below is kept
@@ -131,8 +131,7 @@ table (ADR-043) — an uncalibrated estimate, never a measured cost.
 `docs/design/Auspex_ADD.md` §22.6 ("Compose existing status line")
 describes installer behavior — reading any pre-existing status-line
 command, saving it, and composing Auspex's wrapper output with it rather
-than clobbering it. `auspex init` registers the current repository but
-does not implement this compose/merge step. `hooks.json` here sets
+than clobbering it. `hooks.json` here sets
 `statusLine` directly as a static example and does not attempt to model
 that compose/merge behavior, since a static example file cannot express
 "read what was there before" — that is inherently install-time logic.

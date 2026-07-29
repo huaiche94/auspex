@@ -218,7 +218,7 @@ func TestApp_RootCmd_BuildsP0CommandTree(t *testing.T) {
 	}
 
 	want := []string{
-		"version", "init", "hook", "evaluate", "decision", "checkpoint",
+		"version", "hook", "evaluate", "decision", "checkpoint",
 		"progress", "state", "pause", "resume", "scheduler", "status", "doctor",
 	}
 	got := make(map[string]bool)

@@ -95,7 +95,6 @@ import (
 func allP0CommandPaths() [][]string {
 	return [][]string{
 		{"version"},
-		{"init"},
 		{"hook", "claude", "statusline"},
 		{"hook", "claude", "user-prompt-submit"},
 		{"hook", "claude", "post-tool-use"},
@@ -212,7 +211,6 @@ func TestErrorContract_RenderErrorJSON_NonDomainError(t *testing.T) {
 // every test run instead of silently going stale.
 func TestErrorContract_KnownIncompleteCommands_AreStubsOnly(t *testing.T) {
 	incomplete := [][]string{
-		{"init"},
 		{"progress", "show"},
 		{"state", "show"},
 	}
